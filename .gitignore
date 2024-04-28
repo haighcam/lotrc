@@ -1,0 +1,8 @@
+**/.ipynb_checkpoints
+**/__pycache__
+**/*.jat
+*.jar
+luac*
+luadec
+lua-bytecode.lua
+**/*.egg-info
