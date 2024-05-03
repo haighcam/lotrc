@@ -1,2 +1,2 @@
-from lotrc_decomp.level import LevelData
-from lotrc_decomp.level_info import LevelInfo
+from lotrc.level import LevelData
+from lotrc.level_info import LevelInfo

@@ -1,7 +1,7 @@
 import warnings
 
-from lotrc_decomp.utils import *
-from lotrc_decomp.types import *
+from lotrc.utils import *
+from lotrc.types import *
 
 Header = structtuple("LevelPAK_Header",
     'blockA_num', '<I',
@@ -197,7 +197,7 @@ MeshInfo = structtuple("MeshInfo",
     'unk_55', 'I',
     'objc_offset', 'I', # optional pointer to objc
     'unk_57', 'I',
-    'obje_offset', 'I', # optional pointer to obje
+    'hkConstraintData_offset', 'I', # optional pointer to hkConstraintData
     'unk_59', 'I',
     'hkConstraint_offset', 'I', # optional pointer to hkConstraint
     'keys2_offset', 'I',
@@ -791,7 +791,7 @@ HkConstraintInfo = structtuple("HkConstraintInfo",
     'unk_17', 'I',
 )
 
-GameObjlockInfo = structtuple("GameObjlockInfo", # points to GAM objects in block1
+GameObjBlockInfo = structtuple("GameObjBlockInfo", # points to GAM objects in block1
     'key', 'I',
     'unk_1', 'I',
     'offset', 'I',

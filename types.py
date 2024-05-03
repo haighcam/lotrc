@@ -1,8 +1,8 @@
-from collections import namedtuple
 import numpy as np
 import warnings
 
-from lotrc_decomp.utils import *
+from lotrc.utils import *
+DECOMP_LUA = True
 
 class CompressedBlock:
     def __init__(self, data, data_comp=None):
@@ -33,8 +33,11 @@ class CompressedBlock:
 
     def pack(self, compress=True):
         if compress:
-            return comp_zlib(self.data)
+            data = comp_zlib(self.data)
+            self.size_comp = len(data)
+            return data
         else:
+            self.size_comp = 0
             return self.data
 
 def formatpair(name, f0, f1, simple_conv=True, common_names=None):
@@ -374,19 +377,26 @@ class Lua:
         self = Self()
         self.f = f
         self.data = buffer[offset:offset+size]
-        self.code = decomp_lua(self.data)
+        if DECOMP_LUA:
+            self.code = decomp_lua(self.data)
         self.name = name
         return self
     def pack_into(self, buffer, offset, f="<"):
         if f == "<":
-            data = compile_lua(self.code, self.name)
+            if DECOMP_LUA:
+                data = compile_lua(self.code, self.name)
+            else:
+                data = convert_lua(self.data, b"L4404")
             buffer[offset:offset+len(data)] = data
             return len(data)
         else:
             raise ValueError("Not Yet Implemeted")
 
     def dump(self, f="<"):
-        data = compile_lua(self.code, self.name)
+        if DECOMP_LUA:
+            data = compile_lua(self.code, self.name)
+        else:
+            data = convert_lua(self.data, b"L4404")
         return data
         # if f == self.f:
         #     return self.data

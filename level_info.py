@@ -1,5 +1,5 @@
-from lotrc_decomp.utils import *
-from lotrc_decomp.types import *
+from lotrc.utils import *
+from lotrc.types import *
 
 class LevelInfo:
     Header = structtuple("LevelInfo_Header", 

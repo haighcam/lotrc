@@ -1,4 +1,7 @@
-import zlib
+try:
+    from zlib_ng import zlib_ng as zlib
+except:
+    import zlib
 import numpy as np
 import struct
 import subprocess
@@ -8,7 +11,8 @@ import lotrc
 from lupa.lua51 import LuaRuntime
 
 lua = LuaRuntime(encoding=None)
-lua_dump = lua.eval("function(obj) return dofile(\"" + os.path.dirname(lotrc_decomp.__file__) + "/lua-bytecode.lua\")(string.dump(obj), \"L4404\") end")
+lua_dump = lua.eval("function(obj) return dofile(\"" + os.path.dirname(lotrc.__file__) + "/lua-bytecode.lua\")(string.dump(obj), \"L4404\") end")
+lua_conv = lua.eval("function(obj, f) return dofile(\"" + os.path.dirname(lotrc.__file__) + "/lua-bytecode.lua\")(obj, f) end")
 
 def print_data(data):
     self = data.dtype.metadata['self']
@@ -20,13 +24,16 @@ def decomp_lua(data):
     with tempfile.NamedTemporaryFile(delete=False) as f:
         f.write(data)
         f.close()
-        out = subprocess.run(["java", "-jar", os.path.dirname(lotrc_decomp.__file__) + "/unluac.jar", f.name], stdout=subprocess.PIPE)
+        out = subprocess.run(["java", "-jar", os.path.dirname(lotrc.__file__) + "/unluac.jar", f.name], stdout=subprocess.PIPE)
         os.remove(f.name)
     return out.stdout.decode()
 
 def compile_lua(code, name):
     return lua_dump(lua.compile(code, name=name))
-    # return subprocess.run([os.path.dirname(lotrc_decomp.__file__) + "/luac5.1", "-o", "/dev/stdout", "-"], input=code.encode(), stdout=subprocess.PIPE).stdout
+    # return subprocess.run([os.path.dirname(lotrc.__file__) + "/luac5.1", "-o", "/dev/stdout", "-"], input=code.encode(), stdout=subprocess.PIPE).stdout
+
+def convert_lua(code, format):
+    return lua_conv(code, format)
 
 #### Zlib Stuff
 def check_zlib(data, offset):

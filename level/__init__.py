@@ -1,8 +1,8 @@
-from lotrc_decomp.utils import *
-from lotrc_decomp.types import *
+from lotrc.utils import *
+from lotrc.types import *
 
-import lotrc_decomp.level.pak as pak
-import lotrc_decomp.level.bin as bin
+import lotrc.level.pak as pak
+import lotrc.level.bin as bin
 
 class LevelData:
     def __init__(self, name):
@@ -56,7 +56,7 @@ class LevelData:
         self.texture_infos = unpack_list_from(pak.TextureInfo[self.f], self.block1.data, self.pak_header['texture_info_offset'], self.pak_header['texture_info_num'])
         self.animation_infos = unpack_list_from(pak.AnimationInfo[self.f], self.block1.data, self.pak_header['animation_info_offset'], self.pak_header['animation_info_num'])
         self.hk_constraint_infos = unpack_list_from(pak.HkConstraintInfo[self.f], self.block1.data, self.pak_header['hk_constraint_info_offset'], self.pak_header['hk_constraint_info_num'])
-        self.game_objs_block_infos = unpack_list_from(pak.GameObjlockInfo[self.f], self.block1.data, self.pak_header['game_objs_block_info_offset'], self.pak_header['game_objs_block_info_num'])
+        self.game_objs_block_infos = unpack_list_from(pak.GameObjBlockInfo[self.f], self.block1.data, self.pak_header['game_objs_block_info_offset'], self.pak_header['game_objs_block_info_num'])
         self.obj11s = unpack_list_from(pak.Obj11[self.f], self.block1.data, self.pak_header['obj11_offset'], self.pak_header['obj11_num'])
         self.pfield_infos = unpack_list_from(pak.PFieldInfo[self.f], self.block1.data, self.pak_header['pfield_info_offset'], self.pak_header['pfield_info_num'])
         self.obj13_infos = unpack_list_from(pak.Obj13Info[self.f], self.block1.data, self.pak_header['obj13_info_offset'], self.pak_header['obj13_info_num'])
@@ -123,7 +123,7 @@ class LevelData:
 
         self.pak_blockA = unpack_list_from(pak.BlockAVal[self.f], self.pak_data, self.pak_header['blockA_offset'], self.pak_header['blockA_num'])
 
-    def dump(self, f="<"):
+    def dump(self, f="<", compress=True):
         if f == ">" and self.f == "<":
             raise ValueError("\nUnsupported conversion from '<' to '>'")
 
@@ -147,21 +147,19 @@ class LevelData:
             self.dump_asset_data[key] = radiosity.dump(f)
 
         bin_offset = dump_bin_header.nbytes
-        bin_dump = bytes()
+        bin_dump = bytearray()
         dump_asset_handles = self.asset_handles.copy()
         for info in dump_asset_handles:
             off =  (bin_offset + 2047) & 0xfffff800
             bin_dump += bytes(off - bin_offset)
             bin_offset = off
             if (data := self.dump_asset_data.get((info['key'], info['type']), None)) is not None:
-                data_comp = CompressedBlock(data).pack()
-            # if (data := self.asset_data.get((info['key'], info['type']), None)) is not None:
-                # data_comp = data.data_comp
+                data = CompressedBlock(data)
+                data_comp = data.pack(compress)
                 info['offset'] = bin_offset
-                info['size'] = len(data)
-                # info['size'] = len(data.data)
-                info['size_comp'] = len(data_comp)
-                bin_offset += info['size_comp']
+                info['size'] = data.size
+                info['size_comp'] = data.size_comp
+                bin_offset += len(data_comp)
                 bin_dump += data_comp
             else:
                 warnings.warn(f"\n\tUnhandled Bin Asset {(info['key'], info['type'])}")
@@ -182,26 +180,29 @@ class LevelData:
         dump_bin_header['strings_size'] = len(data)
         bin_dump += data
 
-        bin_dump = pack(dump_bin_header, f) + bin_dump
+        bin_dump = pack(dump_bin_header, f) + bytes(bin_dump)
         dump_pak_header = self.pak_header.copy()
 
         pak_offset = dump_pak_header.nbytes
-        pak_dump = bytes()
+        pak_dump = bytearray()
 
-        dump_animation_block_infos = self.animation_block_infos.copy()
-        for i, info in enumerate(dump_animation_block_infos):
+        self.dump_animation_block_infos = self.animation_block_infos.copy()
+        self.dump_animation_blocks = []
+        for i, info in enumerate(self.dump_animation_block_infos):
             block = bytearray(info['size'])
             pak.Animation.pack_block(self.animations, self.animation_infos, block, 0, i, f)
             off =  (pak_offset + 4095) & 0xfffff000
             pak_dump += bytes(off - pak_offset)
             pak_offset = off
-            data = CompressedBlock(bytes(block)).pack()
+            data = CompressedBlock(bytes(block))
+            data_comp = data.pack(compress)
             info['offset'] = pak_offset
-            info['size'] = len(block)
-            info['size_comp'] = len(data)
-            pak_offset += info['size_comp']
-            pak_dump += data
-
+            info['size'] = data.size
+            info['size_comp'] = data.size_comp
+            pak_offset += len(data_comp)
+            pak_dump += data_comp
+            self.dump_animation_blocks.append(data)
+    
         dump_block1 = bytearray(dump_pak_header['sub_blocks1_offset'])
 
         for obj14, info in zip(self.obj14s, self.obj14_infos):
@@ -240,7 +241,7 @@ class LevelData:
         pack_into(self.pfield_infos, dump_block1, dump_pak_header['pfield_info_offset'], f)
         pack_into(self.obj13_infos, dump_block1, dump_pak_header['obj13_info_offset'], f)
         pack_into(self.obj14_infos, dump_block1, dump_pak_header['obj14_info_offset'], f)
-        pack_into(dump_animation_block_infos, dump_block1, dump_pak_header['animation_block_info_offset'], f)
+        pack_into(self.dump_animation_block_infos, dump_block1, dump_pak_header['animation_block_info_offset'], f)
 
         obj_map = {
             dump_pak_header['ibuff_info_offset']+pak.IBuffInfo[self.f].itemsize*i:dump_pak_header['ibuff_info_offset']+pak.IBuffInfo[f].itemsize*i 
@@ -255,7 +256,7 @@ class LevelData:
             if (new_val := obj_map.get(unpack_from(Uint[f], dump_block1, offset)['val'], None)) is not None:
                 pack_into(new(Uint[f], new_val), dump_block1, offset, f)
 
-        dump_block1 = bytes(dump_block1)
+        dump_block1 = dump_block1
         block1_offset = len(dump_block1)
         off = (block1_offset + 15) & 0xfffffff0
         dump_block1 += bytes(off - block1_offset)
@@ -269,20 +270,20 @@ class LevelData:
         dump_block1 += bytes(off - block1_offset)
         block1_offset = off
         dump_pak_header['string_keys_offset'] = block1_offset
-        self.dump_block1 = dump_block1 + self.string_keys.pack(f)
+        self.dump_block1 = bytes(dump_block1 + self.string_keys.pack(f))
         # self.dump_block1 = dump_block1 + self.string_keys.pack(f) + bytes(2000)
 
         off =  (pak_offset + 4095) & 0xfffff000
         pak_dump += bytes(off - pak_offset)
         pak_offset = off
-        data = CompressedBlock(self.dump_block1).pack()
+        data = CompressedBlock(self.dump_block1)
+        data_comp = data.pack(compress)
         # data = self.block1.pack()
         dump_pak_header['block1_offset'] = pak_offset
-        dump_pak_header['block1_size'] = len(self.dump_block1)
-        # dump_pak_header['block1_size'] = len(self.block1.data)
-        dump_pak_header['block1_size_comp'] = len(data)
-        pak_offset += dump_pak_header['block1_size_comp']
-        pak_dump += data
+        dump_pak_header['block1_size'] = data.size
+        dump_pak_header['block1_size_comp'] = data.size_comp
+        pak_offset += len(data_comp)
+        pak_dump += data_comp
 
         dump_pak_header['sub_blocks2_offset'] = 0
         dump_block2 = self.sub_blocks2.pack(f)
@@ -293,12 +294,13 @@ class LevelData:
         off =  (pak_offset + 4095) & 0xfffff000
         pak_dump += bytes(off - pak_offset)
         pak_offset = off
-        data = CompressedBlock(self.dump_block2).pack()
+        data = CompressedBlock(self.dump_block2)
+        data_comp = data.pack(compress)
         dump_pak_header['block2_offset'] = pak_offset
-        dump_pak_header['block2_size'] = len(self.dump_block2)
-        dump_pak_header['block2_size_comp'] = len(data)
-        pak_offset += dump_pak_header['block2_size_comp']
-        pak_dump += data
+        dump_pak_header['block2_size'] = data.size
+        dump_pak_header['block2_size_comp'] = data.size_comp
+        pak_offset += len(data_comp)
+        pak_dump += data_comp
 
         off =  (pak_offset + 4095) & 0xfffff000
         pak_dump += bytes(off - pak_offset)
@@ -314,6 +316,6 @@ class LevelData:
         dump_pak_header['blockA_num'] = self.pak_blockA.size
         pak_dump += pack(self.pak_blockA, f)
 
-        pak_dump = pack(dump_pak_header, f) + pak_dump
+        pak_dump = pack(dump_pak_header, f) + bytes(pak_dump)
 
         return pak_dump, bin_dump
