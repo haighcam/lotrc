@@ -290,8 +290,8 @@
 > - string_keys, pointed to by header
 > 
 > block2 layout:
-> sub_block2, pointed to by header
-> offsets, points to pointers (u32) in block1, pointed to by header
+> - sub_block2, pointed to by header
+> - offsets, points to pointers (u32) in block1, pointed to by header
 > (offsets of other things in block1)
 >
 > obja:
@@ -732,7 +732,7 @@
 > - unk_49, u32
 >
 > objc (something to do with hkShapes):
-> - size, u32, sometimes a pointer to something, otherwise the number of strings from the obj1 pointing to this
+> - size, u32, sometimes a pointer to something, otherwise the number of strings from the mesh_info pointing to this
 > - type, u32, 0, 1, 2, 3, 4, 5
 > - unk_2, u32
 > - unk_3, u32
@@ -916,7 +916,7 @@
 > - obj1_offset, u32
 > - buffer_info_offset, u32
 > - buffer_info_num, u32
-> - obj5_offset, u32, to some object that contains offsets in pos 1 and 2 and a value in pos 0
+> - obj5_offset, u32
 >
 > hk_constraint_info:
 > - type, u32
@@ -946,11 +946,11 @@
 > - size, u32
 >
 >  pfield_info:
- "key1", "I",
-    "key2", "I",
-    "width", "I",
-    "height", "I",
-    "offset", "I",
+ "key1, u32
+> - key2, u32
+> - width, u32
+> - height, u32
+> - offset, u32
 >
 > obj13_info (points to GFX blocks):
 > - key, u32
@@ -969,26 +969,26 @@
 > - unk_8, u32
 >
 > obj11:
-    "unk_0", "I",
-    "unk_1", "I",
-    "unk_2", "I",
-    "unk_3", "I",
-    "unk_4", "I",
-    "unk_5", "I",
-    "unk_6", "I",
-    "unk_7", "I",
-    "unk_8", "I",
-    "unk_9", "I",
-    "unk_10", "I",
-    "unk_11", "I",
-    "unk_12", "I",
-    "unk_13", "I",
-    "unk_14", "I",
-    "unk_15", "I",
-    "unk_16", "I",
-    "unk_17", "I",
-    "unk_18", "I",
-    "unk_19", "I",
+> - unk_0, u32
+> - unk_1, u32
+> - unk_2, u32
+> - unk_3, u32
+> - unk_4, u32
+> - unk_5, u32
+> - unk_6, u32
+> - unk_7, u32
+> - unk_8, u32
+> - unk_9, u32
+> - unk_10, u32
+> - unk_11, u32
+> - unk_12, u32
+> - unk_13, u32
+> - unk_14, u32
+> - unk_15, u32
+> - unk_16, u32
+> - unk_17, u32
+> - unk_18, u32
+> - unk_19, u32
 >
 > obj14 (points to list of ints in block1)
 > - unk_0, u32
@@ -1027,7 +1027,7 @@
 > # language_strings
 > utf16 encoded strings seperated by 0u16
 
->, string_keys
+> # string_keys
 > related to language strings, needs one element per string
 > layout:
 > - header
@@ -1057,60 +1057,60 @@
 > - obj2s
 >
 > obj1:
-        "key", "I",
-        "unk_1", "I",
-        "unk_2", "I",
-        "unk_3", "I",
-        "unk_4", "I",
-        "unk_5", "I",
-        "unk_6", "I",
-        "unk_7", "I",
-        "unk_8", "I",
-        "unk_9", "I",
-        "unk_10", "I",
-        "unk_11", "I",
-        "unk_12", "I",
-        "unk_13", "I",
-        "unk_14", "I",
-        "unk_15", "I",
-        "unk_16", "I",
+    > - key, u32
+    > - unk_1, u32
+    > - unk_2, u32
+    > - unk_3, u32
+    > - unk_4, u32
+    > - unk_5, u32
+    > - unk_6, u32
+    > - unk_7, u32
+    > - unk_8, u32
+    > - unk_9, u32
+    > - unk_10, u32
+    > - unk_11, u32
+    > - unk_12, u32
+    > - unk_13, u32
+    > - unk_14, u32
+    > - unk_15, u32
+    > - unk_16, u32
 >
 > obj2:
-        "unk_0", "f",
-        "unk_1", "f",
-        "unk_2", "f",
-        "unk_3", "f",
-        "unk_4", "f",
+    > - unk_0", "f",
+    > - unk_1", "f",
+    > - unk_2", "f",
+    > - unk_3", "f",
+    > - unk_4", "f",
 
->, crowd
+> # crowd
 > - const, u32, must be 0x65
 > - num, u32
 > - headers, keys (u32) and vals, packed in that order number of keys and vals determined by header
 > 
 > header:
-        "key_0", "I",
-        "key_1", "I",
-        "key_2", "I",
-        "key_3", "I",
-        "unk_4", "I",
-        "keys_num", "I",
-        "num", "I",
+    > - key_0, u32
+    > - key_1, u32
+    > - key_2, u32
+    > - key_3, u32
+    > - unk_4, u32
+    > - keys_num, u32
+    > - num, u32
 > 
 > val:
-        "unk_0", "I",
-        "unk_1", "I",
-        "unk_2", "I",
-        "unk_3", "I",
-        "unk_4", "I",
+    > - unk_0, u32
+    > - unk_1, u32
+    > - unk_2, u32
+    > - unk_3, u32
+    > - unk_4, u32
 
->, atlasuv
+> # atlasuv
 > contains vals
 > vals:
-        "unk_0", "I",
-        "unk_1", "f",
-        "unk_2", "f",
-        "unk_3", "f",
-        "unk_4", "f",
+    > - unk_0, u32
+    > - unk_1", "f",
+    > - unk_2", "f",
+    > - unk_3", "f",
+    > - unk_4", "f",
 
->, pfield
+> # pfield
 > seems to always be little endian, no idea on the format
