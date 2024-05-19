@@ -1327,70 +1327,90 @@ def get_vertex_format(fmt1, fmt2):
         b1 = fmt1 & 0x40000 != 0
         s = 0
         if fmt1 & 1 != 0:
-            fmt.append(Vector3 if not b1 else Vector4)
+            # position
+            fmt.append(("pos", Vector3 if not b1 else Vector4))
             s += 12 + 4*b1
         if fmt1 & 0x400 != 0:
-            fmt.append(Color)
+            # tangent
+            fmt.append(("tan", Color))
             s += 4
         if fmt1 & 0x800 != 0:
-            fmt.append(Color)
+            # binormal
+            fmt.append(("binorm", Color))
             s += 4
         if fmt1 & 2:
+            # blend weight
             if b1:
-                for _ in range(((s + 15) & 0xFFFF0) - s):
-                    fmt.append('B')
-                    s += 1
-                fmt.append(Vector4)
+                for _ in range(0, ((s + 15) & 0xFFFF0) - s, 4):
+                    fmt.append((f"pad{s}", Int))
+                    s += 4
+                fmt.append(("weight", Vector4))
                 s += 16
             else:
-                fmt.append(Color)
+                fmt.append(("weight", Color))
                 s += 4        
         if fmt1 & 0x100 != 0:
-            fmt.append(Color)
+            # tex coord
+            fmt.append(("tex", Color))
             s += 4
         if fmt1 & 0x200 != 0:
-            fmt.append(Color)
+            # tex coord, usage index 1
+            fmt.append(("tex1", Color))
             s += 4
-        for _ in range((fmt1 >> 2) & 0xF):
-            fmt.append(Vector2)
+        for i in range((fmt1 >> 2) & 0xF):
+            # blend indices, usage index 0 through (fmt1 >> 2)&0xF
+            fmt.append((f"inds{i}", Vector2))
             s += 8
         if fmt1 & 0x40:
+            # normal
             if b1:
-                for _ in range(((s + 15) & 0xFFFF0) - s):
-                    fmt.append('B')
-                    s += 1
-                fmt.append(Vector4)
+                for _ in range(0, ((s + 15) & 0xFFFF0) - s, 4):
+                    fmt.append((f"pad{s}", Int))
+                    s += 4
+                fmt.append(("norm", Vector4))
                 s += 16
             else:
-                fmt.append(Color)
+                fmt.append(("norm", Color))
                 s += 4
         if fmt1 & 0x80:
-            fmt.append(Vector3)
+            # psize
+            fmt.append(("psize", Vector3))
             s += 12
         if b1:
-            for _ in range(((s + 15) & 0xFFFF0) - s):
-                fmt.append('B')
+            for _ in range(0, ((s + 15) & 0xFFFF0) - s, 4):
+                fmt.append((f"pad{s}", Int))
+                s += 4
     else:
         if fmt1 & 1 != 0:
-            fmt.append(Vector3)
+            # pos
+            fmt.append(("pos", Vector3))
         if fmt1 & 0x400 != 0:
-            fmt.append(Color)
+            # tan
+            fmt.append(("tan", Color))
         if fmt1 & 0x800 != 0:
-            fmt.append(Color)
+            # binorm
+            fmt.append(("binorm", Color))
         if fmt1 & 2:
-            fmt.append(Color)
+            # blend weight
+            fmt.append(("weight", Color))
         if fmt1 & 0x100 != 0:
-            fmt.append(Color)
+            # tex coord
+            fmt.append(("tex", Color))
         if fmt1 & 0x200 != 0:
-            fmt.append(Color)
+            # tex coord, usage ind 1
+            fmt.append(("tex1", Color))
         if (n := (fmt1 >> 2) & 0xf) <= 2:
-            for _ in range(n):
-                fmt.append(Vector2)
+            # blend inds, 0 to n usage inds
+            for i in range(n):
+                fmt.append((f"inds{i}", Vector2))
         if fmt1 & 0x40:
-            fmt.append(Color)
+            # normal
+            fmt.append(("norm", Color))
         if fmt1 & 0x80:
-            fmt.append(Vector3)
-    return structtuple(f"VertexFormat_{fmt1:03X}_{fmt2:03X}", *[j for i in zip([f"f{i}" for i in range(len(fmt))], fmt) for j in i])
+            # p size
+            fmt.append(("psize", Vector3))
+    # return structtuple(f"VertexFormat_{fmt1:03X}_{fmt2:03X}", *[j for i in zip([f"f{i}" for i in range(len(fmt))], fmt) for j in i])
+    return structtuple(f"VertexFormat_{fmt1:03X}_{fmt2:03X}", *[j for i in fmt for j in i])
 
 class VertexBuffer:
     @classmethod

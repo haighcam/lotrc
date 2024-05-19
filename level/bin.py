@@ -58,24 +58,20 @@ AssetHandle = structtuple("AssetHandle",
 )
 
 class Radiosity:
-    Val = structtuple("RadiosityVal",
-        "a", Vector4,
-        "b", Vector4
-    )
-    # I have no idea, vertex data, maybe just 8 floats??
+    # I have no idea, something to do with global illumination?
     @classmethod
     def unpack_from(Self, data, f="<"):
-        # m = len(data)
-        # assert m % 32 == 0
-        # self = Self()
-        # self.data = unpack_list_from(self.Val[f], data, 0, m // 32)
-        # return self
+        m = len(data)
+        assert m % 4 == 0
         self = Self()
-        self.data = data
+        self.data = unpack_list_from(Uint[f], data, 0, m // 4)
+        return self
+        # self = Self()
+        # self.data = data
         return self
     def dump(self, f="<"):
-        # return pack(self.data, f)
-        return self.data
+        return pack(self.data, f)
+        # return self.data
 
 """
 type:
