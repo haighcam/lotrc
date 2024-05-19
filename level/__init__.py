@@ -149,6 +149,14 @@ class LevelData:
                 self.vbuffs.append([pak.VertexBuffer.unpack_from(buffer, self.vbuff_infos[self.vbuff_info_map[info]], self.vertex_formats, self.f) for info in mesh.vbuffs['val']])
                 self.ibuffs.append([pak.IndexBuffer.unpack_from(buffer, self.ibuff_infos[self.ibuff_info_map[info]], self.f) for info in mesh.ibuffs['val']])
                 self.processed_buffers.add((info['asset_key'], info['asset_type']))
+        if self.f == ">":
+            for vbuffs in self.vbuffs:
+                if vbuffs is None: continue
+                for vbuff in vbuffs:
+                    if 'weight' in vbuff.data.dtype.names and 'x' in vbuff.data.dtype.fields['weight'][0].names:
+                        vbuff.data['weight']['x'] = vbuff.data['weight']['x']/2 + 0.5
+                        vbuff.data['weight']['y'] = vbuff.data['weight']['y']/2 + 0.5
+                        vbuff.data['weight']['z'] = vbuff.data['weight']['z']/2 + 0.5
 
         self.pak_blockA = unpack_list_from(pak.BlockAVal[self.f], self.pak_data, self.pak_header['blockA_offset'], self.pak_header['blockA_num'])
         self.remaps = []
