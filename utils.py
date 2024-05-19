@@ -7,12 +7,13 @@ import struct
 import subprocess
 import tempfile
 import os
+import pathlib
 import lotrc
 from lupa.lua51 import LuaRuntime
 
 lua = LuaRuntime(encoding=None)
-lua_dump = lua.eval("function(obj) return dofile(\"" + os.path.dirname(lotrc.__file__) + "/lua-bytecode.lua\")(string.dump(obj), \"L4404\") end")
-lua_conv = lua.eval("function(obj, f) return dofile(\"" + os.path.dirname(lotrc.__file__) + "/lua-bytecode.lua\")(obj, f) end")
+lua_dump = lua.eval("function(obj) return dofile(\"" + pathlib.Path(os.path.dirname(lotrc.__file__)).as_posix() + "/lua-bytecode.lua\")(string.dump(obj), \"L4404\") end")
+lua_conv = lua.eval("function(obj, f) return dofile(\"" + pathlib.Path(os.path.dirname(lotrc.__file__)).as_posix() + "/lua-bytecode.lua\")(obj, f) end")
 
 def print_data(data):
     self = data.dtype.metadata['self']
@@ -24,7 +25,7 @@ def decomp_lua(data):
     with tempfile.NamedTemporaryFile(delete=False) as f:
         f.write(data)
         f.close()
-        out = subprocess.run(["java", "-jar", os.path.dirname(lotrc.__file__) + "/unluac.jar", f.name], stdout=subprocess.PIPE)
+        out = subprocess.run(["java", "-jar", pathlib.Path(os.path.dirname(lotrc.__file__)).as_posix() + "/unluac.jar", f.name], stdout=subprocess.PIPE)
         os.remove(f.name)
     return out.stdout.decode()
 
@@ -222,7 +223,7 @@ def conv_img(buffer, height, width, f, get_buffer=True):
     w = width // s
     h_ = h
     w_ = w
-    if f in [7, 8, 10, 0xb, 0xc, 0x11]:
+    if f in [7, 8, 13, 10, 0xb, 0xc, 0x11]:
         h = max(h, 32)
         w = max(w, 32)
     

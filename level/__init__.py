@@ -1,5 +1,6 @@
 from lotrc.utils import *
 from lotrc.types import *
+from collections import OrderedDict
 
 import lotrc.level.pak as pak
 import lotrc.level.bin as bin
@@ -47,8 +48,8 @@ class LevelData:
         self.mat2s = unpack_list_from(pak.Mat2[self.f], self.block1.data, self.pak_header['mat2_offset'], self.pak_header['mat2_num'])
         self.mat3s = unpack_list_from(pak.Mat3[self.f], self.block1.data, self.pak_header['mat3_offset'], self.pak_header['mat3_num'])
         self.mat4s = unpack_list_from(pak.Mat4[self.f], self.block1.data, self.pak_header['mat4_offset'], self.pak_header['mat4_num'])
-        self.objbs = unpack_list_from(pak.ObjB[self.f], self.block1.data, self.pak_header['objb_offset'], self.pak_header['objb_num'])
-        self.objcs = unpack_list_from(pak.ObjC[self.f], self.block1.data, self.pak_header['objc_offset'], self.pak_header['objc_num'])
+        self.mat_extras = unpack_list_from(pak.MatExtra[self.f], self.block1.data, self.pak_header['mat_extra_offset'], self.pak_header['mat_extra_num'])
+        self.shape_infos = unpack_list_from(pak.ShapeInfo[self.f], self.block1.data, self.pak_header['shape_info_offset'], self.pak_header['shape_info_num'])
         self.hk_shape_infos = unpack_list_from(pak.HkShapeInfo[self.f], self.block1.data, self.pak_header['hk_shape_info_offset'], self.pak_header['hk_shape_info_num'])
         self.hk_constraint_datas = unpack_list_from(pak.HkConstraintData[self.f], self.block1.data, self.pak_header['hk_constraint_data_offset'], self.pak_header['hk_constraint_data_num'])
         self.vbuff_infos = unpack_list_from(pak.VBuffInfo[self.f], self.block1.data, self.pak_header['vbuff_info_offset'], self.pak_header['vbuff_info_num'])
@@ -59,17 +60,18 @@ class LevelData:
         self.game_objs_block_infos = unpack_list_from(pak.GameObjBlockInfo[self.f], self.block1.data, self.pak_header['game_objs_block_info_offset'], self.pak_header['game_objs_block_info_num'])
         self.obj11s = unpack_list_from(pak.Obj11[self.f], self.block1.data, self.pak_header['obj11_offset'], self.pak_header['obj11_num'])
         self.pfield_infos = unpack_list_from(pak.PFieldInfo[self.f], self.block1.data, self.pak_header['pfield_info_offset'], self.pak_header['pfield_info_num'])
-        self.obj13_infos = unpack_list_from(pak.Obj13Info[self.f], self.block1.data, self.pak_header['obj13_info_offset'], self.pak_header['obj13_info_num'])
+        self.gfx_block_infos = unpack_list_from(pak.GFXBlockInfo[self.f], self.block1.data, self.pak_header['gfx_block_info_offset'], self.pak_header['gfx_block_info_num'])
         self.obj14_infos = unpack_list_from(pak.Obj14Info[self.f], self.block1.data, self.pak_header['obj14_info_offset'], self.pak_header['obj14_info_num'])
         self.animation_block_infos = unpack_list_from(pak.AnimationBlockInfo[self.f], self.block1.data, self.pak_header['animation_block_info_offset'], self.pak_header['animation_block_info_num'])
 
         self.meshes = [pak.Mesh.unpack_from(self.block1.data, info, self.f) for info in self.mesh_infos]
+        self.shapes = [pak.Shape.unpack_from(self.block1.data, info, self.f) for info in self.shape_infos]
         self.hk_shapes = [pak.HkShape.unpack_from(self.block1.data, info, self.f) for info in self.hk_shape_infos]
         self.hk_constraints = [pak.HkConstraint.unpack_from(self.block1.data, info, self.f) for info in self.hk_constraint_infos]
         self.game_objs_blocks = [GameObjs.unpack_from(self.block1.data, info['offset'], info['size'], self.game_objs_types, self.f) for info in self.game_objs_block_infos]
 
         self.obj14s = [pak.Obj14.unpack_from(self.block1.data, info, self.f) for info in self.obj14_infos]
-        self.obj13s = [Data.unpack_from(self.block1.data, info['offset'], info['size'], self.f) for info in self.obj13_infos]
+        self.gfx_blocks = [Data.unpack_from(self.block1.data, info['offset'], info['size'], self.f) for info in self.gfx_block_infos]
 
         self.animation_blocks = [CompressedBlock.unpack_from(self.pak_data, info['size'], info['size_comp'], info['offset']) for info in self.animation_block_infos]
         self.animations = [pak.Animation() for _ in range(len(self.animation_infos))]
@@ -94,6 +96,33 @@ class LevelData:
             else:
                 raise ValueError(f"Unsuported Texture Type {info['type']}")
 
+        self.mat1_map = {
+            self.pak_header['mat1_offset']+pak.Mat1[self.f].itemsize*i:i for i in range(self.pak_header['mat1_num'])
+        }
+        self.mat2_map = {
+            self.pak_header['mat2_offset']+pak.Mat2[self.f].itemsize*i:i for i in range(self.pak_header['mat2_num'])
+        }
+        self.mat3_map = {
+            self.pak_header['mat3_offset']+pak.Mat3[self.f].itemsize*i:i for i in range(self.pak_header['mat3_num'])
+        }
+        self.mat4_map = {
+            self.pak_header['mat4_offset']+pak.Mat4[self.f].itemsize*i:i for i in range(self.pak_header['mat4_num'])
+        }
+        self.mat_extra_map = {
+            self.pak_header['mat_extra_offset']+pak.MatExtra[self.f].itemsize*i:i for i in range(self.pak_header['mat_extra_num'])
+        }
+        self.shape_info_map = {
+            self.pak_header['shape_info_offset']+pak.ShapeInfo[self.f].itemsize*i:i for i in range(self.pak_header['shape_info_num'])
+        }
+        self.hk_constraint_data_map = {
+            self.pak_header['hk_constraint_data_offset']+pak.HkConstraintData[self.f].itemsize*i:i for i in range(self.pak_header['hk_constraint_data_num'])
+        }
+        self.hk_constraint_info_map = {
+            self.pak_header['hk_constraint_info_offset']+pak.HkConstraintInfo[self.f].itemsize*i:i for i in range(self.pak_header['hk_constraint_info_num'])
+        }
+        self.hk_shape_info_map = {
+            self.pak_header['hk_shape_info_offset']+pak.HkShapeInfo[self.f].itemsize*i:i for i in range(self.pak_header['hk_shape_info_num'])
+        }
         self.buffer_info_map = {
             self.pak_header['buffer_info_offset']+pak.BufferInfo[self.f].itemsize*i:i for i in range(self.pak_header['buffer_info_num'])
         }
@@ -104,7 +133,7 @@ class LevelData:
             self.pak_header['vbuff_info_offset']+pak.VBuffInfo[self.f].itemsize*i:i for i in range(self.pak_header['vbuff_info_num'])
         }
         self.asset_handle_lookup = {
-            (i['key'], i['type']):i for i in self.asset_handles
+            (i['key'], i['type']):j for j,i in enumerate(self.asset_handles)
         }
         self.valid_offsets = set(i for i in self.block2_offsets['val'])
 
@@ -122,6 +151,7 @@ class LevelData:
                 self.processed_buffers.add((info['asset_key'], info['asset_type']))
 
         self.pak_blockA = unpack_list_from(pak.BlockAVal[self.f], self.pak_data, self.pak_header['blockA_offset'], self.pak_header['blockA_num'])
+        self.remaps = []
 
     def dump(self, f="<", compress=True):
         if f == ">" and self.f == "<":
@@ -129,11 +159,11 @@ class LevelData:
 
         dump_bin_header = self.bin_header.copy()
 
-        self.dump_asset_data = {}
+        self.dump_asset_data = OrderedDict()
         for mesh, info, vbuffs, ibuffs in zip(self.meshes, self.mesh_infos, self.vbuffs, self.ibuffs):
             key = (info['asset_key'], info['asset_type'])
             if (info['vbuff_num'] == 0 and info['ibuff_num'] == 0): continue # or key in self.textures: continue
-            buffer = bytearray(self.asset_handle_lookup[key]['size'])
+            buffer = bytearray(self.asset_handles[self.asset_handle_lookup[key]]['size'])
             for vbuff, info in zip(vbuffs, mesh.vbuffs['val']):
                 vbuff.pack_into(buffer, self.vbuff_infos[self.vbuff_info_map[info]], f)
             for ibuff, info in zip(ibuffs, mesh.ibuffs['val']):
@@ -141,7 +171,9 @@ class LevelData:
             self.dump_asset_data[key] = bytes(buffer)
             
         for key, texture in self.textures.items():
-            self.dump_asset_data[(key, texture.type)], self.dump_asset_data[(hash_string('*', key), texture.type)] = texture.dump(f)
+            data0, data1 = texture.dump(f)
+            self.dump_asset_data[(key, texture.type)] = data0
+            self.dump_asset_data[(hash_string('*', key), texture.type)] = data1
         
         for key, radiosity in self.radiosity.items():
             self.dump_asset_data[key] = radiosity.dump(f)
@@ -149,21 +181,26 @@ class LevelData:
         bin_offset = dump_bin_header.nbytes
         bin_dump = bytearray()
         dump_asset_handles = self.asset_handles.copy()
-        for info in dump_asset_handles:
-            off =  (bin_offset + 2047) & 0xfffff800
-            bin_dump += bytes(off - bin_offset)
-            bin_offset = off
-            if (data := self.dump_asset_data.get((info['key'], info['type']), None)) is not None:
-                data = CompressedBlock(data)
-                data_comp = data.pack(compress)
-                info['offset'] = bin_offset
-                info['size'] = data.size
-                info['size_comp'] = data.size_comp
-                bin_offset += len(data_comp)
-                bin_dump += data_comp
-            else:
-                warnings.warn(f"\n\tUnhandled Bin Asset {(info['key'], info['type'])}")
+        dump_asset_handles['size'] = 0
+        dump_asset_handles['size_comp'] = 0
+        dump_asset_handles['offset'] = 0
+        off =  (bin_offset + 2047) & 0xfffff800
+        bin_dump += bytes(off - bin_offset)
+        bin_offset = off
 
+        for key, data in self.dump_asset_data.items():
+            i = self.asset_handle_lookup[key]
+            data = CompressedBlock(data)
+            data_comp = data.pack(compress)
+            dump_asset_handles[i]['offset'] = bin_offset
+            dump_asset_handles[i]['size'] = data.size
+            dump_asset_handles[i]  ['size_comp'] = data.size_comp
+            bin_dump += data_comp
+            if len(data_comp) != 0:
+                bin_offset += len(data_comp)
+                off =  (bin_offset + 2047) & 0xfffff800
+                bin_dump += bytes(off - bin_offset)
+                bin_offset = off
         off =  (bin_offset + 2047) & 0xfffff800
         bin_dump += bytes(off - bin_offset)
         bin_offset = off
@@ -179,6 +216,11 @@ class LevelData:
         dump_bin_header['strings_num'] = len(self.bin_strings)
         dump_bin_header['strings_size'] = len(data)
         bin_dump += data
+        bin_offset += len(data)
+
+        off =  (bin_offset + 2047) & 0xfffff800
+        bin_dump += bytes(off - bin_offset)
+        bin_offset = off
 
         bin_dump = pack(dump_bin_header, f) + bytes(bin_dump)
         dump_pak_header = self.pak_header.copy()
@@ -207,11 +249,13 @@ class LevelData:
 
         for obj14, info in zip(self.obj14s, self.obj14_infos):
             obj14.pack_into(dump_block1, info, f)
-        for obj13, info in zip(self.obj13s, self.obj13_infos):
-            obj13.pack_into(dump_block1, info['offset'], f)
+        for gfx_block, info in zip(self.gfx_blocks, self.gfx_block_infos):
+            gfx_block.pack_into(dump_block1, info['offset'], f)
 
         for mesh, info in zip(self.meshes, self.mesh_infos):
             mesh.pack_into(dump_block1, info, f)
+        for shape, info in zip(self.shapes, self.shape_infos):
+            shape.pack_into(dump_block1, info, f)
         for hk_shape, info in zip(self.hk_shapes, self.hk_shape_infos):
             hk_shape.pack_into(dump_block1, info, f)
         for hk_constraint, info in zip(self.hk_constraints, self.hk_constraint_infos):
@@ -227,8 +271,8 @@ class LevelData:
         pack_into(self.mat2s, dump_block1, dump_pak_header['mat2_offset'], f)
         pack_into(self.mat3s, dump_block1, dump_pak_header['mat3_offset'], f)
         pack_into(self.mat4s, dump_block1, dump_pak_header['mat4_offset'], f)
-        pack_into(self.objbs, dump_block1, dump_pak_header['objb_offset'], f)
-        pack_into(self.objcs, dump_block1, dump_pak_header['objc_offset'], f)
+        pack_into(self.mat_extras, dump_block1, dump_pak_header['mat_extra_offset'], f)
+        pack_into(self.shape_infos, dump_block1, dump_pak_header['shape_info_offset'], f)
         pack_into(self.hk_shape_infos, dump_block1, dump_pak_header['hk_shape_info_offset'], f)
         pack_into(self.hk_constraint_datas, dump_block1, dump_pak_header['hk_constraint_data_offset'], f)
         pack_into(self.vbuff_infos, dump_block1, dump_pak_header['vbuff_info_offset'], f)
@@ -239,22 +283,59 @@ class LevelData:
         pack_into(self.game_objs_block_infos, dump_block1, dump_pak_header['game_objs_block_info_offset'], f)
         pack_into(self.obj11s, dump_block1, dump_pak_header['obj11_offset'], f)
         pack_into(self.pfield_infos, dump_block1, dump_pak_header['pfield_info_offset'], f)
-        pack_into(self.obj13_infos, dump_block1, dump_pak_header['obj13_info_offset'], f)
+        pack_into(self.gfx_block_infos, dump_block1, dump_pak_header['gfx_block_info_offset'], f)
         pack_into(self.obj14_infos, dump_block1, dump_pak_header['obj14_info_offset'], f)
         pack_into(self.dump_animation_block_infos, dump_block1, dump_pak_header['animation_block_info_offset'], f)
 
         obj_map = {
-            dump_pak_header['ibuff_info_offset']+pak.IBuffInfo[self.f].itemsize*i:dump_pak_header['ibuff_info_offset']+pak.IBuffInfo[f].itemsize*i 
-            for i in range(dump_pak_header['ibuff_info_num'])
+            i:dump_pak_header['mat1_offset']+pak.Mat1[f].itemsize*j for i,j in self.mat1_map.items()
         }
         obj_map.update({
-            dump_pak_header['vbuff_info_offset']+pak.VBuffInfo[self.f].itemsize*i:dump_pak_header['vbuff_info_offset']+pak.VBuffInfo[f].itemsize*i 
-            for i in range(dump_pak_header['vbuff_info_num'])
+            i:dump_pak_header['mat2_offset']+pak.Mat2[f].itemsize*j for i,j in self.mat2_map.items()
+        })
+        obj_map.update({
+            i:dump_pak_header['mat3_offset']+pak.Mat3[f].itemsize*j for i,j in self.mat3_map.items()
+        })
+        obj_map.update({
+            i:dump_pak_header['mat4_offset']+pak.Mat4[f].itemsize*j for i,j in self.mat4_map.items()
+        })
+        obj_map.update({
+            i:dump_pak_header['mat_extra_offset']+pak.MatExtra[f].itemsize*j for i,j in self.mat_extra_map.items()
+        })
+        obj_map.update({
+            i:dump_pak_header['shape_info_offset']+pak.ShapeInfo[f].itemsize*j for i,j in self.shape_info_map.items()
+        })
+        obj_map.update({
+            i:dump_pak_header['hk_constraint_data_offset']+pak.HkConstraintData[f].itemsize*j for i,j in self.hk_constraint_data_map.items()
+        })
+        obj_map.update({
+            i:dump_pak_header['hk_constraint_info_offset']+pak.HkConstraintInfo[f].itemsize*j for i,j in self.hk_constraint_info_map.items()
+        })
+        obj_map.update({
+            i:dump_pak_header['hk_shape_info_offset']+pak.HkShapeInfo[f].itemsize*j for i,j in self.hk_shape_info_map.items()
+        })
+        obj_map.update({
+            i:dump_pak_header['buffer_info_offset']+pak.BufferInfo[f].itemsize*j for i,j in self.buffer_info_map.items()
+        })
+        obj_map.update({
+            i:dump_pak_header['ibuff_info_offset']+pak.IBuffInfo[f].itemsize*j for i,j in self.ibuff_info_map.items()
+        })
+        obj_map.update({
+            i:dump_pak_header['vbuff_info_offset']+pak.VBuffInfo[f].itemsize*j for i,j in self.vbuff_info_map.items()
         })
 
-        for offset in self.block2_offsets['val']:
-            if (new_val := obj_map.get(unpack_from(Uint[f], dump_block1, offset)['val'], None)) is not None:
-                pack_into(new(Uint[f], new_val), dump_block1, offset, f)
+        for offset in self.block2_offsets:
+            if (new_val := obj_map.get(offset['val'], None)) is not None:
+                offset['val'] = new_val
+            for (off, start, end) in self.remaps:
+                if start <= offset['val'] and end > offset['val']:
+                    offset['val'] = offset['val'] + off - start
+            offset_ = unpack_from(Uint[f], dump_block1, offset['val'])['val']
+            if (new_val := obj_map.get(offset_, None)) is not None:
+                pack_into(new(Uint[f], new_val), dump_block1, offset['val'], f)
+            for (off, start, end) in self.remaps:
+                if start <= offset_ and end > offset_:
+                    pack_into(new(Uint[f], offset_ + off - start), dump_block1, offset['val'], f)
 
         dump_block1 = dump_block1
         block1_offset = len(dump_block1)
@@ -263,7 +344,7 @@ class LevelData:
         block1_offset = off
         dump_pak_header['sub_blocks1_offset'] = block1_offset
         # data = self.sub_blocks1.pack(f)
-        data = self.sub_blocks1.pack(f) + bytes(2000)
+        data = self.sub_blocks1.pack(f)
         block1_offset += len(data)
         dump_block1 += data
         off = (block1_offset + 31) & 0xffffffe0
@@ -271,7 +352,6 @@ class LevelData:
         block1_offset = off
         dump_pak_header['string_keys_offset'] = block1_offset
         self.dump_block1 = bytes(dump_block1 + self.string_keys.pack(f))
-        # self.dump_block1 = dump_block1 + self.string_keys.pack(f) + bytes(2000)
 
         off =  (pak_offset + 4095) & 0xfffff000
         pak_dump += bytes(off - pak_offset)

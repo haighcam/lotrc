@@ -115,6 +115,8 @@ format
     0x28 -> 0x4c4c554e or 0x15, Null or A8R8G8B8
     13 -> bc4 alpha texture (xbox only, converts to A8 texture on PC)
 """
+def bin_mip(arr, w, h):
+    return np.frombuffer(arr, np.ubyte).reshape(h//2, 2, w//2, 2)[:,0,:,0].tobytes()
 
 class Texture:
     def __init__(self, data0, data1, info, f='<'):
@@ -125,66 +127,82 @@ class Texture:
         self.sizes = np.ceil([(info['width'], info['height'])]/(2 ** np.arange(info['levels'])[:, None])).astype(int)
         self.format = info['format']
         self.type = info['asset_type']
-        if self.format in [10, 0xb, 0xc, 0x11]:
-            s = 4
-            d = 16
-        elif self.format in [7,8]:
-            s = 4
-            d = 8
-        elif self.format == 3:
-            if info['levels'] > 1:
-                raise ValueError("Not Supported")
-            s = 1
-            d = 4
-        else:
-            warnings.warn(f"Unknown Texture Format {self.format}, treating as raw data. See this file for the actual format if you want to parse it")
-            return
-        block_sizes = np.maximum(self.sizes//s, 1)
-
-        if f == '<':
-            data_sizes = block_sizes[:, 0] * block_sizes[:, 1] * d
-            offsets = [0] + np.cumsum(data_sizes[:-1]).tolist()
-            self.levels = [data[offset:offset+size] for offset, size in zip(offsets, data_sizes)]
-        elif f == '>':
-            if info['levels'] == 1:
-                self.levels = [conv_img(data, self.sizes[0][1], self.sizes[0][0], self.format)]
+        try:
+            if self.format in [10, 0xb, 0xc, 0x11]:
+                s = 4
+                d = 16
+            elif self.format in [7,8,13]:
+                s = 4
+                d = 8
+            elif self.format == 3:
+                if info['levels'] > 1:
+                    raise ValueError("Not Supported")
+                s = 1
+                d = 4
+            elif self.format == 6:
+                s = 1
+                d = 1
             else:
-                data_sizes = np.maximum(block_sizes[:, 0], 32) * np.maximum(block_sizes[:, 1], 32) * d
-                wide_img = info['width'] > info['height']
-                self.levels = []
-                offset = 0
-                # packed_inds = []
-                for i in range(info['levels']):
-                    m,M = self.sizes[i].min(), self.sizes[i].max()
-                    if m > 16:
-                        self.levels.append(conv_img(data[offset:offset+data_sizes[i]], self.sizes[i][1], self.sizes[i][0], self.format))
-                        offset += data_sizes[i]
-                    elif m >= 4:
-                        if m == 16:
-                            if wide_img:
-                                packed_data = conv_img(data[offset:], self.sizes[i][1]*2, self.sizes[i][0], self.format, False)
-                            else:
-                                packed_data = conv_img(data[offset:], self.sizes[i][1], self.sizes[i][0]*2, self.format, False)
-                                
-                        off = m >> 2
-                        if wide_img:
-                            self.levels.append(packed_data[off:off+block_sizes[i][1], :block_sizes[i][0]].tobytes())
-                        else:
-                            self.levels.append(packed_data[:block_sizes[i][1], off:off+block_sizes[i][0]].tobytes())
-                    else:
-                        off = M
-                        if wide_img:
-                            self.levels.append(packed_data[:block_sizes[i][1], off:off+block_sizes[i][0]].tobytes())
-                        else:
-                            self.levels.append(packed_data[off:off+block_sizes[i][1], :block_sizes[i][0]].tobytes())
-                self.packed_size = packed_data.shape
-                self.packed_data = packed_data.tobytes()
-                                
+                warnings.warn(f"Unknown Texture Format {self.format}, treating as raw data. See this file for the actual format if you want to parse it")
+                return
+            block_sizes = np.maximum(self.sizes//s, 1)
 
-        self.sizes = np.maximum(self.sizes, s)
+            if f == '<':
+                data_sizes = block_sizes[:, 0] * block_sizes[:, 1] * d
+                offsets = [0] + np.cumsum(data_sizes[:-1]).tolist()
+                self.levels = [data[offset:offset+size] for offset, size in zip(offsets, data_sizes)]
+            elif f == '>':
+                if info['levels'] == 1:
+                    self.levels = [conv_img(data, self.sizes[0][1], self.sizes[0][0], self.format)]
+                    if self.format == 13:
+                        self.levels[-1] = decomp_bc4(self.levels[-1], self.sizes[0][1], self.sizes[0][0])
+                else:
+                    data_sizes = np.maximum(block_sizes[:, 0], 32) * np.maximum(block_sizes[:, 1], 32) * d
+                    wide_img = info['width'] > info['height']
+                    self.levels = []
+                    offset = 0
+                    # packed_inds = []
+                    for i in range(info['levels']):
+                        m,M = self.sizes[i].min(), self.sizes[i].max()
+                        if m > 16:
+                            self.levels.append(conv_img(data[offset:offset+data_sizes[i]], self.sizes[i][1], self.sizes[i][0], self.format))
+                            offset += data_sizes[i]
+                        elif m >= 4:
+                            if m == 16:
+                                if wide_img:
+                                    packed_data = conv_img(data[offset:], self.sizes[i][1]*2, self.sizes[i][0], self.format, False)
+                                else:
+                                    packed_data = conv_img(data[offset:], self.sizes[i][1], self.sizes[i][0]*2, self.format, False)
+                                    
+                            off = m >> 2
+                            if wide_img:
+                                self.levels.append(packed_data[off:off+block_sizes[i][1], :block_sizes[i][0]].tobytes())
+                            else:
+                                self.levels.append(packed_data[:block_sizes[i][1], off:off+block_sizes[i][0]].tobytes())
+                        
+                        else:
+                            off = M
+                            if wide_img:
+                                self.levels.append(packed_data[:block_sizes[i][1], off:off+block_sizes[i][0]].tobytes())
+                            else:
+                                self.levels.append(packed_data[off:off+block_sizes[i][1], :block_sizes[i][0]].tobytes())
+                    self.packed_size = packed_data.shape
+                    self.packed_data = packed_data.tobytes()
+                if self.format == 13:
+                    info['format'] = 6
+                    self.format = 6 
+                    for i in range(info['levels']):
+                        self.levels[i] = (decomp_bc4(self.levels[i], max(self.sizes[i][1], 4), max(self.sizes[i][0], 4)) * 255).astype(np.ubyte).tobytes()
+                    self.levels[-2] = bin_mip(self.levels[-3], self.sizes[-3][0], self.sizes[-3][1])
+                    self.levels[-1] = bin_mip(self.levels[-2], self.sizes[-2][0], self.sizes[-2][1])
+                    s = 1
+            self.sizes = np.maximum(self.sizes, s)
+        except Exception as e:
+            warnings.warn(f"Could not parse texture {info['key']}")
+            print(e)
 
     def dump(self, f='<'):
-        if self.format not in [3, 7, 8, 10, 0xb, 0xc, 0x11]:
+        if self.format not in [3, 7, 8, 10, 0xb, 0xc, 0x11, 6]:
             return self.data0, self.data1
         if f == '<':
             if len(self.levels) > 1:
@@ -203,6 +221,8 @@ class Texture:
             return decomp_dxt1(self.levels[level], self.sizes[level][1], self.sizes[level][0])
         elif self.format == 3:
             return np.frombuffer(self.levels[level], 'B').reshape(self.sizes[level][1], self.sizes[level][0], 4)
+        elif self.format == 6:
+            return np.frombuffer(self.levels[level], 'B').reshape(self.sizes[level][1], self.sizes[level][0])
 
 class CubeTexture:
     # only 1 level, to the * handle

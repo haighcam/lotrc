@@ -49,23 +49,22 @@ class LevelInfo:
         self.string_keys = StringKeys.unpack_from(self.data, self.header['string_keys_offset'], self.f)
         # assert self.string_keys.string_keys[-1]['offset']+4 == self.header['string_keys_size'], "I think this is true"
 
-        self.local_strings = SubBlocks.unpack_from(self.data, self.header['local_strings_offset'], self.keys, self.f)
+        self.local_strings = SubBlocks.unpack_from(self.data, self.header['local_strings_offset'], self.keys, None, self.f)
                         
         self.gamemodes = unpack_list_from(self.GamemodeVal[self.f], self.data, self.header['gamemodes_offset'], self.header['gamemodes_num'])
         self.levels = unpack_list_from(self.LevelVal[self.f], self.data, self.header['levels_offset'], self.header['levels_num'])
 
         self.key = self.data[0x38:0x13c]
 
-    def dump(self, f):            
-        # file = bytearray(self.header.['strings_offset'] + self.header.strings_size)
+    def dump(self, f):
         file = bytearray(len(self.data))
         pack_into(self.header, file, 0, f)
 
-        write_strings(file, self.header.strings_offset, self.strings, f)
+        write_strings(file, self.header['strings_offset'], self.strings, f)
 
-        self.string_keys.pack_into(file, self.header.string_keys_offset, f)
+        self.string_keys.pack_into(file, self.header['string_keys_offset'], f)
 
-        self.local_strings.pack_into(file, self.header.local_strings_offset, f)
+        self.local_strings.pack_into(file, self.header['local_strings_offset'], f)
 
         pack_into(self.gamemodes, file, self.header['gamemodes_offset'], f)
         pack_into(self.levels, file, self.header['levels_offset'], f)

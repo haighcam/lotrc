@@ -3,6 +3,8 @@ import warnings
 
 from lotrc.utils import *
 DECOMP_LUA = True
+MIN_OFFSET = np.inf
+MAX_OFFSET = 0
 
 class CompressedBlock:
     def __init__(self, data, data_comp=None):
@@ -21,7 +23,10 @@ class CompressedBlock:
         return Self(data, data_comp)
     
     def pack_into(self, buffer, offset, compress=True):
-        if compress:
+        if self.size == 0:
+            self.size_comp = 0
+            return self.size
+        elif compress:
             data = comp_zlib(self.data)
             self.comp_size = len(data)
             buffer[offset:offset+self.comp_size] = data
@@ -32,7 +37,10 @@ class CompressedBlock:
             return self.size
 
     def pack(self, compress=True):
-        if compress:
+        if self.size == 0:
+            self.size_comp = 0
+            return b''
+        elif compress:
             data = comp_zlib(self.data)
             self.size_comp = len(data)
             return data
@@ -66,9 +74,15 @@ def conv(data):
             return d
 
 def unpack_from(T, buffer, offset):
+    global MIN_OFFSET, MAX_OFFSET
+    MIN_OFFSET = min(MIN_OFFSET, offset)
+    MAX_OFFSET = max(MAX_OFFSET, offset + T.itemsize)
     return np.frombuffer(buffer, T, 1, offset)[0].copy()
 
 def unpack_list_from(T, buffer, offset, num):
+    global MIN_OFFSET, MAX_OFFSET
+    MIN_OFFSET = min(MIN_OFFSET, offset)
+    MAX_OFFSET = max(MAX_OFFSET, offset + T.itemsize * num)
     return np.frombuffer(buffer, T, num, offset).copy()
 
 def new(T, val):
@@ -130,7 +144,7 @@ Vector4 = structtuple("Vector4", "x", "f", "y", "f", "z", "f", "w", "f")
 Matrix4x4 = structtuple("Matrix4x4", "xx", "f", "xy", "f", "xz", "f", "xw", "f", "yx", "f", "yy", "f", "yz", "f", "yw", "f", "zx", "f", "zy", "f", "zz", "f", "zw", "f", "wx", "f", "wy", "f", "wz", "f", "ww", "f",)
 Bool = structtuple("Bool", "val", "B", "p0", "B", "p1", "B", "p2", "B")
 Node = structtuple("Node", "a", "I", "b", "I", "c", "I", "d", "I")
-Weight = structtuple("Weight", "a", "I", "b", "I")
+Weight = structtuple("Weight", "a", "I", "b", "B", "c", "B", "d", "B", "e", "B")
 StringElem = structtuple("StringElem", "val", "S1")
 
 String = structtuple("String", "num", "H", "offset", "H")
@@ -318,7 +332,7 @@ class SubBlocks:
                 self.blocks.append(AtlasUV.unpack_from(buffer, offset+header['offset'], header['size'], f))
             elif (t := name.split(b'.')[-1]) == b'lua':
                 self.blocks.append(Lua.unpack_from(buffer, offset+header['offset'], header['size'], name, f))
-            elif t in [b'csv', b'txt', b'dat']:
+            elif t in [b'csv', b'txt', b'dat', b'ssa']:
                 self.blocks.append(Data.unpack_from(buffer, offset+header['offset'], header['size'], f))
             else:
                 warnings.warn(f"Unhandled block type: {name}, treating as raw bytes")

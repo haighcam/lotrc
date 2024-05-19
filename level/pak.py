@@ -1,5 +1,6 @@
 import warnings
 
+import lotrc.types
 from lotrc.utils import *
 from lotrc.types import *
 
@@ -54,9 +55,9 @@ Header = structtuple("LevelPAK_Header",
     'mat2_num', 'I',
     'mat3_num', 'I',
     'mat4_num', 'I',
-    'objb_num', 'I',
+    'mat_extra_num', 'I',
     'unk_51', 'I',
-    'objc_num', 'I',
+    'shape_info_num', 'I',
     'hk_shape_info_num', 'I', # d
     'hk_constraint_data_num', 'I', # e
     'vbuff_info_num', 'I', # f
@@ -66,32 +67,32 @@ Header = structtuple("LevelPAK_Header",
     'hk_constraint_info_num', 'I', # 9
     'game_objs_block_info_num', 'I', # 10
     'pfield_info_num', 'I', # 12
-    'obj13_info_num', 'I',
+    'gfx_block_info_num', 'I',
     'animation_block_info_num', 'I',
     'obj11_num', 'I',
     'obj14_info_num', 'I',
     'unk_66', 'I',
     'obja_offset', 'I', # 24 bytes
     'obj0_offset', 'I',
-    'mesh_info_offset', 'I', #256 bytes, max loaded is 0x400
+    'mesh_info_offset', 'I', # 256 bytes, max loaded is 0x400
     'buffer_info_offset', 'I',
     'mat1_offset', 'I',
     'mat2_offset', 'I',
     'mat3_offset', 'I',
     'mat4_offset', 'I',
-    'objb_offset', 'I',
+    'mat_extra_offset', 'I',
     'unk_76', 'I',
-    'objc_offset', 'I',
+    'shape_info_offset', 'I',
     'hk_shape_info_offset', 'I',
     'hk_constraint_data_offset', 'I',
     'vbuff_info_offset', 'I',
     'ibuff_info_offset', 'I',
-    'texture_info_offset', 'I', #0x12 bytes, max loaded is 0x800, related to MgSurfaceWin32
+    'texture_info_offset', 'I', # 0x12 bytes, max loaded is 0x800, related to MgSurfaceWin32
     'animation_info_offset', 'I',
     'hk_constraint_info_offset', 'I',
     'game_objs_block_info_offset', 'I',
     'pfield_info_offset', 'I',
-    'obj13_info_offset', 'I', # 0xc bytes, max loaded is 0x40
+    'gfx_block_info_offset', 'I', # 0xc bytes, max loaded is 0x40
     'animation_block_info_offset', 'I', # 36 bytes
     'obj11_offset', 'I',
     'obj14_info_offset', 'I',
@@ -127,10 +128,10 @@ Header = structtuple("LevelPAK_Header",
 ObjA = structtuple("LevelPAK_ObjA", 
     'key', '<I',
     'unk_1', '<I',
-    'unk_2', '<I',
-    'unk_3', '<I',
+    'size', '<I',
+    'size_comp', '<I',
     'unk_4', '<I',
-    'unk_5', '<I',
+    'type', '<I',
 )
 
 Obj0 = structtuple("LevelPAK_Obj0",
@@ -140,7 +141,7 @@ Obj0 = structtuple("LevelPAK_Obj0",
 
 MeshInfo = structtuple("MeshInfo",
     'key', 'I',
-    'unk_1', 'I',
+    'block_flag', 'I',
     'mat_offset', 'I',
     'buffer_info_offset', 'I', # pointer to buffer_info, uses mat_num of sequential objects
     'unk_4', 'I',
@@ -195,7 +196,7 @@ MeshInfo = structtuple("MeshInfo",
     'asset_type', 'I',
     'unk_54', 'I',
     'unk_55', 'I',
-    'objc_offset', 'I', # optional pointer to objc
+    'shape_info_offset', 'I', # optional pointer to shape_info
     'unk_57', 'I',
     'hkConstraintData_offset', 'I', # optional pointer to hkConstraintData
     'unk_59', 'I',
@@ -294,7 +295,7 @@ BufferInfo = structtuple("BufferInfo",
     'unk_85', 'I',
     'unk_86', 'I',
     'unk_87', 'I',
-    'unk_88', 'I',
+    'unk_88', '4S',
 )
 
 MatBase = [ # normal material
@@ -384,7 +385,7 @@ MatBase = [ # normal material
     'unk_83', 'I',
     'unk_84', 'I',
     'unk_85', 'I',
-    'unk_86', 'I',
+    'mat_extra_offset', 'I', # optional offset to mat_extra
     'key', 'I',
     'unk_88', 'I',
     'z_89', 'I',
@@ -457,8 +458,7 @@ Mat3 = structtuple("Mat3", # something to do with MgMaterial
     'unk_111', 'I',
     'unk_112', 'I',
     'unk_113', 'I',
-    'unk_114', 'H',
-    'unk_114_', 'H',
+    'unk_114', '4S',
     'unk_115', 'I',
 )
 
@@ -522,7 +522,7 @@ Mat4 = structtuple("Mat4", # something to do with MgMaterial
     'unk_145', 'I',
 )    
 
-ObjB = structtuple("ObjB",
+MatExtra = structtuple("MatExtra",
     'unk_0', 'I',
     'unk_1', 'I',
     'unk_2', 'I',
@@ -575,8 +575,8 @@ ObjB = structtuple("ObjB",
     'unk_49', 'I',
 )
 
-ObjC = structtuple("ObjC",
-    'size', 'I', # sometimes a pointer to something, otherwise the number of strings from the obj1 pointing to this
+ShapeInfo = structtuple("ShapeInfo",
+    'offset', 'I', # sometimes a pointer to something, otherwise the number of strings from the mesh_info pointing to this
     'type', 'I', # 0, 1, 2, 3, 4, 5
     'unk_2', 'I',
     'unk_3', 'I',
@@ -604,8 +604,8 @@ ObjC = structtuple("ObjC",
     'unk_25', 'I',
     'unk_26', 'I',
     'hkshape_num', 'I',
-    'hkshape_offset', 'I', # pointer to hkshape
-    'unk_29', 'I',
+    'hkshape_offset', 'I', # pointer to hk_shape_info
+    'unk_29', '4S',
     'unk_30', 'I',
 )
 
@@ -658,7 +658,7 @@ HkConstraintData = structtuple("HkConstraintData", # HkConstraintData
     'unk_28', 'I',
 )
 
-VBuffInfo = structtuple("VBuffInfo", # something to do with vertex buffers
+VBuffInfo = structtuple("VBuffInfo",
     'unk_0', 'I',
     'size', 'I',
     'unk_3', 'I',
@@ -685,7 +685,7 @@ VBuffInfo = structtuple("VBuffInfo", # something to do with vertex buffers
     ]
 )
 
-IBuffInfo = structtuple("IBuffInfo", # something to do with index buffers
+IBuffInfo = structtuple("IBuffInfo",
     'unk_0', 'I',
     'size', 'I',
     'format', 'I',
@@ -709,9 +709,9 @@ IBuffInfo = structtuple("IBuffInfo", # something to do with index buffers
     ]
 )
 
-TextureInfo = structtuple("TextureInfo", # something to do with MgSurface
+TextureInfo = structtuple("TextureInfo",
     'key', 'I',
-    'unk_1', 'I',
+    'block_flag', 'I',
     'asset_key', 'I',
     'asset_type', 'I',
     'type', 'I',
@@ -762,10 +762,10 @@ AnimationInfo = structtuple("AnimationInfo",
     'unk_29', 'I',
     'obj1_num', 'I',
     'keys_offset', 'I',
-    'unk_32', 'I',
+    'unk_32', 'I', # diff between versions
     'obj1_offset', 'I',
-    'buffer_info_offset', 'I',
-    'buffer_info_num', 'I',
+    'obj2_offset', 'I',
+    'obj2_num', 'I',
     'obj5_offset', 'I', # to some object that contains offsets in pos 1 and 2 and a value in pos 0
 )
 
@@ -784,21 +784,21 @@ HkConstraintInfo = structtuple("HkConstraintInfo",
     'keys_num', 'H',
     'keys2_num', 'H',
     'keys2_offset', 'I',
-    'unk_13', 'I',
+    'unk_13', 'I', # diff between versions
     'unk_14', 'f',
     'unk_15', 'I',
     'unk_16', 'I',
     'unk_17', 'I',
 )
 
-GameObjBlockInfo = structtuple("GameObjBlockInfo", # points to GAM objects in block1
+GameObjBlockInfo = structtuple("GameObjBlockInfo",
     'key', 'I',
     'unk_1', 'I',
     'offset', 'I',
     'size', 'I',
 )
 
-PFieldInfo = structtuple("PFieldInfo", # pointers to PFields
+PFieldInfo = structtuple("PFieldInfo",
     "key1", "I",
     "key2", "I",
     "width", "I",
@@ -806,7 +806,7 @@ PFieldInfo = structtuple("PFieldInfo", # pointers to PFields
     "offset", "I",
 )
 
-Obj13Info = structtuple("Obj13", # GFX blocks?, unchanged by encoding, model as data
+GFXBlockInfo = structtuple("GFXBlockInfo", # GFX blocks?, unchanged by encoding, model as data
     'key', 'I',
     'offset', 'I', # offset pointing to something in block1
     'size', 'I',
@@ -824,18 +824,18 @@ AnimationBlockInfo = structtuple("AnimationBlockInfo",
     'unk_8', 'I',
 )
 
-Obj11 = structtuple("Obj11", # something ???
-    "unk_0", "I",
+Obj11 = structtuple("Obj11", # something to do with textures
+    "key", "I",
     "unk_1", "I",
     "unk_2", "I",
     "unk_3", "I",
     "unk_4", "I",
     "unk_5", "I",
     "unk_6", "I",
-    "unk_7", "I",
-    "unk_8", "I",
-    "unk_9", "I",
-    "unk_10", "I",
+    "offset", "I",
+    "key1", "I",
+    "key2", "I",
+    "key3", "I",
     "unk_11", "I",
     "unk_12", "I",
     "unk_13", "I",
@@ -848,24 +848,50 @@ Obj11 = structtuple("Obj11", # something ???
 )
 
 Obj14Info = structtuple("Obj14", # points to list of ints in block1
-    'unk_0', 'I',
+    'guid', 'I',
     'num', 'I',
     'offset', 'I',
 )
 
 BlockAVal = structtuple("BlockAVal",
-    'unk_0', 'I',
-    'unk_1', 'I',
-    'unk_2', 'I',
-    'unk_3', 'I',
-    'unk_4', 'I',
-    'unk_5', 'I',
-    'unk_6', 'I',
+    'unk_0', '<I',
+    'block_flags', '<I',
+    'key', '<I',
+    'unk_3', '<I',
+    'unk_4', '<I',
+    'unk_5', '<I',
+    'unk_6', '<I',
 )
 
 class Mesh:
+    BlockHeader = structtuple("BlockHeader",
+        "unk_0", "I",
+        "unk_1", "I",
+        "size", "I",
+        "unk_3", "I",
+        "a", "I",
+        "b", "I",
+        "unk_6", "I",
+        "unk_7", "I",
+        "unk_8", "I",
+        "unk_9", "I",
+        "unk_10", "I",
+        "unk_11", "I",
+        "unk_12", "I",
+    )
+    BlockVal = structtuple("BlockVal",
+        "unk_0", "H",
+        "unk_1", "H",
+        "unk_2", "I",
+        "unk_3", "I",
+        "unk_4", "I",
+        "unk_5", "I",
+    )
+
     @classmethod
     def unpack_from(Self, buffer, info, f="<"):
+        lotrc.types.MIN_OFFSET = np.inf
+        lotrc.types.MAX_OFFSET = 0
         self = Self()
         self.indices = unpack_list_from(Uint[f], buffer, info['indices_offset'], max(info['keys_num'], 4))
         assert self.indices[0]['val'] == 0xFFFFFFFF
@@ -878,8 +904,25 @@ class Mesh:
         self.vbuffs = unpack_list_from(Int[f], buffer, info['vbuff_offset'], info['vbuff_num'])
         self.ibuffs = unpack_list_from(Int[f], buffer, info['ibuff_offset'], info['ibuff_num'])
         self.valGs = unpack_list_from(Int[f], buffer, info['valGs_offset'], info['valGs_num'] * 16)
-        self.valJs = unpack_list_from(Int[f], buffer, info['valJs_offset'], info['valJs_num'])
-        self.valKs = unpack_list_from(Int[f], buffer, info['valKs_offset'], 36)
+        if info['valJs_num'] == 0 and info['valJs_offset'] != 0 and info['valJs_offset'] != info['valGs_offset']:
+            # valJs is sometimes a list of offsets of length keys_num, that point to offsets that point to 4 ints ???
+            self.valJs = unpack_list_from(Uint[f], buffer, info['valJs_offset'], info['keys_num'])
+            self.valJoffs = []
+            self.valJvals = []
+            for val in self.valJs['val']:
+                self.valJoffs.append(unpack_from(Uint[f], buffer, val))
+                off = self.valJoffs[-1]['val']
+                i = 0
+                while buffer[off + i] != 0:
+                    i += 1
+                self.valJvals.append(buffer[off:off+i])
+        else:
+            self.valJs = unpack_list_from(Int[f], buffer, info['valJs_offset'], info['valJs_num'])
+        if info['valKs_offset'] != 0:
+            self.valKs_header = unpack_list_from(Ushort[f], buffer, info['valKs_offset'], 2)
+            # if (self.valKs_header[0]['val'] != 3) or (self.valKs_header[1]['val'] != 6):
+            #     warnings.warn(f"ValsK error, mesh {info['key']}")
+            self.valKs = unpack_list_from(Float[f], buffer, info['valKs_offset'] + 4, 35)
         if info['valIs_offset'] != 0:
             self.valIs = unpack_list_from(Int[f], buffer, info['valIs_offset'], info['valGs_num'])
         if info['keys2_offset'] != 0:
@@ -891,12 +934,21 @@ class Mesh:
             self.keys2 = unpack_list_from(Uint[f], buffer, info['keys2_offset'], i * 2)
             self.keys2_order = unpack_list_from(Uint[f], buffer, info['keys2_order_offset'], self.keys2[-1]['val'])
         if info['block_offset'] != 0:
-            block_size = unpack_from(Int[f], buffer, info['block_offset'] + 8)['val']
-            assert block_size % 4 == 0
-            self.block = unpack_list_from(Int[f], buffer, info['block_offset'], block_size//4)
+            self.block_header = unpack_from(Self.BlockHeader[f], buffer, info['block_offset'])
+            size = self.block_header.nbytes
+            self.block_vals_a = unpack_list_from(Uint[f], buffer, info['block_offset'] + size, (self.block_header['a'] + self.block_header['b']) * 12)
+            size += self.block_vals_a.nbytes
+            self.block_vals_b = unpack_list_from(Self.BlockVal[f], buffer, info['block_offset'] + size, (self.block_header['size'] - size) // Self.BlockVal[f].itemsize)
+            size += self.block_vals_b.nbytes
+            self.block_extra = unpack_list_from(Byte[f], buffer, info['block_offset'] + size, self.block_header['size'] - size)
+            # block_size = unpack_from(Int[f], buffer, info['block_offset'] + 8)['val']
+            # assert block_size % 4 == 0
+            # self.block = unpack_list_from(Int[f], buffer, info['block_offset'], block_size//4)
         # not sure why this pops up once, maybe it is padding between items?
         if info['valCs_offset'] == info['vbuff_offset'] and info['valCs_offset'] == info['ibuff_offset'] and info['valCs_offset'] == info['valDs_offset']:
             self.val = unpack_list_from(Int[f], buffer, info['valCs_offset'], 4)
+        self.max_offset = lotrc.types.MAX_OFFSET
+        self.min_offset = lotrc.types.MIN_OFFSET
         return self
 
     def pack_into(self, buffer, info, f="<"):
@@ -910,24 +962,84 @@ class Mesh:
         pack_into(self.vbuffs, buffer, info['vbuff_offset'], f)
         pack_into(self.ibuffs, buffer, info['ibuff_offset'], f)
         pack_into(self.valGs, buffer, info['valGs_offset'], f)
-        pack_into(self.valJs, buffer, info['valJs_offset'], f)
-        pack_into(self.valKs, buffer, info['valKs_offset'], f)
+        if info['valJs_num'] == 0 and info['valJs_offset'] != 0 and info['valJs_offset'] != info['valGs_offset']:
+            # valJs is sometimes a list of offsets of length keys_num, that point to offsets that point to 4 ints ???
+            pack_into(self.valJs, buffer, info['valJs_offset'], f)
+            for val, valoff, valval in zip(self.valJs['val'], self.valJoffs, self.valJvals):
+                pack_into(valoff, buffer, val, f)
+                buffer[valoff['val']:valoff['val']+len(valval)] = valval
+        else:
+            pack_into(self.valJs, buffer, info['valJs_offset'], f)
+
+        if info['valKs_offset'] != 0:
+            pack_into(self.valKs_header, buffer, info['valKs_offset'], f)
+            pack_into(self.valKs, buffer, info['valKs_offset']+4, f)
         if info['valIs_offset'] != 0:
             pack_into(self.valIs, buffer, info['valIs_offset'], f)
         if info['keys2_offset'] != 0:
             pack_into(self.keys2, buffer, info['keys2_offset'], f)
             pack_into(self.keys2_order, buffer, info['keys2_order_offset'], f)
         if info['block_offset'] != 0:
-            pack_into(self.block, buffer, info['block_offset'], f)
+            pack_into(self.block_header, buffer, info['block_offset'], f)
+            size = self.block_header.nbytes
+            pack_into(self.block_vals_a, buffer, info['block_offset'] + size, f)
+            size += self.block_vals_a.nbytes
+            pack_into(self.block_vals_b, buffer, info['block_offset'] + size, f)
+            size += self.block_vals_b.nbytes
+            pack_into(self.block_extra, buffer, info['block_offset'] + size, f)
+            # pack_into(self.block, buffer, info['block_offset'], f)
         # not sure why this pops up once, maybe it is padding between items?
         if info['valCs_offset'] == info['vbuff_offset'] and info['valCs_offset'] == info['ibuff_offset'] and info['valCs_offset'] == info['valDs_offset']:
             pack_into(self.val, buffer, info['valCs_offset'], f)
 
-class HkShape:
-    def __init__(self):
-        pass
+class Shape:
+    Header = structtuple("Header",
+        "num", "I",
+        "unk_1", "I",
+        "unk_2", "I",
+        "unk_3", "I",
+    )
     @classmethod
     def unpack_from(Self, buffer, info, f="<"):
+        # the same object is pointed to by multiple infos, so doing it this way isn't the best
+        lotrc.types.MIN_OFFSET = np.inf
+        lotrc.types.MAX_OFFSET = 0
+
+        self = Self()
+        if info['type'] == 0:
+            offset = info['offset']
+            self.header = unpack_from(Self.Header[f], buffer, offset)
+            offset += self.header.nbytes
+            self.vals = unpack_list_from(Uint[f], buffer, info['offset'] + self.header.nbytes, self.header['num'])
+            offset += self.vals.nbytes
+            self.data = buffer[offset:offset+self.vals[-1]['val']+2] # 2 seems to be the correct amount, not sure what the data is so I don't know how much extra is needed
+        self.max_offset = lotrc.types.MAX_OFFSET
+        self.min_offset = lotrc.types.MIN_OFFSET
+        return self
+
+    def pack_into(self, buffer, info, f="<"):
+        if info['type'] == 0:
+            offset = info['offset']
+            pack_into(self.header, buffer, offset, f)
+            offset += self.header.nbytes
+            pack_into(self.vals, buffer, offset, f)
+            offset += self.vals.nbytes
+            buffer[offset:offset+self.vals[-1]['val']+2]  = self.data
+
+class HkShape:
+    """
+        types:
+            - 1: BoxShape, no extra data
+            - 2: SphereShape, no extra data
+            - 3: CapsuleShape, no extra data
+            - 4: CylinderShape, no extra data
+            - 5: ConvexVerticesShape, extra data
+            - 6: MoppBvTreeShape, extra data (containes extended mesh shape and other)
+    """
+    @classmethod
+    def unpack_from(Self, buffer, info, f="<"):
+        lotrc.types.MIN_OFFSET = np.inf
+        lotrc.types.MAX_OFFSET = 0
         self = Self()
         if info['type'] == 5:
             self.a = unpack_list_from(Uint[f], buffer, info['a_offset'], info['a_num'] * 4)
@@ -936,11 +1048,18 @@ class HkShape:
                 b_num += 1
             self.b = unpack_list_from(Uint[f], buffer, info['b_offset'], b_num * 3) # somethimes seems to be off by 1
         elif info['type'] == 6:
-            self.c = unpack_list_from(Uint[f], buffer, info['c_offset'], info['c_num'])
+            self.c = buffer[info['c_offset']:info['c_offset']+info['c_num']]
+            # self.c = unpack_list_from(Byte[f], buffer, info['c_offset'], info['c_num'] * 4)
             self.d = unpack_list_from(Uint[f], buffer, info['d_offset'], info['d_num'] * 3)
-            self.e = unpack_list_from(Uint[f], buffer, info['e_offset'], info['e_num'] * 3)
-        else:
+            self.e = unpack_list_from(Ushort[f], buffer, info['e_offset'], info['e_num'] * 3)
+
+            # self.c = unpack_list_from(Uint[f], buffer, info['c_offset'], info['c_num'])
+            # self.d = unpack_list_from(Uint[f], buffer, info['d_offset'], info['d_num'] * 3)
+            # self.e = unpack_list_from(Uint[f], buffer, info['e_offset'], info['e_num'] * 3)
+        elif info['type'] > 6:
             warnings.warn(f"Unknown HkShape type {info['type']}, this is probably fine for now")
+        self.max_offset = lotrc.types.MAX_OFFSET
+        self.min_offset = lotrc.types.MIN_OFFSET
         return self
             
     def pack_into(self, buffer, info, f="<"):
@@ -948,13 +1067,16 @@ class HkShape:
             pack_into(self.a, buffer, info['a_offset'], f)
             pack_into(self.b, buffer, info['b_offset'], f)
         elif info['type'] == 6:
-            pack_into(self.c, buffer, info['c_offset'], f)
+            buffer[info['c_offset']:info['c_offset']+len(self.c)] = self.c
+            # pack_into(self.c, buffer, info['c_offset'], f)
             pack_into(self.d, buffer, info['d_offset'], f)
             pack_into(self.e, buffer, info['e_offset'], f)
 
 class HkConstraint:
     @classmethod
     def unpack_from(Self, buffer, info, f="<"):
+        lotrc.types.MIN_OFFSET = np.inf
+        lotrc.types.MAX_OFFSET = 0
         self = Self()
         if info['type'] != 0:
             warnings.warn(f"Unknown HkConstraint type {info['type']}")
@@ -963,6 +1085,7 @@ class HkConstraint:
         assert self.shorts[0]['val'] == 0xFFFF
         
         self.strings = []
+        max_offset = 0
         self.string_offsets = unpack_list_from(Uint[f], buffer, info['strings_offset'], info['strings_num'])
         for offset_ in self.string_offsets['val']:
             (offset, val) = unpack_list_from(Uint[f], buffer, offset_, 2)['val']
@@ -971,10 +1094,12 @@ class HkConstraint:
                 offset += 1
             string = buffer[start:offset]
             self.strings.append((string, start, val))
+            max_offset = max(offset+1, max_offset)
         self.vals = unpack_list_from(Int[f], buffer, info['vals_offset'], info['vals_num'] * 12)
         self.keys = unpack_list_from(Uint[f], buffer, info['keys_offset'], info['keys_num'])
         self.keys2 = unpack_list_from(Uint[f], buffer, info['keys2_offset'], info['keys2_num'] * 2)
-
+        self.max_offset = max(lotrc.types.MAX_OFFSET, max_offset)
+        self.min_offset = lotrc.types.MIN_OFFSET
         return self
         
     def pack_into(self, buffer, info, f="<"):
@@ -996,7 +1121,7 @@ class Animation:
         "objB_offset", "I",
     )
     def __init__(self):
-        self.buffer_info = {}
+        self.obj2 = {}
         self.obj3 = {}
         self.keys = {}
         self.obj5_header = {}
@@ -1005,7 +1130,7 @@ class Animation:
         self.objC = {}
 
     def unpack_from_block(self, buffer, offset, index, info, f="<"):
-        self.buffer_info[index] = unpack_list_from(Int[f], buffer, offset + info['buffer_info_offset'], info['buffer_info_num']*4)
+        self.obj2[index] = unpack_list_from(Int[f], buffer, offset + info['obj2_offset'], info['obj2_num']*4)
         self.obj3[index] = unpack_list_from(Int[f], buffer, offset + info['obj3_offset'], info['obj3_num']*11)
         self.keys[index] = unpack_list_from(Int[f], buffer, offset + info['keys_offset'], info['keys_num'])
         if info['obj5_offset'] != 0:
@@ -1020,7 +1145,7 @@ class Animation:
             warnings.warn(f"Unkown amination type {info['type']}")
         
     def pack_into_block(self, buffer, offset, index, info, f="<"):
-        pack_into(self.buffer_info[index], buffer, offset + info['buffer_info_offset'], f)
+        pack_into(self.obj2[index], buffer, offset + info['obj2_offset'], f)
         pack_into(self.obj3[index], buffer, offset + info['obj3_offset'], f)
         pack_into(self.keys[index], buffer, offset + info['keys_offset'], f)
         if info['obj5_offset'] != 0:
@@ -1110,7 +1235,7 @@ class hkaSplineSkeletalAnimationObj1:
 class hkaSplineSkeletalAnimationObj2:
     Alignments = [4, 1, 2, 1, 2, 4]
     Type1 = structtuple("Type1", 'a', 'I')
-    Type2 = structtuple("Type2", 'a', 'B', 'b', 'B', 'c', 'B', 'd', 'H')
+    Type2 = structtuple("Type2", 'a', 'B', 'b', 'B', 'c', 'B', 'd', 'b', 'e', 'b') # should be bbbH, but for xbox conv it is bbbbb
     Type3 = structtuple("Type3", 'a', 'H', 'b', 'H', 'c', 'H')
     Type4 = structtuple("Type4", 'a', 'B', 'b', 'B', 'c', 'B')
     Type5 = structtuple("Type5", 'a', 'B', 'b', 'B')
