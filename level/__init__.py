@@ -153,10 +153,20 @@ class LevelData:
             for vbuffs in self.vbuffs:
                 if vbuffs is None: continue
                 for vbuff in vbuffs:
-                    if 'weight' in vbuff.data.dtype.names and 'x' in vbuff.data.dtype.fields['weight'][0].names:
-                        vbuff.data['weight']['x'] = vbuff.data['weight']['x']/2 + 0.5
-                        vbuff.data['weight']['y'] = vbuff.data['weight']['y']/2 + 0.5
-                        vbuff.data['weight']['z'] = vbuff.data['weight']['z']/2 + 0.5
+                    if 'weight' in vbuff.data.dtype.names:
+                        if 'x' in vbuff.data.dtype.fields['weight'][0].names:
+                            vbuff.data['weight']['x'] = vbuff.data['weight']['x']/2 + 0.5
+                            vbuff.data['weight']['y'] = vbuff.data['weight']['y']/2 + 0.5
+                            vbuff.data['weight']['z'] = vbuff.data['weight']['z']/2 + 0.5
+                        else:
+                            # sketchy conv of xbox 10 bit weights to pc 8 bit weights
+                            val = vbuff.data['weight']['val']
+                            v = np.array([(val>>20)&0x3FF, (val>>10)&0x3FF, val&0x3FF])
+                            inds = v & 0x200 != 0
+                            v[~inds] += 511
+                            v[inds] -= 512
+                            v = (v-2) >> 2
+                            vbuff.data['weight']['val'] = v[0] | (v[1] << 8) | (v[2] << 16) | (127 << 24)
 
         self.pak_blockA = unpack_list_from(pak.BlockAVal[self.f], self.pak_data, self.pak_header['blockA_offset'], self.pak_header['blockA_num'])
         self.remaps = []
@@ -202,7 +212,7 @@ class LevelData:
             data_comp = data.pack(compress)
             dump_asset_handles[i]['offset'] = bin_offset
             dump_asset_handles[i]['size'] = data.size
-            dump_asset_handles[i]  ['size_comp'] = data.size_comp
+            dump_asset_handles[i]['size_comp'] = data.size_comp
             bin_dump += data_comp
             if len(data_comp) != 0:
                 bin_offset += len(data_comp)
@@ -226,7 +236,7 @@ class LevelData:
         bin_dump += data
         bin_offset += len(data)
 
-        off =  (bin_offset + 2047) & 0xfffff800
+        off = (bin_offset + 2047) & 0xfffff800
         bin_dump += bytes(off - bin_offset)
         bin_offset = off
 
