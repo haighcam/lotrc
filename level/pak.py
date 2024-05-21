@@ -69,7 +69,7 @@ Header = structtuple("LevelPAK_Header",
     'pfield_info_num', 'I', # 12
     'gfx_block_info_num', 'I',
     'animation_block_info_num', 'I',
-    'obj11_num', 'I',
+    'foliage_info_num', 'I',
     'obj14_info_num', 'I',
     'unk_66', 'I',
     'obja_offset', 'I', # 24 bytes
@@ -94,7 +94,7 @@ Header = structtuple("LevelPAK_Header",
     'pfield_info_offset', 'I',
     'gfx_block_info_offset', 'I', # 0xc bytes, max loaded is 0x40
     'animation_block_info_offset', 'I', # 36 bytes
-    'obj11_offset', 'I',
+    'foliage_info_offset', 'I',
     'obj14_info_offset', 'I',
     'unk_91', 'I',
     'unk_92', 'I',
@@ -824,18 +824,18 @@ AnimationBlockInfo = structtuple("AnimationBlockInfo",
     'unk_8', 'I',
 )
 
-Obj11 = structtuple("Obj11", # something to do with textures
+FoliageInfo = structtuple("FoliageInfo", # something to do with textures
     "key", "I",
     "unk_1", "I",
-    "unk_2", "I",
-    "unk_3", "I",
-    "unk_4", "I",
-    "unk_5", "I",
+    "s1a", "I",
+    "s2a", "I",
+    "s1b", "I",
+    "s2b", "I",
     "unk_6", "I",
     "offset", "I",
-    "key1", "I",
-    "key2", "I",
-    "key3", "I",
+    "key_mesh", "I",
+    "key_mesh_lod1", "I",
+    "key_mesh_lod2", "I",
     "unk_11", "I",
     "unk_12", "I",
     "unk_13", "I",
@@ -1448,6 +1448,16 @@ class Obj14:
     def unpack_from(Self, buffer, info, f="<"):
         self = Self()
         self.data = unpack_list_from(Uint[f], buffer, info['offset'], info['num'])
+        return self
+    def pack_into(self, buffer, info, f="<"):
+        pack_into(self.data, buffer, info['offset'], f)
+
+class Foliage:
+    @classmethod
+    def unpack_from(Self, buffer, info, f="<"):
+        n = (info['s1b'] - info['s1a']) * (info['s2b'] - info['s2a']) * 2
+        self = Self()
+        self.data = unpack_list_from(Uint[f], buffer, info['offset'], n)
         return self
     def pack_into(self, buffer, info, f="<"):
         pack_into(self.data, buffer, info['offset'], f)
