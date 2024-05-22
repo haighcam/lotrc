@@ -641,16 +641,13 @@ class Crowd:
 class AtlasUV:
     Keys = [hash_string('atlas_1.uv'), hash_string('atlas_2.uv')]
     Val = structtuple("AtlasUV_Val",
-        "unk_0", "I",
-        "unk_1", "f",
-        "unk_2", "f",
-        "unk_3", "f",
-        "unk_4", "f",
+        "key", "I",
+        "vals", Vector4,
     )
     @classmethod
     def unpack_from(Self, buffer, offset, size, f="<"):
         self = Self()
-        assert size%self.Val[f].itemsize == 0, "Invalid UV Atlas size"
+        assert size%self.Val[f].itemsize == 0, "Invalid UV Atlas size?"
         num = size//self.Val[f].itemsize
         self.vals = unpack_list_from(self.Val[f], buffer, offset, num)
         return self

@@ -64,7 +64,7 @@ Header = structtuple("LevelPAK_Header",
     'ibuff_info_num', 'I', # g
     'texture_info_num', 'I', # 7
     'animation_info_num', 'I', # 8
-    'hk_constraint_info_num', 'I', # 9
+    'hk_constraint_info_num', 'I', # 9  
     'game_objs_block_info_num', 'I', # 10
     'pfield_info_num', 'I', # 12
     'gfx_block_info_num', 'I',
@@ -352,7 +352,8 @@ MatBase = [ # normal material
     'flags', 'Q', #(flags1, flags2)
     'type', 'I',
     'unk_53', 'I',
-    'unk_54', 'H',
+    'unk_54a', 'B',
+    'unk_54b', 'B',
     'side_flags', 'H',
     'unk_55', 'I',
     'unk_56', 'I',
@@ -868,16 +869,27 @@ class Mesh:
         "unk_0", "I",
         "unk_1", "I",
         "size", "I",
-        "unk_3", "I",
+        "size2", "I",
         "a", "I",
         "b", "I",
-        "unk_6", "I",
-        "unk_7", "I",
+        "a2", "I",
+        "b2", "I",
         "unk_8", "I",
         "unk_9", "I",
         "unk_10", "I",
         "unk_11", "I",
         "unk_12", "I",
+    )
+    BlockHeader2 = structtuple("BlockHeader",
+        "unk_0", "I",
+        "unk_1", "I",
+        "unk_2", "I",
+        "unk_3", "I",
+        "unk_4", "I",
+        "unk_5", "I",
+        "unk_6", "I",
+        "unk_7", "I",
+        "unk_8", "I",
     )
     BlockVal = structtuple("BlockVal",
         "unk_0", "H",
@@ -941,6 +953,13 @@ class Mesh:
             self.block_vals_b = unpack_list_from(Self.BlockVal[f], buffer, info['block_offset'] + size, (self.block_header['size'] - size) // Self.BlockVal[f].itemsize)
             size += self.block_vals_b.nbytes
             self.block_extra = unpack_list_from(Byte[f], buffer, info['block_offset'] + size, self.block_header['size'] - size)
+            size += self.block_extra.nbytes
+            if self.block_header['size2'] != 0:
+                self.block_header2 = unpack_from(Self.BlockHeader2[f], buffer, info['block_offset'] + size)
+                size += self.block_header2.nbytes
+                self.block_vals_c = unpack_list_from(Self.BlockVal[f], buffer, info['block_offset'] + size, (self.block_header['size2'] - size) // Self.BlockVal[f].itemsize)
+                size += self.block_vals_c.nbytes
+                self.block_extra2 = unpack_list_from(Byte[f], buffer, info['block_offset'] + size, self.block_header['size2'] - size)
             # block_size = unpack_from(Int[f], buffer, info['block_offset'] + 8)['val']
             # assert block_size % 4 == 0
             # self.block = unpack_list_from(Int[f], buffer, info['block_offset'], block_size//4)
@@ -987,7 +1006,13 @@ class Mesh:
             pack_into(self.block_vals_b, buffer, info['block_offset'] + size, f)
             size += self.block_vals_b.nbytes
             pack_into(self.block_extra, buffer, info['block_offset'] + size, f)
-            # pack_into(self.block, buffer, info['block_offset'], f)
+            size += self.block_extra.nbytes
+            if self.block_header['size2'] != 0:
+                pack_into(self.block_header2, buffer, info['block_offset'] + size, f)
+                size += self.block_header2.nbytes
+                pack_into(self.block_vals_c, buffer, info['block_offset'] + size, f)
+                size += self.block_vals_c.nbytes
+                pack_into(self.block_extra2, buffer, info['block_offset'] + size, f)
         # not sure why this pops up once, maybe it is padding between items?
         if info['valCs_offset'] == info['vbuff_offset'] and info['valCs_offset'] == info['ibuff_offset'] and info['valCs_offset'] == info['valDs_offset']:
             pack_into(self.val, buffer, info['valCs_offset'], f)
