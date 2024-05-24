@@ -237,12 +237,14 @@ class StringKeys:
         assert self.header['numA'] == self.header['numB'], "Probably needs to be true"
         offset += self.header.nbytes
         self.string_keys = unpack_list_from(self.Val[f], buffer, offset, self.header['numA'])
+        offset += self.string_keys.nbytes
         self.extra = unpack_list_from(Uint[f], buffer, offset, self.header['numA'])
         # assert self.string_keys[-1].offset+4 == size, "I think this is true"
         return self
     def pack_into(self, buffer, offset, f="<"):
         offset += pack_into(self.header, buffer, offset, f)
         pack_into(self.string_keys, buffer, offset, f)
+        offset += self.string_keys.nbytes
         pack_into(self.extra, buffer, offset, f)
     def pack(self, f="<"):
         return pack(self.header, f) + pack(self.string_keys, f) + pack(self.extra, f)

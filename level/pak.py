@@ -155,8 +155,8 @@ MeshInfo = structtuple("MeshInfo",
     'valCs_offset', 'I', # ints (c & 0x3fffffff is an index into the buffer_infos referenced by this object)
     'unk_13', 'I', # (v1, v2, v3, v4, v5) * 4 (up to unk_23), v1 is a starting offset to buffer_infos, v2 is the end offset
     'unk_14', 'I',
-    'unk_15', 'I',
-    'unk_16', 'I',
+    'block_start', 'I',
+    'block_end', 'I',
     'unk_17', 'I',
     'unk_18', 'I',
     'unk_19', 'I',
@@ -866,38 +866,19 @@ BlockAVal = structtuple("BlockAVal",
 
 class Mesh:
     BlockHeader = structtuple("BlockHeader",
-        "unk_0", "I",
-        "unk_1", "I",
-        "size", "I",
-        "size2", "I",
         "a", "I",
         "b", "I",
-        "a2", "I",
-        "b2", "I",
-        "unk_8", "I",
-        "unk_9", "I",
-        "unk_10", "I",
-        "unk_11", "I",
-        "unk_12", "I",
+        "unk_2", "I",
+        "unk_3", "I",
+        "unk_4", "I",
     )
-    BlockHeader2 = structtuple("BlockHeader",
+    BlockVal = structtuple("BlockVal",
         "unk_0", "I",
         "unk_1", "I",
         "unk_2", "I",
         "unk_3", "I",
-        "unk_4", "I",
-        "unk_5", "I",
-        "unk_6", "I",
-        "unk_7", "I",
-        "unk_8", "I",
-    )
-    BlockVal = structtuple("BlockVal",
-        "unk_0", "H",
-        "unk_1", "H",
-        "unk_2", "I",
-        "unk_3", "I",
-        "unk_4", "I",
-        "unk_5", "I",
+        "unk_4", "H",
+        "unk_5", "H",
     )
 
     @classmethod
@@ -946,20 +927,22 @@ class Mesh:
             self.keys2 = unpack_list_from(Uint[f], buffer, info['keys2_offset'], i * 2)
             self.keys2_order = unpack_list_from(Uint[f], buffer, info['keys2_order_offset'], self.keys2[-1]['val'])
         if info['block_offset'] != 0:
-            self.block_header = unpack_from(Self.BlockHeader[f], buffer, info['block_offset'])
-            size = self.block_header.nbytes
-            self.block_vals_a = unpack_list_from(Uint[f], buffer, info['block_offset'] + size, (self.block_header['a'] + self.block_header['b']) * 12)
-            size += self.block_vals_a.nbytes
-            self.block_vals_b = unpack_list_from(Self.BlockVal[f], buffer, info['block_offset'] + size, (self.block_header['size'] - size) // Self.BlockVal[f].itemsize)
-            size += self.block_vals_b.nbytes
-            self.block_extra = unpack_list_from(Byte[f], buffer, info['block_offset'] + size, self.block_header['size'] - size)
-            size += self.block_extra.nbytes
-            if self.block_header['size2'] != 0:
-                self.block_header2 = unpack_from(Self.BlockHeader2[f], buffer, info['block_offset'] + size)
-                size += self.block_header2.nbytes
-                self.block_vals_c = unpack_list_from(Self.BlockVal[f], buffer, info['block_offset'] + size, (self.block_header['size2'] - size) // Self.BlockVal[f].itemsize)
-                size += self.block_vals_c.nbytes
-                self.block_extra2 = unpack_list_from(Byte[f], buffer, info['block_offset'] + size, self.block_header['size2'] - size)
+            offset = info['block_offset']
+            self.block_header = unpack_from(Uint[f], buffer, offset)
+            n = info['block_end'] - info['block_start']
+            self.block_sizes = unpack_list_from(Uint[f], buffer, offset + 4, n+1)
+            self.blocks = []
+            for i in range(n):
+                size = self.block_sizes[i+1]['val'] - self.block_sizes[i]['val']
+                offset = self.block_sizes[i]['val'] + info['block_offset']
+                header = unpack_from(Self.BlockHeader[f], buffer, offset)
+                s = header.nbytes
+                vals_a = unpack_list_from(Uint[f], buffer, offset + s, (header['a'] + header['b']) * 12)
+                s += vals_a.nbytes
+                vals_b = unpack_list_from(Self.BlockVal[f], buffer, offset + s, (size - s)//Self.BlockVal[f].itemsize)
+                s += vals_b.nbytes
+                extra = unpack_list_from(Uint[f], buffer, offset + s, (size - s)//4)
+                self.blocks.append((header, vals_a, vals_b, extra))
             # block_size = unpack_from(Int[f], buffer, info['block_offset'] + 8)['val']
             # assert block_size % 4 == 0
             # self.block = unpack_list_from(Int[f], buffer, info['block_offset'], block_size//4)
@@ -999,20 +982,18 @@ class Mesh:
             pack_into(self.keys2, buffer, info['keys2_offset'], f)
             pack_into(self.keys2_order, buffer, info['keys2_order_offset'], f)
         if info['block_offset'] != 0:
-            pack_into(self.block_header, buffer, info['block_offset'], f)
-            size = self.block_header.nbytes
-            pack_into(self.block_vals_a, buffer, info['block_offset'] + size, f)
-            size += self.block_vals_a.nbytes
-            pack_into(self.block_vals_b, buffer, info['block_offset'] + size, f)
-            size += self.block_vals_b.nbytes
-            pack_into(self.block_extra, buffer, info['block_offset'] + size, f)
-            size += self.block_extra.nbytes
-            if self.block_header['size2'] != 0:
-                pack_into(self.block_header2, buffer, info['block_offset'] + size, f)
-                size += self.block_header2.nbytes
-                pack_into(self.block_vals_c, buffer, info['block_offset'] + size, f)
-                size += self.block_vals_c.nbytes
-                pack_into(self.block_extra2, buffer, info['block_offset'] + size, f)
+            offset = info['block_offset']
+            pack_into(self.block_header, buffer, offset, f)
+            pack_into(self.block_sizes, buffer, offset + 4, f)
+            for i, (header, vals_a, vals_b, extra) in enumerate(self.blocks):
+                offset = self.block_sizes[i]['val'] + info['block_offset']
+                pack_into(header, buffer, offset, f)
+                offset += header.nbytes
+                pack_into(vals_a, buffer, offset, f)
+                offset += vals_a.nbytes
+                pack_into(vals_b, buffer, offset, f)
+                offset += vals_b.nbytes
+                pack_into(extra, buffer, offset, f)
         # not sure why this pops up once, maybe it is padding between items?
         if info['valCs_offset'] == info['vbuff_offset'] and info['valCs_offset'] == info['ibuff_offset'] and info['valCs_offset'] == info['valDs_offset']:
             pack_into(self.val, buffer, info['valCs_offset'], f)
