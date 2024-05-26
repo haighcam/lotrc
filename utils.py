@@ -19,6 +19,10 @@ def print_data(data):
     self = data.dtype.metadata['self']
     print(f"{self['name']}(\n\t"+'\n\t'.join(list(f'{name} = {data[name]}' for name in data.dtype.names))+'\n)')
 
+def get_global_keys():
+    with open(pathlib.Path(os.path.dirname(lotrc.__file__)).as_posix() + "/conquest_strings.txt") as f:
+        vals = f.read().split('\n')
+    return {hash_string(i): i for i in vals}
 #### Lua stuff
 
 def decomp_lua(data):

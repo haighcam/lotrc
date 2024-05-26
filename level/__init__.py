@@ -30,12 +30,13 @@ class LevelData:
 
         self.vertex_formats = {}
         self.game_objs_types = {}
-        self.keys = {hash_string(i):i for i in self.bin_strings}
+        self.keys = get_global_keys()
+        self.keys.update({hash_string(i):i.decode() for i in self.bin_strings})
 
         self.pak_header = unpack_from(pak.Header[self.f], self.pak_data, 0)
         self.pak_strings = read_strings(self.pak_data, self.pak_header['strings_offset'], self.pak_header['strings_num'], self.f)
-        self.keys.update({hash_string(i):i for i in self.pak_strings})
-        self.keys.update({i: j['name'].encode() for i,j in BaseTypes.items()})
+        self.keys.update({hash_string(i):i.decode() for i in self.pak_strings})
+        self.keys.update({i: j['name'] for i,j in BaseTypes.items()})
 
         self.block1 = CompressedBlock.unpack_from(self.pak_data, self.pak_header['block1_size'], self.pak_header['block1_size_comp'], self.pak_header['block1_offset'])
         self.block2 = CompressedBlock.unpack_from(self.pak_data, self.pak_header['block2_size'], self.pak_header['block2_size_comp'], self.pak_header['block2_offset'])
@@ -84,7 +85,7 @@ class LevelData:
         self.sub_blocks2 = SubBlocks.unpack_from(self.block2.data, self.pak_header['sub_blocks2_offset'], self.keys, self.game_objs_types, self.f)
         self.block2_offsets = unpack_list_from(Uint[self.f], self.block2.data, self.pak_header['block2_offsets_offset'], self.pak_header['block2_offsets_num'])
 
-        self.radiosity = {(info['key'], info['type']):bin.Radiosity.unpack_from(self.asset_data[(info['key'], info['type'])].data, self.f) for info in self.asset_handles if self.keys[info['key']].endswith(b'_radiosity')}
+        self.radiosity = {(info['key'], info['type']):bin.Radiosity.unpack_from(self.asset_data[(info['key'], info['type'])].data, self.f) for info in self.asset_handles if self.keys[info['key']].endswith('_radiosity')}
         
         self.textures = {}
         for info in self.texture_infos:
@@ -164,9 +165,10 @@ class LevelData:
                             val = vbuff.data['weight']['val']
                             v = np.array([(val>>20)&0x3FF, (val>>10)&0x3FF, val&0x3FF])
                             inds = v & 0x200 != 0
-                            v[~inds] += 511
-                            v[inds] -= 512
-                            v = (v-2) >> 2
+                            v = v.astype(float)
+                            v[inds] = (v[inds] - 512) / 512 * 127
+                            v[~inds] = v[~inds] / 511 * (255-127) + 127
+                            v = np.round(v).astype(np.ubyte)
                             vbuff.data['weight']['val'] = v[0] | (v[1] << 8) | (v[2] << 16) | (127 << 24)
 
         self.pak_blockA = unpack_list_from(pak.BlockAVal[self.f], self.pak_data, self.pak_header['blockA_offset'], self.pak_header['blockA_num'])
@@ -177,6 +179,7 @@ class LevelData:
             raise ValueError("\nUnsupported conversion from '<' to '>'")
 
         dump_bin_header = self.bin_header.copy()
+        dump_bin_header['version'] = 1 if f == '<' else 2
 
         self.dump_asset_data = OrderedDict()
         for mesh, info, vbuffs, ibuffs in zip(self.meshes, self.mesh_infos, self.vbuffs, self.ibuffs):
@@ -243,6 +246,7 @@ class LevelData:
 
         bin_dump = pack(dump_bin_header, f) + bytes(bin_dump)
         dump_pak_header = self.pak_header.copy()
+        dump_pak_header['version'] = 1 if f == '<' else 2
 
         pak_offset = dump_pak_header.nbytes
         pak_dump = bytearray()

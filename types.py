@@ -332,9 +332,9 @@ class SubBlocks:
                 self.blocks.append(GameObjs.unpack_from(buffer, offset+header['offset'], header['size'], types, f))
             elif key in AtlasUV.Keys:
                 self.blocks.append(AtlasUV.unpack_from(buffer, offset+header['offset'], header['size'], f))
-            elif (t := name.split(b'.')[-1]) == b'lua':
+            elif (t := name.split('.')[-1]) == 'lua':
                 self.blocks.append(Lua.unpack_from(buffer, offset+header['offset'], header['size'], name, f))
-            elif t in [b'csv', b'txt', b'dat', b'ssa']:
+            elif t in ['csv', 'txt', 'dat', 'ssa']:
                 self.blocks.append(Data.unpack_from(buffer, offset+header['offset'], header['size'], f))
             else:
                 warnings.warn(f"Unhandled block type: {name}, treating as raw bytes")
@@ -383,7 +383,7 @@ def get_level_obj_format(key, fields):
             fmt.extend([f"p{p}", 'B'])
             p += 1
         t = BaseTypes[f['type']]
-        fmt.extend([f"f{i}", t])
+        fmt.extend([f"0x{f['key']:08X}", t])
         offset = f['offset'] + t['<'].itemsize
     return structtuple(f"level_obj_{key:08X}", *fmt)
 
@@ -436,12 +436,12 @@ class GameObjs:
         "z6", "I",
         "z8", "I",
     )
-    TypeHeader = structtuple("GameObjs_TypeHeader", 
+    TypeHeader = structtuple("GameObjs_TypeHeader",
         "key", "I",
         "size", "I",
         "fields", "I",
     )
-    TypeField = structtuple("GameObjs_ObjField", 
+    TypeField = structtuple("GameObjs_ObjField",
         "key", "I",
         "type", "I",
         "offset", "I",
@@ -487,16 +487,17 @@ class GameObjs:
             t = types[obj['key']]
             self.obj_fields.append(unpack_from(t[f], buffer, offset))
             fields = t['fields']
-            self.obj_fields_data.append([None for _ in range(len(fields))])
+            self.obj_fields_data.append({})
             for i, field in enumerate(fields):
                 if (T := ListTypes.get(field['type'], None)) is not None:
-                    val = self.obj_fields[-1][f'f{i}']
+                    key = f"0x{field['key']:08X}"
+                    val = self.obj_fields[-1][key]
                     data = unpack_list_from(T[f], buffer, offset + field['offset'] + val['offset'] + val.nbytes, val['num'])
                     if T['name'] == 'String':
                         data = [data] + [
                             unpack_list_from(StringElem[f], buffer, offset + field['offset'] + val['offset'] + val.nbytes * (i+1) + v['offset'] + v.nbytes, v['num']) for i,v in enumerate(data)
                         ]
-                    self.obj_fields_data[-1][i] = data
+                    self.obj_fields_data[-1][key] = data
             self.objs.append(obj)
             offset += obj['size']
         return self
@@ -517,8 +518,9 @@ class GameObjs:
             # fields = self.fields_lookup[obj['key']]
             for i, field in enumerate(fields):
                 if (T := ListTypes.get(field['type'], None)) is not None:
-                    val = fields_vals[f'f{i}']
-                    data = fields_data[i]
+                    key = f"0x{field['key']:08X}"
+                    val = fields_vals[key]
+                    data = fields_data[key]
                     if T['name'] == 'String':
                         for i,(v,d) in enumerate(zip(data[0], data[1:])):
                             pack_into(d, buffer, offset + field['offset'] + val['offset'] + val.nbytes * (i+1) + v['offset'] + v.nbytes, f)

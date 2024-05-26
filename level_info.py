@@ -22,7 +22,7 @@ class LevelInfo:
         'name', '32S',
         'key_name', 'I',
         'key_description', 'I',
-        'valA', 'I',
+        'dlc', 'I',
         'gamemodes', 'I',
     )
     GamemodeVal = structtuple("LevelInfo_GamemodeVal", 
@@ -44,7 +44,8 @@ class LevelInfo:
         self.header = unpack_from(self.Header[self.f], self.data, 0)
 
         self.strings = read_strings(self.data, self.header['strings_offset'], self.header['strings_num'], self.f)
-        self.keys = {hash_string(i):i for i in self.strings}
+        self.keys = get_global_keys()
+        self.keys.update({hash_string(i):i for i in self.strings})
         
         self.string_keys = StringKeys.unpack_from(self.data, self.header['string_keys_offset'], self.f)
         # assert self.string_keys.string_keys[-1]['offset']+4 == self.header['string_keys_size'], "I think this is true"
