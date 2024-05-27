@@ -14,7 +14,7 @@ with open("LevelNew.json", "r") as f:
     vals = json.load(f)
 
 # replace the current level.uv with the new one
-vals = levelDLC.sub_blocks1.blocks[-1] = GameObjs.from_dict(vals, levelDLC.f)
+levelDLC.sub_blocks1.blocks[-1] = GameObjs.from_dict(vals, levelDLC.f)
 
 # dump the new file
 f_pak, f_bin = levelDLC.dump()
