@@ -570,8 +570,8 @@ class GameObjs:
             fields = []
             for field in self.type_fields[i]:
                 f = {}
-                f['name'] = keys.get(field['key'], f'0x{field['key']:08X}')
-                f['type'] = keys.get(field['type'], f'0x{field['type']:08X}')
+                f['name'] = keys.get(field['key'], f"0x{field['key']:08X}")
+                f['type'] = keys.get(field['type'], f"0x{field['type']:08X}")
                 f['offset'] = int(field['offset'])
                 fields.append(f)
             ty['fields'] = fields
