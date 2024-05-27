@@ -414,15 +414,42 @@ class Lua:
         else:
             data = convert_lua(self.data, b"L4404")
         return data
-        # if f == self.f:
-        #     return self.data
-        # elif f == "<":
-        #     data = compile_lua(self.code)
-        #     return data
-        # else:
-        #     raise ValueError("Not Yet Implemeted")
-        # return self.data + b"000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-        return self.data
+    
+def get_raw(val, extra, keys, name):
+    if name == 'String':
+        return extra[0].tobytes().decode()
+    elif name == 'StringList':
+        return [i.tobytes().decode() for i in extra[0][1:]]
+    elif name.endswith("List"):
+        return [get_raw(i, [], keys, name.split("List")[0]) for i in extra[0]]
+    if name == 'CRC':
+        return keys.get(val['val'], int(val['val']))
+    elif name in ['GUID', 'Color', 'Int', 'Object']:
+        return int(val['val'])
+    elif name == 'Float':
+        return float(val['val'])
+    elif name in ['Vector3', 'Vector4', 'Matrix4x4', 'Weight', 'Node']:
+        return [float(i) for i in val.tolist()]
+    elif name == 'Bool':
+        return bool(val['val'] != 0)
+
+def from_raw(val, name):
+    if name == hash_string('CRC'):
+        return hash_(val)
+    elif name in [hash_string('GUID'), hash_string('Color'), hash_string('Int'), hash_string('Object'), hash_string('Float')]:
+        return val
+    elif name in [hash_string('Vector3'), hash_string('Vector4'), hash_string('Matrix4x4'), hash_string('Weight'), hash_string('Node')]:
+        return tuple(val)
+    elif name == hash_string('Bool'):
+        return (int(val), 0, 0, 0)
+
+def hash_(val):
+    if isinstance(val, int):
+        return val
+    elif val[:2] == '0x':
+        return int(val, 16)
+    else:
+        return hash_string(val)
 
 class GameObjs:
     Key = hash_string("Level")
@@ -532,6 +559,119 @@ class GameObjs:
         buffer = bytearray(self.size)
         self.pack_into(buffer, 0, f)
         return bytes(buffer)
+    
+    def to_dict(self, keys):
+        block = {}
+        types = []
+        for i in range(len(self.types)):
+            ty = {}
+            ty['name'] = keys.get(self.types[i]['key'], int(self.types[i]['key']))
+            ty['size'] = int(self.types[i]['size'])
+            fields = []
+            for field in self.type_fields[i]:
+                f = {}
+                f['name'] = keys.get(field['key'], f'0x{field['key']:08X}')
+                f['type'] = keys.get(field['type'], f'0x{field['type']:08X}')
+                f['offset'] = int(field['offset'])
+                fields.append(f)
+            ty['fields'] = fields
+            types.append(ty)
+        
+        objs = []
+        for i in range(len(self.objs)):
+            obj_fields = self.obj_fields[i]
+            obj_fields_data = self.obj_fields_data[i]
+            obj_ = self.objs[i]
+        
+            obj = {}
+            obj['type'] = keys.get(obj_['key'], int(obj_['key']))
+            obj['unk_0'] = int(obj_['unk_0'])
+            fields = {}
+            
+            for key in sorted(obj_fields.dtype.names):
+                if key[0] == 'p': continue
+                ty = obj_fields[key].dtype.metadata['self']['name']
+                val = obj_fields[key]
+                extra = obj_fields_data.get(key, None),
+                val = get_raw(val, extra, keys, ty)
+                name = keys.get(int(key, 16), key)
+                fields[name] = val
+                
+            obj['fields'] = fields
+            objs.append(obj)
+        block['types'] = types
+        block['objs'] = objs
+        return block
+    
+    @classmethod
+    def from_dict(Self, block, f='<'):
+        self = Self()
+        self.types = []
+        self.type_fields = []
+        for t in block['types']:
+            self.types.append(new(Self.TypeHeader['<'], (hash_(t['name']), t['size'], 0)))
+            self.type_fields.append(new(Self.TypeField['<'], [(hash_(f['name']), hash_(f['type']), f['offset']) for f in t['fields']]))
+
+        field_lookup = {t['key']: f for f,t in zip(self.type_fields, self.types)}
+        self.objs = []
+        self.obj_fields = []
+        self.obj_fields_data = []
+        for o in block['objs']:
+            ty_ = hash_(o['type'])
+            type_fields = field_lookup[ty_]
+            t = get_level_obj_format(ty_, type_fields)
+            t['fields'] = type_fields
+            type_vals = {hash_(k): v for k,v in o['fields'].items()}
+            offset = ((t[f].itemsize + 15) & 0xFFFFFFF0)
+            val = new(t[f], 0)
+            extras = {}
+            for key in type_fields['key']:
+                field = f'0x{key:08X}'
+                off = t[f].fields[field][1]
+                key = int(field, 16)
+                ty = hash_string(val[field].dtype.metadata['self']['name'])
+                v = type_vals[key]
+                if ty == hash_string('String'):
+                    val[field] = (len(v), offset - off - 4)
+                    extras[field] = unpack_list_from(StringElem[f], v.encode(), 0, len(v))
+                    if len(v) != 0:
+                        offset += len(v) + 1
+                elif ty == hash_string('StringList'):
+                    val[field] = (len(v), offset - off - 4)
+                    off_ = offset
+                    strings = []
+                    offsets = []
+                    offset += len(v) * 4
+                    for v_ in v:
+                        offsets.append((len(v_), offset - off_ - 4))
+                        strings.append(unpack_list_from(StringElem[f], v_.encode(), 0, len(v_)))
+                        if len(v_) != 0:
+                            offset += len(v_) + 1
+                        off_ += 4
+                    extras[field] = [new(StringList[f], offsets)] + strings
+                elif (T := ListTypes.get(ty, None)) is not None:
+                    val[field] = (len(v), offset - off - 4)
+                    extras[field] = new(T[f], [from_raw(v_, hash_string(T['name'])) for v_ in v])
+                    offset += len(v) * T[f].itemsize
+                    if ty == hash_string('IntList'):
+                        offset = (offset + 15) & 0xFFFFFFF0
+                else:
+                    val[field] = from_raw(v, ty)
+            self.objs.append(new(Self.ObjHeader[f], (o['unk_0'], ty_, (offset + 15) & 0xFFFFFFF0, 0, 0)))
+            self.obj_fields.append(val)
+            self.obj_fields_data.append(extras)
+        self.header = new(Self.Header[f], (
+            1296123652,
+            len(self.types),
+            32,
+            len(self.objs),
+            len(self.types) * Self.TypeHeader[f].itemsize + np.array(self.types)['size'].astype(int).sum() * Self.TypeField[f].itemsize + 32,
+            0,
+            0,
+            0
+        ))
+        self.size = self.header['obj_offset'] + np.array(self.objs)['size'].astype(int).sum() + len(self.objs) * Self.ObjHeader[f].itemsize
+        return self
 
 class Spray:
     Key = hash_string("Spray")
