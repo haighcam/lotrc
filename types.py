@@ -428,7 +428,7 @@ def get_raw(val, extra, keys, name):
         return int(val['val'])
     elif name == 'Float':
         return float(val['val'])
-    elif name in ['Vector3', 'Vector4', 'Matrix4x4', 'Weight', 'Node']:
+    elif name in ['Vector3', 'Vector4', 'Matrix4x4', 'Weight', 'Node', 'Matrix']:
         return [float(i) for i in val.tolist()]
     elif name == 'Bool':
         return bool(val['val'] != 0)
