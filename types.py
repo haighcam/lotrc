@@ -588,7 +588,7 @@ class GameObjs:
             obj['unk_0'] = int(obj_['unk_0'])
             fields = {}
             
-            for key in sorted(obj_fields.dtype.names):
+            for (key, _) in sorted(obj_fields.dtype.fields.items(), key=lambda x: x[1][1]):
                 if key[0] == 'p': continue
                 ty = obj_fields[key].dtype.metadata['self']['name']
                 val = obj_fields[key]
