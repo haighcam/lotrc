@@ -665,7 +665,7 @@ class GameObjs:
             len(self.types),
             32,
             len(self.objs),
-            len(self.types) * Self.TypeHeader[f].itemsize + np.array(self.types)['size'].astype(int).sum() * Self.TypeField[f].itemsize + 32,
+            (len(self.types) * Self.TypeHeader[f].itemsize + np.array(self.types)['size'].astype(int).sum() * Self.TypeField[f].itemsize + 32 + 15) & 0xFFFFFFF0,
             0,
             0,
             0
