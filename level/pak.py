@@ -47,8 +47,8 @@ Header = structtuple("LevelPAK_Header",
     'unk_39', 'I',
     'unk_40', 'I',
     'unk_41', 'I',
-    'obja_num', 'I',
-    'obj0_num', 'I',
+    'obja_num', 'I', # object not used by game
+    'obj0_num', 'I', # object not used by game
     'mesh_info_num', 'I', # 1
     'buffer_info_num', 'I', # 2
     'mat1_num', 'I',
@@ -196,11 +196,11 @@ MeshInfo = structtuple("MeshInfo",
     'asset_type', 'I',
     'unk_54', 'I',
     'unk_55', 'I',
-    'shape_info_offset', 'I', # optional pointer to shape_info
-    'unk_57', 'I',
-    'hkConstraintData_offset', 'I', # optional pointer to hkConstraintData
-    'unk_59', 'I',
-    'hkConstraint_offset', 'I', # optional pointer to hkConstraint
+    'shape_offset', 'I', # optional pointer to shape_info
+    'shape_num', 'I',
+    'hk_constraint_data_offset', 'I', # optional pointer to hkConstraintData
+    'hk_constraint_data_num', 'I',
+    'hk_constraint_offset', 'I', # optional pointer to hkConstraint
     'keys2_offset', 'I',
     'keys2_order_offset', 'I',
     'valAs_offset', 'I', # 8 ints
@@ -301,22 +301,7 @@ BufferInfo = structtuple("BufferInfo",
 MatBase = [ # normal material
     'unk_0', 'I',
     'unk_1', 'I',
-    'tex_2', 'I',
-    'tex_3', 'I',
-    'tex_4', 'I',
-    'tex_5', 'I',
-    'tex_6', 'I',
-    'tex_7', 'I',
-    'tex_8', 'I',
-    'tex_9', 'I',
-    'tex_10', 'I',
-    'tex_11', 'I',
-    'tex_12', 'I',
-    'tex_13', 'I',
-    'tex_14', 'I',
-    'tex_15', 'I',
-    'tex_16', 'I',
-    'tex_17', 'I',
+    'textures', '16I',
     'unk_18', 'I',
     'unk_19', 'I',
     'unk_20', 'I',
@@ -604,8 +589,8 @@ ShapeInfo = structtuple("ShapeInfo",
     'unk_24', 'I',
     'unk_25', 'I',
     'unk_26', 'I',
-    'hkshape_num', 'I',
-    'hkshape_offset', 'I', # pointer to hk_shape_info
+    'hk_shape_num', 'I',
+    'hk_shape_offset', 'I', # pointer to hk_shape_info
     'unk_29', '4S',
     'unk_30', 'I',
 )
@@ -890,13 +875,13 @@ class Mesh:
         assert self.indices[0]['val'] == 0xFFFFFFFF
         self.keys = unpack_list_from(Uint[f], buffer, info['keys_offset'], info['keys_num'])
         self.matrices = unpack_list_from(Matrix4x4[f], buffer, info['matrices_offset'], info['keys_num'])
-        self.valAs = unpack_list_from(Int[f], buffer, info['valAs_offset'], info['keys_num'] * 8)
-        self.mats = unpack_list_from(Int[f], buffer, info['mat_offset'], info['mat_num'])
-        self.valCs = unpack_list_from(Int[f], buffer, info['valCs_offset'], info['valCs_num'])
-        self.valDs = unpack_list_from(Int[f], buffer, info['valDs_offset'], info['valCs_num'] * 8)
-        self.vbuffs = unpack_list_from(Int[f], buffer, info['vbuff_offset'], info['vbuff_num'])
-        self.ibuffs = unpack_list_from(Int[f], buffer, info['ibuff_offset'], info['ibuff_num'])
-        self.valGs = unpack_list_from(Int[f], buffer, info['valGs_offset'], info['valGs_num'] * 16)
+        self.valAs = unpack_list_from(Uint[f], buffer, info['valAs_offset'], info['keys_num'] * 8)
+        self.mats = unpack_list_from(Uint[f], buffer, info['mat_offset'], info['mat_num'])
+        self.valCs = unpack_list_from(Uint[f], buffer, info['valCs_offset'], info['valCs_num'])
+        self.valDs = unpack_list_from(Uint[f], buffer, info['valDs_offset'], info['valCs_num'] * 8)
+        self.vbuffs = unpack_list_from(Uint[f], buffer, info['vbuff_offset'], info['vbuff_num'])
+        self.ibuffs = unpack_list_from(Uint[f], buffer, info['ibuff_offset'], info['ibuff_num'])
+        self.valGs = unpack_list_from(Uint[f], buffer, info['valGs_offset'], info['valGs_num'] * 16)
         if info['valJs_num'] == 0 and info['valJs_offset'] != 0 and info['valJs_offset'] != info['valGs_offset']:
             # valJs is sometimes a list of offsets of length keys_num, that point to offsets that point to 4 ints ???
             self.valJs = unpack_list_from(Uint[f], buffer, info['valJs_offset'], info['keys_num'])
@@ -910,18 +895,18 @@ class Mesh:
                     i += 1
                 self.valJvals.append(buffer[off:off+i])
         else:
-            self.valJs = unpack_list_from(Int[f], buffer, info['valJs_offset'], info['valJs_num'])
+            self.valJs = unpack_list_from(Uint[f], buffer, info['valJs_offset'], info['valJs_num'])
         if info['valKs_offset'] != 0:
             self.valKs_header = unpack_list_from(Ushort[f], buffer, info['valKs_offset'], 2)
             # if (self.valKs_header[0]['val'] != 3) or (self.valKs_header[1]['val'] != 6):
             #     warnings.warn(f"ValsK error, mesh {info['key']}")
             self.valKs = unpack_list_from(Float[f], buffer, info['valKs_offset'] + 4, 35)
         if info['valIs_offset'] != 0:
-            self.valIs = unpack_list_from(Int[f], buffer, info['valIs_offset'], info['valGs_num'])
+            self.valIs = unpack_list_from(Uint[f], buffer, info['valIs_offset'], info['valGs_num'])
         if info['keys2_offset'] != 0:
             assert info['keys2_order_offset'] != 0
             i = 0
-            while unpack_from(Int[f], buffer, info["keys2_offset"] + 8*i)['val'] != 0:
+            while unpack_from(Uint[f], buffer, info["keys2_offset"] + 8*i)['val'] != 0:
                 i += 1
             i += 1
             self.keys2 = unpack_list_from(Uint[f], buffer, info['keys2_offset'], i * 2)
@@ -943,12 +928,12 @@ class Mesh:
                 s += vals_b.nbytes
                 extra = unpack_list_from(Uint[f], buffer, offset + s, (size - s)//4)
                 self.blocks.append((header, vals_a, vals_b, extra))
-            # block_size = unpack_from(Int[f], buffer, info['block_offset'] + 8)['val']
+            # block_size = unpack_from(Uint[f], buffer, info['block_offset'] + 8)['val']
             # assert block_size % 4 == 0
-            # self.block = unpack_list_from(Int[f], buffer, info['block_offset'], block_size//4)
+            # self.block = unpack_list_from(Uint[f], buffer, info['block_offset'], block_size//4)
         # not sure why this pops up once, maybe it is padding between items?
         if info['valCs_offset'] == info['vbuff_offset'] and info['valCs_offset'] == info['ibuff_offset'] and info['valCs_offset'] == info['valDs_offset']:
-            self.val = unpack_list_from(Int[f], buffer, info['valCs_offset'], 4)
+            self.val = unpack_list_from(Uint[f], buffer, info['valCs_offset'], 4)
         self.max_offset = lotrc.types.MAX_OFFSET
         self.min_offset = lotrc.types.MIN_OFFSET
         return self
@@ -1101,7 +1086,7 @@ class HkConstraint:
             string = buffer[start:offset]
             self.strings.append((string, start, val))
             max_offset = max(offset+1, max_offset)
-        self.vals = unpack_list_from(Int[f], buffer, info['vals_offset'], info['vals_num'] * 12)
+        self.vals = unpack_list_from(Uint[f], buffer, info['vals_offset'], info['vals_num'] * 12)
         self.keys = unpack_list_from(Uint[f], buffer, info['keys_offset'], info['keys_num'])
         self.keys2 = unpack_list_from(Uint[f], buffer, info['keys2_offset'], info['keys2_num'] * 2)
         self.max_offset = max(lotrc.types.MAX_OFFSET, max_offset)
@@ -1136,13 +1121,13 @@ class Animation:
         self.objC = {}
 
     def unpack_from_block(self, buffer, offset, index, info, f="<"):
-        self.obj2[index] = unpack_list_from(Int[f], buffer, offset + info['obj2_offset'], info['obj2_num']*4)
-        self.obj3[index] = unpack_list_from(Int[f], buffer, offset + info['obj3_offset'], info['obj3_num']*11)
-        self.keys[index] = unpack_list_from(Int[f], buffer, offset + info['keys_offset'], info['keys_num'])
+        self.obj2[index] = unpack_list_from(Uint[f], buffer, offset + info['obj2_offset'], info['obj2_num']*4)
+        self.obj3[index] = unpack_list_from(Uint[f], buffer, offset + info['obj3_offset'], info['obj3_num']*11)
+        self.keys[index] = unpack_list_from(Uint[f], buffer, offset + info['keys_offset'], info['keys_num'])
         if info['obj5_offset'] != 0:
             self.obj5_header[index] = unpack_from(self.Obj5Heder[f], buffer, offset + info['obj5_offset'])
-            self.obj5A[index] = unpack_list_from(Int[f], buffer, offset + self.obj5_header[index]['objA_offset'], self.obj5_header[index]['objA_num']*7)
-            self.obj5B[index] = unpack_list_from(Int[f], buffer, offset + self.obj5_header[index]['objB_offset'], self.obj5_header[index]['objB_num']*7)
+            self.obj5A[index] = unpack_list_from(Uint[f], buffer, offset + self.obj5_header[index]['objA_offset'], self.obj5_header[index]['objA_num']*7)
+            self.obj5B[index] = unpack_list_from(Uint[f], buffer, offset + self.obj5_header[index]['objB_offset'], self.obj5_header[index]['objB_num']*7)
         if info['type'] == 3:
             self.objC[index] = hkaSplineSkeletalAnimation.unpack_from(buffer, offset, info, f)
         elif info['type'] < 3:
@@ -1290,10 +1275,10 @@ class hkaSplineSkeletalAnimation:
     @classmethod
     def unpack_from(Self, buffer, offset, header, f="<"):
         self = Self()
-        self.block_starts = unpack_list_from(Int[f], buffer, offset + header['block_starts_offset'], header['block_starts_num'])
-        self.block_ends = unpack_list_from(Int[f], buffer, offset + header['block_ends_offset'], header['block_ends_num'])
-        self.objC3 = unpack_list_from(Int[f], buffer, offset + header['objC3_offset'], header['objC3_num'])
-        self.objC4 = unpack_list_from(Int[f], buffer, offset + header['objC4_offset'], header['objC4_num'])
+        self.block_starts = unpack_list_from(Uint[f], buffer, offset + header['block_starts_offset'], header['block_starts_num'])
+        self.block_ends = unpack_list_from(Uint[f], buffer, offset + header['block_ends_offset'], header['block_ends_num'])
+        self.objC3 = unpack_list_from(Uint[f], buffer, offset + header['objC3_offset'], header['objC3_num'])
+        self.objC4 = unpack_list_from(Uint[f], buffer, offset + header['objC4_offset'], header['objC4_num'])
         self.flags, self.vals_a, self.vals_b, self.vals_c = [], [], [], []
         for start in self.block_starts['val']:
             self.flags.append(unpack_list_from(self.Flags[f], buffer, offset + header['block_offset'] + start, header['keys_num']))
@@ -1348,7 +1333,7 @@ def get_vertex_format(fmt1, fmt2):
             # blend weight
             if b1:
                 for _ in range(0, ((s + 15) & 0xFFFF0) - s, 4):
-                    fmt.append((f"pad{s}", Int))
+                    fmt.append((f"pad{s}", Uint))
                     s += 4
                 fmt.append(("weight", Vector4))
                 s += 16
@@ -1371,7 +1356,7 @@ def get_vertex_format(fmt1, fmt2):
             # normal
             if b1:
                 for _ in range(0, ((s + 15) & 0xFFFF0) - s, 4):
-                    fmt.append((f"pad{s}", Int))
+                    fmt.append((f"pad{s}", Uint))
                     s += 4
                 fmt.append(("norm", Vector4))
                 s += 16
@@ -1384,7 +1369,7 @@ def get_vertex_format(fmt1, fmt2):
             s += 12
         if b1:
             for _ in range(0, ((s + 15) & 0xFFFF0) - s, 4):
-                fmt.append((f"pad{s}", Int))
+                fmt.append((f"pad{s}", Uint))
                 s += 4
     else:
         if fmt1 & 1 != 0:

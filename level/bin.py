@@ -223,6 +223,7 @@ class Texture:
 class CubeTexture:
     # only 1 level, to the * handle
     def __init__(self, data0, data1, info, f='<'):
+        self.data0 = data0
         self.data = data1
         self.f = f
         self.format = info['format']
@@ -239,7 +240,9 @@ class CubeTexture:
             s = 1
             d = 4
         else:
-            raise ValueError(f"Unsupported Texture Format {self.format}")
+            warnings.warn(f"Unknown Texture Format {self.format}, treating as raw data. See this file for the actual format if you want to parse it")
+            return
+
         if info['levels'] > 1:
             raise ValueError("Not Supported")
         block_size = np.maximum(self.size//s, 1)
@@ -251,6 +254,8 @@ class CubeTexture:
             self.faces = [conv_img(self.data[data_size*i:data_size*i+data_size], self.size[1], self.size[0], self.format) for i in range(6)]
 
     def dump(self, f='<'):
+        if self.format not in [3, 7, 8, 10, 0xb, 0xc, 0x11]:
+            return self.data0, self.data
         if f == '<':
             return b'', b''.join(self.faces)
         elif self.f == f:

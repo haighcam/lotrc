@@ -343,26 +343,15 @@ class SubBlocks:
         return self
 
     def pack_into(self, buffer, offset, f="<"):
-        pack_into(self.header, buffer, offset, f)
-        dump_block_headers = self.block_headers.copy()
-        # pack_into(self.block_headers, buffer, self.header.nbytes+offset, f)
-        off = dump_block_headers[0]['offset']
-        for block, header in zip(self.blocks, dump_block_headers):
-            # block.pack_into(buffer, offset+header['offset'], f)
-            data = block.dump(f)
-            header['offset'] = off
-            header['size'] = len(data)
-            buffer[offset+off:offset+off+header['size']] = data
-            off = (off+header['size'] + 15) & 0xfffffff0
-            size = off
-        pack_into(dump_block_headers, buffer, self.header.nbytes+offset, f)
+        data = self.pack(f)
+        buffer[offset:offset+len(data)] = data
 
     def pack(self, f="<"):
         dump_block_headers = self.block_headers.copy()
         offset = self.header.nbytes + dump_block_headers.nbytes
         buffer = bytes()
         for block, header in zip(self.blocks, dump_block_headers):
-            off = (offset + 15) & 0xfffffff0
+            off = (offset + 16) & 0xfffffff0
             buffer += bytes(off - offset)
             offset = off
             data = block.dump(f)
@@ -370,6 +359,8 @@ class SubBlocks:
             header['size'] = len(data)
             offset += header['size']
             buffer += data
+        off = (offset + 16) & 0xfffffff0
+        buffer += bytes(off - offset)
         return pack(self.header, f) + pack(dump_block_headers, f) + buffer
 
 def get_level_obj_format(key, fields):
