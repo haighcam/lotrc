@@ -600,7 +600,7 @@ class GameObjs:
     @classmethod
     def from_dict(Self, block, f='<'):
         self = Self()
-        self.level_flag = block['valid_levels']
+        self.level_flag = block.get('valid_levels', 0xFFFFFFFF)
         self.types = []
         self.type_fields = []
         for t in block['types']:
@@ -652,7 +652,7 @@ class GameObjs:
                         offset = (offset + 15) & 0xFFFFFFF0
                 else:
                     val[field] = from_raw(v, ty)
-            self.objs.append(new(Self.ObjHeader[f], (o['layer'], ty_, (offset + 15) & 0xFFFFFFF0, 0, 0)))
+            self.objs.append(new(Self.ObjHeader[f], (o.get('layer', o['unk_0']), ty_, (offset + 15) & 0xFFFFFFF0, 0, 0)))
             self.obj_fields.append(val)
             self.obj_fields_data.append(extras)
         self.header = new(Self.Header[f], (
