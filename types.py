@@ -442,6 +442,12 @@ def hash_(val):
         return int(val, 16)
     else:
         return hash_string(val)
+    
+def get_alt(d, key, key_alt):
+    if key not in d:
+        return d[key_alt]
+    else:
+        return d[key]
 
 class GameObjs:
     Key = hash_string("Level")
@@ -652,7 +658,7 @@ class GameObjs:
                         offset = (offset + 15) & 0xFFFFFFF0
                 else:
                     val[field] = from_raw(v, ty)
-            self.objs.append(new(Self.ObjHeader[f], (o.get('layer', o['unk_0']), ty_, (offset + 15) & 0xFFFFFFF0, 0, 0)))
+            self.objs.append(new(Self.ObjHeader[f], (get_alt(o, 'layer', 'unk_0'), ty_, (offset + 15) & 0xFFFFFFF0, 0, 0)))
             self.obj_fields.append(val)
             self.obj_fields_data.append(extras)
         self.header = new(Self.Header[f], (
