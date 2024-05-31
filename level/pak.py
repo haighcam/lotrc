@@ -22,30 +22,30 @@ Header = structtuple("LevelPAK_Header",
     'sub_blocks2_offset', 'I',
     'string_keys_offset', 'I',
     'unk_16', 'I',
-    'unk_17', 'I',
-    'unk_18', 'I',
-    'unk_19', 'I',
-    'unk_20', 'I',
-    'unk_21', 'I',
-    'unk_22', 'I',
-    'unk_23', 'I',
-    'unk_24', 'I',
-    'unk_25', 'I',
+    'obja_size', 'I',
+    'obj0_size', 'I', 
+    'mesh_info_size', 'I',
+    'buffer_info_size', 'I',
+    'mat1_size', 'I',
+    'mat2_size', 'I',
+    'mat3_size', 'I',
+    'mat4_size', 'I',
+    'mat_extra_size', 'I',
     'unk_26', 'I',
-    'unk_27', 'I',
-    'unk_28', 'I',
-    'unk_29', 'I',
-    'unk_30', 'I',
-    'unk_31', 'I',
-    'unk_32', 'I',
-    'unk_33', 'I',
-    'unk_34', 'I',
-    'unk_35', 'I',
-    'unk_36', 'I',
-    'unk_37', 'I',
-    'unk_38', 'I',
-    'unk_39', 'I',
-    'unk_40', 'I',
+    'shape_info_size', 'I',
+    'hk_shape_info_size', 'I',
+    'hk_constraint_data_size', 'I',
+    'vbuff_info_size', 'I',
+    'ibuff_info_size', 'I',
+    'texture_info_size', 'I',
+    'animation_info_size', 'I', 
+    'hk_constraint_info_size', 'I', 
+    'game_objs_block_info_size', 'I', 
+    'pfield_info_size', 'I',
+    'gfx_block_info_size', 'I',
+    'animation_block_info_size', 'I',
+    'foliage_info_size', 'I',
+    'obj14_info_size', 'I',
     'unk_41', 'I',
     'obja_num', 'I', # object not used by game
     'obj0_num', 'I', # object not used by game
@@ -141,7 +141,7 @@ Obj0 = structtuple("LevelPAK_Obj0",
 
 MeshInfo = structtuple("MeshInfo",
     'key', 'I',
-    'block_flag', 'I',
+    'level_flag', 'I',
     'mat_offset', 'I',
     'buffer_info_offset', 'I', # pointer to buffer_info, uses mat_num of sequential objects
     'unk_4', 'I',
@@ -697,7 +697,7 @@ IBuffInfo = structtuple("IBuffInfo",
 
 TextureInfo = structtuple("TextureInfo",
     'key', 'I',
-    'block_flag', 'I',
+    'level_flag', 'I',
     'asset_key', 'I',
     'asset_type', 'I',
     'type', 'I',
@@ -717,7 +717,7 @@ TextureInfo = structtuple("TextureInfo",
 
 AnimationInfo = structtuple("AnimationInfo",
     'key', 'I',
-    'block_flag', 'I',
+    'level_flag', 'I',
     'offset', 'I',
     'size', 'I',
     'type', 'I',
@@ -779,7 +779,7 @@ HkConstraintInfo = structtuple("HkConstraintInfo",
 
 GameObjBlockInfo = structtuple("GameObjBlockInfo",
     'key', 'I',
-    'unk_1', 'I',
+    'level_flag', 'I',
     'offset', 'I',
     'size', 'I',
 )
@@ -841,7 +841,7 @@ Obj14Info = structtuple("Obj14", # points to list of ints in block1
 
 BlockAVal = structtuple("BlockAVal",
     'unk_0', '<I',
-    'block_flags', '<I',
+    'level_flag', '<I',
     'key', '<I',
     'unk_3', '<I',
     'unk_4', '<I',
@@ -1149,16 +1149,16 @@ class Animation:
     @staticmethod
     def unpack_block(anims, infos, buffer, offset, index, f="<"):
         for anim, info in zip(anims, infos):
-            block_flag = 1 << index
-            if block_flag & info['block_flag'] != 0:
+            level_flag = 1 << index
+            if level_flag & info['level_flag'] != 0:
                 anim.unpack_from_block(buffer, offset, index, info, f)
                 offset += info['size']
                 
     @staticmethod
     def pack_block(anims, infos, buffer, offset, index, f="<"):
         for anim, info in zip(anims, infos):
-            block_flag = 1 << index
-            if block_flag & info['block_flag'] != 0:
+            level_flag = 1 << index
+            if level_flag & info['level_flag'] != 0:
                 anim.pack_into_block(buffer, offset, index, info, f)
                 offset += info['size']
 

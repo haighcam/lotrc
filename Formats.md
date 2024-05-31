@@ -1,3 +1,5 @@
+# This information is currently out of data, although most of it is still somewhat correct
+
 # An overview of level file formats
 
 - unless otherwise stated the xbox version seems to just be a big endian version of the pc version  

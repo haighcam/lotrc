@@ -350,17 +350,18 @@ class SubBlocks:
         dump_block_headers = self.block_headers.copy()
         offset = self.header.nbytes + dump_block_headers.nbytes
         buffer = bytes()
+        off = (offset + 15) & 0xfffffff0
+        buffer += bytes(off - offset)
+        offset = off
         for block, header in zip(self.blocks, dump_block_headers):
-            off = (offset + 16) & 0xfffffff0
-            buffer += bytes(off - offset)
-            offset = off
             data = block.dump(f)
             header['offset'] = offset
             header['size'] = len(data)
             offset += header['size']
             buffer += data
-        off = (offset + 16) & 0xfffffff0
-        buffer += bytes(off - offset)
+            off = (offset + 16) & 0xfffffff0
+            buffer += bytes(off - offset)
+            offset = off
         return pack(self.header, f) + pack(dump_block_headers, f) + buffer
 
 def get_level_obj_format(key, fields):
@@ -465,17 +466,18 @@ class GameObjs:
         "offset", "I",
     )
     ObjHeader = structtuple("GameObjs_ObjHeader",
-        "unk_0", "I",
+        "layer", "I",
         "key", "I",
         "size", "H",
         "z3", "H",
         "z4", "I",
     )
     @classmethod
-    def unpack_from(Self, buffer, offset_, size, types, f="<"):
+    def unpack_from(Self, buffer, offset_, size, types, f="<", level_flag=0xFFFFFFFF):
         self = Self()
         self.size = size
         self.data = buffer[offset_:offset_+size]
+        self.level_flag = level_flag
         # return self
         self.header = unpack_from(self.Header[f], buffer, offset_)
 
@@ -576,7 +578,7 @@ class GameObjs:
         
             obj = {}
             obj['type'] = keys.get(obj_['key'], int(obj_['key']))
-            obj['unk_0'] = int(obj_['unk_0'])
+            obj['layer'] = int(obj_['layer'])
             fields = {}
             
             for (key, _) in sorted(obj_fields.dtype.fields.items(), key=lambda x: x[1][1]):
@@ -590,13 +592,15 @@ class GameObjs:
                 
             obj['fields'] = fields
             objs.append(obj)
-        block['types'] = types
+        block['valid_levels'] = self.level_flag
         block['objs'] = objs
+        block['types'] = types
         return block
     
     @classmethod
     def from_dict(Self, block, f='<'):
         self = Self()
+        self.level_flag = block['valid_levels']
         self.types = []
         self.type_fields = []
         for t in block['types']:
@@ -648,7 +652,7 @@ class GameObjs:
                         offset = (offset + 15) & 0xFFFFFFF0
                 else:
                     val[field] = from_raw(v, ty)
-            self.objs.append(new(Self.ObjHeader[f], (o['unk_0'], ty_, (offset + 15) & 0xFFFFFFF0, 0, 0)))
+            self.objs.append(new(Self.ObjHeader[f], (o['layer'], ty_, (offset + 15) & 0xFFFFFFF0, 0, 0)))
             self.obj_fields.append(val)
             self.obj_fields_data.append(extras)
         self.header = new(Self.Header[f], (
