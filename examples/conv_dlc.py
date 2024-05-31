@@ -1,4 +1,5 @@
 import lotrc
+import os
 
 # decompiling them is unneded for this and is slow
 lotrc.types.DECOMP_LUA = False
