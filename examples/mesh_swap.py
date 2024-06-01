@@ -44,7 +44,7 @@ s = set(levelHelm.pak_strings)
 levelHelm.pak_strings.extend(i for i in levelIsen.pak_strings if i not in s)
 s = set(levelHelm.bin_strings)
 levelHelm.bin_strings.extend(i for i in levelIsen.bin_strings if i not in s)
-levelHelm.keys.updatae(levelIsen.keys)
+levelHelm.keys.update(levelIsen.keys)
 # dump and write the level
 (infos, pak_data, bin_data) = levelHelm.dump()
 
