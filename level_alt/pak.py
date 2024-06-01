@@ -192,22 +192,15 @@ class Mesh:
             ibuff_map[0] = 0xFFFFFFFF
             vbuff_map[0] = 0xFFFFFFFF
             for buff in self.buffer_infos:
-            # print(vbuff_map)
-            # print(self.buffer_infos['vbuff_info_offset_2'])
-            # print(np.vectorize(vbuff_map.get)(self.buffer_infos['vbuff_info_offset_2']))
-            # self.buffer_infos['vbuff_info_offset'] = np.vectorize(vbuff_map.get)(self.buffer_infos['vbuff_info_offset']).astype(np.uint32)
-            # self.buffer_infos['vbuff_info_offset_2'] = np.vectorize(vbuff_map.get)(self.buffer_infos['vbuff_info_offset_2']).astype(np.uint32)
-            # self.buffer_infos['vbuff_info_offset_3'] = np.vectorize(vbuff_map.get)(self.buffer_infos['vbuff_info_offset_3']).astype(np.uint32)
-            # self.buffer_infos['ibuff_info_offset'] = np.vectorize(ibuff_map.get)(self.buffer_infos['ibuff_info_offset']).astype(np.uint32)
                 buff['vbuff_info_offset'] = vbuff_map[buff['vbuff_info_offset']]
                 buff['vbuff_info_offset_2'] = vbuff_map[buff['vbuff_info_offset_2']]
                 buff['vbuff_info_offset_3'] = vbuff_map[buff['vbuff_info_offset_3']]
                 buff['ibuff_info_offset'] = ibuff_map[buff['ibuff_info_offset']]
 
-        self.extra_off = None
-        if self.info['keys_offset'] == 0:
-            offset = self.info['ibuff_offset'] + self.ibuff_order.nbytes
-            self.extra_off = self.shapes[0].hk_shapes[0].info['d_offset'] - offset
+        # self.extra_off = None
+        # if self.info['keys_offset'] == 0:
+        #     offset = self.info['ibuff_offset'] + self.ibuff_order.nbytes
+        #     self.extra_off = self.shapes[0].hk_shapes[0].info['d_offset'] - offset
     
     def infos_count(self):
         hk_shapes = 0
@@ -459,42 +452,96 @@ class Mesh:
     def __repr__(self):
         return pprint.pformat(self.__dict__)
         
-class TerrainMesh:
-    def __init__(self):
-        pass
-    def dump(self, offset, f='<'):
+class TerrainMesh(Mesh):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.extra_off = None
+        if len(self.shapes) != 0:
+            offset = self.info['ibuff_offset'] + self.ibuff_order.nbytes
+            self.extra_off = self.shapes[0].hk_shapes[0].info['d_offset'] - offset
+
+    def dump(self, offset, indices_offset, infos, f='<'):
         info = self.info.copy()
         data = bytes()
+        
+        mat_order = self.mat_order.copy()
+        if len(self.mat_order) != 0:
+            mat_map = {}
+            for i, (mat, mat_extra) in enumerate(zip(self.mats, self.mat_extras)):
+                mat = mat.copy()
+                if mat_extra is not None:
+                    mat['mat_extra_offset'] = infos['header']['mat_extra_offset'] + len(infos['mat_extra']) * lotrc.level.pak.MatExtra[f].itemsize
+                    infos['mat_extra'].append(mat_extra)
+                if mat['type'] == 0:
+                    mat_map[i] = infos['header']['mat1_offset'] + len(infos['mat1']) * lotrc.level.pak.Mat1[f].itemsize
+                    infos['mat1'].append(mat)
+                elif mat['type'] == 1:
+                    mat_map[i] = infos['header']['mat4_offset'] + len(infos['mat4']) * lotrc.level.pak.Mat4[f].itemsize
+                    infos['mat4'].append(mat)
+                elif mat['type'] == 2:
+                    mat_map[i] = infos['header']['mat2_offset'] + len(infos['mat2']) * lotrc.level.pak.Mat2[f].itemsize
+                    infos['mat2'].append(mat)
+                elif mat['type'] == 3:
+                    mat_map[i] = infos['header']['mat3_offset'] + len(infos['mat3']) * lotrc.level.pak.Mat3[f].itemsize
+                    infos['mat3'].append(mat)
+            mat_order['val'] = np.vectorize(mat_map.get)(mat_order['val'])
+            
+        vbuff_order = self.vbuff_order.copy()
+        vbuff_map = {}
+        if len(self.vbuff_order) != 0:
+            vbuff_map = {
+                i: infos['header']['vbuff_info_offset'] + (len(infos['vbuff']) + i) * lotrc.level.pak.VBuffInfo[f].itemsize
+                for i in range(len(self.vbuffs))
+            }
+            vbuff_order['val'] = np.vectorize(vbuff_map.get)(vbuff_order['val'])
+            infos['vbuff'].extend(self.vbuffs)
+            
+        ibuff_order = self.ibuff_order.copy()
+        ibuff_map = {}
+        if len(self.ibuff_order) != 0:
+            ibuff_map = {
+                i: infos['header']['ibuff_info_offset'] + (len(infos['ibuff']) + i) * lotrc.level.pak.IBuffInfo[f].itemsize
+                for i in range(len(self.ibuffs))
+            }
+            ibuff_order['val'] = np.vectorize(ibuff_map.get)(ibuff_order['val'])
+            infos['ibuff'].extend(self.ibuffs)
+
+        vbuff_map[0xFFFFFFFF] = 0
+        ibuff_map[0xFFFFFFFF] = 0
+        buffer_infos = self.buffer_infos.copy()
+        if len(buffer_infos) != 0:
+            buffer_infos['vbuff_info_offset'] = np.vectorize(vbuff_map.get)(buffer_infos['vbuff_info_offset'])
+            buffer_infos['vbuff_info_offset_2'] = np.vectorize(vbuff_map.get)(buffer_infos['vbuff_info_offset_2'])
+            buffer_infos['vbuff_info_offset_3'] = np.vectorize(vbuff_map.get)(buffer_infos['vbuff_info_offset_3'])
+            buffer_infos['ibuff_info_offset'] = np.vectorize(ibuff_map.get)(buffer_infos['ibuff_info_offset'])
+        info['buffer_info_offset'] = infos['header']['buffer_info_offset'] + len(infos['buffer']) * lotrc.level.pak.BufferInfo[f].itemsize
+        infos['buffer'].extend(buffer_infos)
+
+        info['hk_constraint_data_num'] = len(self.hk_constraint_datas)
+        if len(self.hk_constraint_datas) != 0:
+            info['hk_constraint_data_offset'] = infos['header']['hk_constraint_data_offset'] + len(infos['hk_constraint_data']) * lotrc.level.pak.HkConstraintData[f].itemsize
+        else:
+            info['hk_constraint_data_offset'] = 0
+        infos['hk_constraint_data'].extend(self.hk_constraint_datas)
 
         info['keys_offset'] = 0
         info['keys_num'] = len(self.valAs) // 8
 
-        # info['valAs_offset'] = !!!point to self
-        warnings.warn("valAs_offset not set correctly")
+        info['valAs_offset'] = len(infos['mesh']) * 256 + infos['header']['mesh_info_offset'] + 16
 
-        info['valGs_offset'] = offset
-        info['valGs_num'] = len(self.valGs) // 16
-        vals = pack(self.valGs)
-        offset += len(vals)
-        data += vals
+        info['valGs_offset'] = indices_offset
+        info['valGs_num'] = 0
+        info['valIs_offset'] = 0
+        info['indices_offset'] = indices_offset
 
-        if self.valIs is not None:
-            info['valIs_offset'] = offset
-            vals = pack(self.valIs, f)
+        if self.hk_constraint is not None:
+            info['hk_constraint_offset'] = infos['header']['hk_constraint_info_offset'] + len(infos['hk_constraint']) * lotrc.level.pak.HkConstraintInfo[f].itemsize
+            vals = self.hk_constraint.dump(offset, info['keys_offset'], info['keys_num'], infos, f)
             offset += len(vals)
             data += vals
-        else:
-            info['valIs_offset'] = 0
-            
-        info['indices_offset'] = offset
-        vals = pack(self.indices)
-        offset += len(vals)
-        data += vals
+        else:           
+            info['hk_constraint_offset'] = 0
         
-        off = (offset + 15) & 0xFFFFFFF0
-        data += bytes(off - offset)
-        offset = off
-
         shape_offsets = []
         for shape in self.shapes:
             shape_offsets.append(offset)
@@ -517,8 +564,9 @@ class TerrainMesh:
         data += vals
 
         info['mat_offset'] = offset
-        info['mat_num'] = len(self.mat_order)
-        vals = pack(self.mat_order)
+        info['mat_num'] = len(mat_order)
+        infos['block2_offsets'].extend(offset + i * 4 for i in range(len(mat_order)))
+        vals = pack(mat_order)
         offset += len(vals)
         data += vals
 
@@ -529,25 +577,76 @@ class TerrainMesh:
         data += vals
 
         info['vbuff_offset'] = offset
-        info['vbuff_num'] = len(self.vbuff_order)
-        vals = pack(self.vbuff_order)
+        info['vbuff_num'] = len(vbuff_order)
+        infos['block2_offsets'].extend(offset + i * 4 for i in range(len(vbuff_order)))
+        vals = pack(vbuff_order)
         offset += len(vals)
         data += vals
 
+        off_dest = offset + 320
         info['ibuff_offset'] = offset
-        info['ibuff_num'] = len(self.ibuff_order)
-        vals = pack(self.ibuff_order)
+        info['ibuff_num'] = len(ibuff_order)
+        infos['block2_offsets'].extend(offset + i * 4 for i in range(len(ibuff_order)))
+        vals = pack(ibuff_order)
         offset += len(vals)
         data += vals
-
-        offset += self.extra_off
-        data += bytes(self.extra_off)
         
-        for shape, shape_off in zip(self.shapes, shape_offsets):
-            vals, _, _ = shape.dump(offset, shape_off, f)
+        if self.valKs_header is not None:
+            off = (offset + 15) & 0xFFFFFFF0
+            data += bytes(off - offset)
+            offset = off
+
+            info['valKs_offset'] = offset
+            vals = pack(self.valKs_header, f) + pack(self.valKs, f)
             offset += len(vals)
             data += vals
 
+        if self.keys2 is not None:
+            info['keys2_offset'] = offset
+            vals = pack(self.keys2, f)
+            offset += len(vals)
+            data += vals
+            info['keys2_order_offset'] = offset
+            vals = pack(self.keys2_order, f)
+            offset += len(vals)
+            data += vals
+
+        if self.block_header is not None:
+            off = (offset + 15) & 0xFFFFFFF0
+            data += bytes(off - offset)
+            offset = off
+
+            info['block_offset'] = offset
+            vals = pack(self.block_header, f) + pack(self.block_sizes, f)
+            offset += len(vals)
+            data += vals
+            for i, (header, vals_a, vals_b, extra) in enumerate(self.blocks):
+                off = self.block_sizes[i]['val'] + info['block_offset']
+                data += bytes(off - offset)
+                offset = off
+                vals = pack(header, f) + pack(vals_a, f) + pack(vals_b, f) + pack(extra, f)
+                offset += len(vals)
+                data += vals
+
+        # if self.extra_off is not None:
+        #     offset += self.extra_off
+        #     data += bytes(self.extra_off)
+        data += bytes(off_dest - offset)
+        offset = off_dest
+
+        info['shape_num'] = len(self.shapes)
+        if len(self.shapes) != 0:
+            info['shape_offset'] = infos['header']['shape_info_offset'] + len(infos['shape']) * lotrc.level.pak.ShapeInfo[f].itemsize
+        else:
+            info['shape_offset'] = 0
+        for shape, shape_off in zip(self.shapes, shape_offsets):
+            vals = shape.dump(offset, shape_off, infos, f)
+            offset += len(vals)
+            data += vals
+
+        infos['mesh'].append(info)
+            
+        return data
 
 Mats = [
     lotrc.level.pak.Mat1,
@@ -614,6 +713,7 @@ class Shape:
         info = self.info.copy()
         if extra_offset is not None:
             info['offset'] = extra_offset
+            infos['block2_offsets'].append(infos['header']['shape_info_offset'] + len(infos['shape']) * self.ShapeInfo[f].itemsize)
 
         info['hk_shape_offset'] = infos['header']['hk_shape_info_offset'] + len(infos['hk_shape']) * lotrc.level.pak.HkShapeInfo[f].itemsize
         data = bytes()
@@ -657,12 +757,15 @@ class ShapeExtra:
     def __init__(self, data, offset, f='<'):
         self.info = unpack_from(lotrc.level.pak.Shape.Header[f], data, offset)
         offset += self.info.nbytes
-        self.vals = unpack_list_from(Uint[f], data, offset, self.info['num'])
-        offset += self.vals.nbytes
-        self.data = data[offset:offset+self.vals[-1]['val']+2] # 2 seems to be the correct amount, not sure what the data is so I don't know how much extra is needed
+        self.offs = unpack_list_from(Uint[f], data, offset, self.info['num'])
+        offset += self.offs.nbytes
+        off = self.offs[-1]['val'] + offset
+        while data[off] != 0 or data[off+1] != 0:
+            off += 1
+        self.data = data[offset:off] # 2 seems to be the correct amount, not sure what the data is so I don't know how much extra is needed
 
     def dump(self, f='<'):
-        return pack(self.info, f) + pack(self.vals, f) + self.data
+        return pack(self.info, f) + pack(self.offs, f) + self.data
 
 class HkConstraint:
     Info = structtuple("HkConstraint_Info",

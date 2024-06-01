@@ -64,7 +64,7 @@ Header = structtuple("LevelPAK_Header",
     'ibuff_info_num', 'I', # g
     'texture_info_num', 'I', # 7
     'animation_info_num', 'I', # 8
-    'hk_constraint_info_num', 'I', # 9  
+    'hk_constraint_info_num', 'I', # 9
     'game_objs_block_info_num', 'I', # 10
     'pfield_info_num', 'I', # 12
     'gfx_block_info_num', 'I',
@@ -986,9 +986,9 @@ class Mesh:
 class Shape:
     Header = structtuple("Header",
         "num", "I",
-        "unk_1", "I",
+        "unk_1", "f",
         "unk_2", "I",
-        "unk_3", "I",
+        "unk_3", "f",
     )
     @classmethod
     def unpack_from(Self, buffer, info, f="<"):
@@ -1001,9 +1001,12 @@ class Shape:
             offset = info['offset']
             self.header = unpack_from(Self.Header[f], buffer, offset)
             offset += self.header.nbytes
-            self.vals = unpack_list_from(Uint[f], buffer, info['offset'] + self.header.nbytes, self.header['num'])
-            offset += self.vals.nbytes
-            self.data = buffer[offset:offset+self.vals[-1]['val']+2] # 2 seems to be the correct amount, not sure what the data is so I don't know how much extra is needed
+            self.offs = unpack_list_from(Uint[f], buffer, info['offset'] + self.header.nbytes, self.header['num'])
+            offset += self.offs.nbytes
+            off = self.offs[-1]['val'] + offset
+            while buffer[off] != 0 or buffer[off+1] != 0:
+                off += 1
+            self.data = buffer[offset:off] # 2 seems to be the correct amount, not sure what the data is so I don't know how much extra is needed
         self.max_offset = lotrc.types.MAX_OFFSET
         self.min_offset = lotrc.types.MIN_OFFSET
         return self
@@ -1013,9 +1016,9 @@ class Shape:
             offset = info['offset']
             pack_into(self.header, buffer, offset, f)
             offset += self.header.nbytes
-            pack_into(self.vals, buffer, offset, f)
-            offset += self.vals.nbytes
-            buffer[offset:offset+self.vals[-1]['val']+2]  = self.data
+            pack_into(self.offs, buffer, offset, f)
+            offset += self.offs.nbytes
+            buffer[offset:offset+len(self.data)]  = self.data
 
 class HkShape:
     """

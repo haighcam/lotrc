@@ -53,20 +53,22 @@ class LevelData:
         
         self.objas = unpack_list_from(pak_.ObjA[self.f], self.block1, self.pak_header['obja_offset'], self.pak_header['obja_num'])
         self.obj0s = unpack_list_from(pak_.Obj0[self.f], self.block1, self.pak_header['obj0_offset'], self.pak_header['obj0_num'])
-        self.foliage_infos = unpack_list_from(pak_.FoliageInfo[self.f], self.block1, self.pak_header['foliage_info_offset'], self.pak_header['foliage_info_num'])
         self.pfield_infos = unpack_list_from(pak_.PFieldInfo[self.f], self.block1, self.pak_header['pfield_info_offset'], self.pak_header['pfield_info_num'])
         self.animation_infos = unpack_list_from(pak_.AnimationInfo[self.f], self.block1, self.pak_header['animation_info_offset'], self.pak_header['animation_info_num'])
         
-        meshes = [Mesh(self.block1, self.pak_header['mesh_info_offset'] + i * Mesh.Info[self.f].itemsize, self.f) for i in range(self.pak_header['mesh_info_num'])]
-        for mesh in meshes:
+        self.meshes = OrderedDict()
+        for i in range(self.pak_header['mesh_info_num']):
+            if unpack_from(Uint[self.f], self.block1, self.pak_header['mesh_info_offset'] + i * Mesh.Info[self.f].itemsize + 136)['val'] != 0:
+                mesh = Mesh(self.block1, self.pak_header['mesh_info_offset'] + i * Mesh.Info[self.f].itemsize, self.f)
+            else:
+                mesh = TerrainMesh(self.block1, self.pak_header['mesh_info_offset'] + i * Mesh.Info[self.f].itemsize, self.f)
             if len(mesh.vbuffs) == 0 and len(mesh.ibuffs) == 0:
                 mesh.vertex_data = None
             else:
                 assert(mesh.info['vbuff_num'] != 0 or mesh.info['ibuff_num'] != 0)
                 mesh.vertex_data = asset_data.pop((mesh.info['asset_key'], mesh.info['asset_type']))
-        self.meshes = OrderedDict(
-            (mesh.info['key'], mesh) for mesh in meshes
-        )
+            self.meshes[mesh.info['key']] = mesh
+            
         self.gameobjs = {
             info['key']: GameObjs.unpack_from(self.block1, info['offset'], info['size'], self.game_objs_types, self.f, info['level_flag'])
             for info in unpack_list_from(pak_.GameObjBlockInfo[self.f], self.block1, self.pak_header['game_objs_block_info_offset'], self.pak_header['game_objs_block_info_num'])
@@ -83,6 +85,10 @@ class LevelData:
             info['key']: (info, asset_data.pop(((info['asset_key']), info['asset_type']), None), asset_data.pop((hash_string('*', info['asset_key']), info['asset_type']), None))
             for info in unpack_list_from(pak_.TextureInfo[self.f], self.block1, self.pak_header['texture_info_offset'], self.pak_header['texture_info_num'])
         }
+        self.foliages = OrderedDict()
+        for info in unpack_list_from(pak_.FoliageInfo[self.f], self.block1, self.pak_header['foliage_info_offset'], self.pak_header['foliage_info_num']):
+            if info['key'] not in self.foliages: self.foliages[info['key']] = []
+            self.foliages[info['key']].append((info, unpack_list_from(Uint[self.f], self.block1, info['offset'], (info['s1b'] - info['s1a']) * (info['s2b'] - info['s2a']) * 2)))
         self.animation_blocks = {
             info['key']: (info, CompressedBlock.unpack_from(data, info['size'], info['size_comp'], info['offset']).data) 
             for info in unpack_list_from(pak_.AnimationBlockInfo[self.f], self.block1, self.pak_header['animation_block_info_offset'], self.pak_header['animation_block_info_num'])
@@ -137,7 +143,7 @@ class LevelData:
                 offset += len(data_comp)
                 off =  (offset + 2047) & 0xfffff800
                 bin_data += bytes(off - offset)
-                offset = off            
+                offset = off
         asset_handles = new(bin_.AssetHandle[f], asset_handles)
         off =  (offset + 2047) & 0xfffff800
         bin_data += bytes(off - offset)
@@ -203,10 +209,11 @@ class LevelData:
         ) = sum(i.infos_count() for i in self.meshes.values()).tolist()
         pak_header['mesh_info_num'] = len(self.meshes)
         pak_header['texture_info_num'] = texture_infos.size
-        pak_header['game_objs_block_info_offset'] = len(self.gameobjs)
+        pak_header['game_objs_block_info_num'] = len(self.gameobjs)
         pak_header['gfx_block_info_num'] = len(self.gfx_blocks)
-        pak_header['obj14_info_offset'] = len(self.light_blocks)
+        pak_header['obj14_info_num'] = len(self.light_blocks)
         pak_header['animation_block_info_offset'] = animation_block_infos.size
+        pak_header['foliage_info_num'] = sum(len(i) for i in self.foliages.values())
         
         block1 = bytes()
         pak_header['obja_offset'] = len(block1)
@@ -306,17 +313,47 @@ class LevelData:
             block1 += vals
         gameobjs = new(pak_.GameObjBlockInfo[f], gameobjs)
         infos['gameobjs'] = gameobjs
-        print("gameobjs done", offset)
+        print("gameobjs done", len(block1))
 
         key_occluder = hash_string('occluder')
-        self.meshes.move_to_end(key_occluder)
-        for key, mesh in self.meshes.items():
-            if key == key_occluder:
-                block1 += b'\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'
-                offset += 16
-            vals = mesh.dump(len(block1), infos, f)
+        normal = []
+        collisions_roads = []
+        terrain = []
+        for k in self.meshes.keys():
+            if k == key_occluder:
+                continue
+            elif self.keys[k].startswith("Terrain"):
+                terrain.append(k)
+            elif "Road" in self.keys[k] or "Collision" in self.keys[k]:
+                collisions_roads.append(k)
+            else:
+                normal.append(k)
+        for key in sorted(normal) + collisions_roads:
+            vals = self.meshes[key].dump(len(block1), infos, f)
             block1 += vals
             block1 += bytes(((len(block1) + 15) & 0xFFFFFFF0) - len(block1))
+
+        terrain_start_offset = len(block1)
+        block1 += b'\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'
+        for key in sorted(terrain, key=lambda x: int(self.keys[x].split('_')[-1])):
+            vals = self.meshes[key].dump(len(block1), terrain_start_offset, infos, f)
+            block1 += vals
+
+        block1 += bytes(((len(block1) + 15) & 0xFFFFFFF0) - len(block1))
+        foliages = []
+        for info, val in [j for i in self.foliages.values() for j in i]:
+            info = info.copy()
+            info['offset'] = len(block1)
+            block1 += pack(val, f)
+            block1 += bytes(((len(block1) + 15) & 0xFFFFFFF0) - len(block1))
+            foliages.append(info)
+        infos['foliage'] = foliages
+
+        for key in [key_occluder]:
+            vals = self.meshes[key].dump(len(block1), infos, f)
+            block1 += vals
+            block1 += bytes(((len(block1) + 15) & 0xFFFFFFF0) - len(block1))
+        
         assert(len(infos['mesh']) == pak_header['mesh_info_num'])
         assert(len(infos['shape']) == pak_header['shape_info_num'])
         assert(len(infos['hk_shape']) == pak_header['hk_shape_info_num'])
@@ -330,7 +367,9 @@ class LevelData:
         assert(len(infos['buffer']) == pak_header['buffer_info_num'])
         assert(len(infos['vbuff']) == pak_header['vbuff_info_num'])
         assert(len(infos['ibuff']) == pak_header['ibuff_info_num'])
-        print("meshes done", len(block1))
+        assert(len(infos['foliage']) == pak_header['foliage_info_num'])
+        print("meshes done", len(block1), len(normal), len(collisions_roads), len(terrain))
+
 
         gfx_blocks = []
         for key, val in self.gfx_blocks.items():
@@ -381,7 +420,8 @@ class LevelData:
         pack_into(self.pfield_infos, block1, pak_header['pfield_info_offset'], f)
         pack_into(gfx_blocks, block1, pak_header['gfx_block_info_offset'], f)
         pack_into(animation_block_infos, block1, pak_header['animation_block_info_offset'], f)
-        pack_into(self.foliage_infos, block1, pak_header['foliage_info_offset'], f)
+        if len(foliages) != 0:
+            pack_into(np.stack(foliages), block1, pak_header['foliage_info_offset'], f)
         pack_into(light_blocks, block1, pak_header['obj14_info_offset'], f)
         
         block1 = bytes(block1)
@@ -473,7 +513,10 @@ class LevelData:
             block2_offsets.append(pak_header['gfx_block_info_offset'] + i * pak_.GFXBlockInfo['<'].itemsize + 4)
         for i in range(pak_header['obj14_info_num']):
             block2_offsets.append(pak_header['obj14_info_offset'] + i * pak_.Obj14Info['<'].itemsize + 8)
+        for i in range(pak_header['foliage_info_num']):
+            block2_offsets.append(pak_header['foliage_info_offset'] + i * pak_.FoliageInfo['<'].itemsize + 28)
         block2_offsets.extend(infos['block2_offsets'])
+        infos['block2_offsets'] = block2_offsets
         block2_offsets = new(Uint[f], block2_offsets)
         pak_header['sub_blocks2_offset'] = 0
         block2 = self.sub_blocks2.pack(f)

@@ -9,7 +9,7 @@ lotrc.types.DECOMP_LUA = False
 # load some level data
 levelDLC = lotrc.LevelData("Xbox/AddOn/HeroesandMapsPack/Amon_Hen")
 
-# load the new level.uv
+# load the new level
 with open("LevelNew.json", "r") as f:
     vals = json.load(f)
 
