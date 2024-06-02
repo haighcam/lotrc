@@ -814,7 +814,7 @@ class HkConstraint:
         # don't dump keys since they are part of the parent mesh
         info = self.info.copy()
         info['keys_offset'] = keys_offset
-        info['keys_num'] = len(self.strings)
+        info['keys_num'] = keys_num
 
         info['strings_offset'] = offset
         info['strings_num'] = len(self.strings)

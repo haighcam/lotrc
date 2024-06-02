@@ -800,7 +800,7 @@ GFXBlockInfo = structtuple("GFXBlockInfo", # GFX blocks?, unchanged by encoding,
 
 AnimationBlockInfo = structtuple("AnimationBlockInfo",
     'key', 'I',
-    'unk_1', 'I',
+    'gamemode_guid', 'I',
     'key_name', 'I',
     'offset', 'I',
     'size', 'I',

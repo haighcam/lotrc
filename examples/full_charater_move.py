@@ -71,6 +71,10 @@ balrog_class_id = 109012487
 # grab the balrog class object and all objects it depends on, setting the gamemode mask on objects that have it
 balrog_class_items = copy_tree(vals, balrog_class_id, gamemodemask=43)
 
+# add any types that are missing
+valid_types = set(i['name'] for i in vals_dest['types'])
+needed_types = [find_type(vals, t) for t in set(o['type'] for o in balrog_class_items).difference(valid_types)]
+vals_dest['types'].extend(needed_types)
 
 # grab the meshes and textures needed for the balrog
 meshes = [

@@ -4,7 +4,7 @@ from lotrc.types import *
 class LevelInfo:
     Header = structtuple("LevelInfo_Header", 
         'constx04', 'I',
-        'valA', 'I',
+        'dlc', 'I',
         'strings_offset', 'I',
         'strings_size', 'I',
         'strings_num', 'I',
@@ -16,7 +16,7 @@ class LevelInfo:
         'gamemodes_offset', 'I',
         'levels_num', 'I',
         'levels_offset', 'I',
-        'valB', 'I',
+        'size2048', 'I',
     )
     LevelVal = structtuple("LevelInfo_LevelVal", 
         'name', '32S',
@@ -58,17 +58,31 @@ class LevelInfo:
         self.key = self.data[0x38:0x13c]
 
     def dump(self, f):
-        file = bytearray(len(self.data))
-        pack_into(self.header, file, 0, f)
+        header = self.header.copy()
+        header['gamemodes_offset'] = 0x13c
+        header['gamemodes_num'] = self.gamemodes.size
+        header['levels_offset'] = header['gamemodes_offset'] + header['gamemodes_num'] * self.GamemodeVal[f].itemsize
+        header['levels_num'] = self.levels.size
+        header['string_keys_offset'] = header['levels_offset'] + header['levels_num'] * self.LevelVal[f].itemsize
+        header['string_keys_size'] = len(self.string_keys.pack("<"))
+        header['local_strings_offset'] = header['string_keys_offset'] + header['string_keys_size']
+        header['local_strings_size'] = len(self.local_strings.pack("<"))
+        header['strings_offset'] = header['local_strings_offset'] + header['local_strings_size']
+        header['strings_size'] = sum([len(i) for i in self.strings]) + len(self.strings) * 4
+        header['strings_num'] = len(self.strings)
+        header['size2048'] = (header['strings_offset'] + 2047) & 0xFFFFF800
+        file = bytearray(header['strings_offset'] + header['strings_size'])
 
-        write_strings(file, self.header['strings_offset'], self.strings, f)
+        pack_into(header, file, 0, f)
 
-        self.string_keys.pack_into(file, self.header['string_keys_offset'], f)
+        write_strings(file, header['strings_offset'], self.strings, f)
 
-        self.local_strings.pack_into(file, self.header['local_strings_offset'], f)
+        self.string_keys.pack_into(file, header['string_keys_offset'], f)
 
-        pack_into(self.gamemodes, file, self.header['gamemodes_offset'], f)
-        pack_into(self.levels, file, self.header['levels_offset'], f)
+        self.local_strings.pack_into(file, header['local_strings_offset'], f)
+
+        pack_into(self.gamemodes, file, header['gamemodes_offset'], f)
+        pack_into(self.levels, file, header['levels_offset'], f)
 
         file[0x38:0x13c] = self.key
         
