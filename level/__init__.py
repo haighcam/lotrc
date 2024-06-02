@@ -58,21 +58,21 @@ class LevelData:
         self.texture_infos = unpack_list_from(pak.TextureInfo[self.f], self.block1.data, self.pak_header['texture_info_offset'], self.pak_header['texture_info_num'])
         self.animation_infos = unpack_list_from(pak.AnimationInfo[self.f], self.block1.data, self.pak_header['animation_info_offset'], self.pak_header['animation_info_num'])
         self.hk_constraint_infos = unpack_list_from(pak.HkConstraintInfo[self.f], self.block1.data, self.pak_header['hk_constraint_info_offset'], self.pak_header['hk_constraint_info_num'])
-        self.game_objs_block_infos = unpack_list_from(pak.GameObjBlockInfo[self.f], self.block1.data, self.pak_header['game_objs_block_info_offset'], self.pak_header['game_objs_block_info_num'])
+        self.effect_infos = unpack_list_from(pak.EffectInfo[self.f], self.block1.data, self.pak_header['effect_info_offset'], self.pak_header['effect_info_num'])
         self.foliage_infos = unpack_list_from(pak.FoliageInfo[self.f], self.block1.data, self.pak_header['foliage_info_offset'], self.pak_header['foliage_info_num'])
         self.pfield_infos = unpack_list_from(pak.PFieldInfo[self.f], self.block1.data, self.pak_header['pfield_info_offset'], self.pak_header['pfield_info_num'])
         self.gfx_block_infos = unpack_list_from(pak.GFXBlockInfo[self.f], self.block1.data, self.pak_header['gfx_block_info_offset'], self.pak_header['gfx_block_info_num'])
-        self.obj14_infos = unpack_list_from(pak.Obj14Info[self.f], self.block1.data, self.pak_header['obj14_info_offset'], self.pak_header['obj14_info_num'])
+        self.illumation_infos = unpack_list_from(pak.IllumationInfo[self.f], self.block1.data, self.pak_header['illumation_info_offset'], self.pak_header['illumation_info_num'])
         self.animation_block_infos = unpack_list_from(pak.AnimationBlockInfo[self.f], self.block1.data, self.pak_header['animation_block_info_offset'], self.pak_header['animation_block_info_num'])
 
         self.meshes = [pak.Mesh.unpack_from(self.block1.data, info, self.f) for info in self.mesh_infos]
         self.shapes = [pak.Shape.unpack_from(self.block1.data, info, self.f) for info in self.shape_infos]
         self.hk_shapes = [pak.HkShape.unpack_from(self.block1.data, info, self.f) for info in self.hk_shape_infos]
         self.hk_constraints = [pak.HkConstraint.unpack_from(self.block1.data, info, self.f) for info in self.hk_constraint_infos]
-        self.game_objs_blocks = [GameObjs.unpack_from(self.block1.data, info['offset'], info['size'], self.game_objs_types, self.f) for info in self.game_objs_block_infos]
+        self.effects = [GameObjs.unpack_from(self.block1.data, info['offset'], info['size'], self.game_objs_types, self.f) for info in self.effect_infos]
         self.foliages = [pak.Foliage.unpack_from(self.block1.data, info, self.f) for info in self.foliage_infos]
 
-        self.obj14s = [pak.Obj14.unpack_from(self.block1.data, info, self.f) for info in self.obj14_infos]
+        self.illumations = [pak.Illumation.unpack_from(self.block1.data, info, self.f) for info in self.illumation_infos]
         self.gfx_blocks = [Data.unpack_from(self.block1.data, info['offset'], info['size'], self.f) for info in self.gfx_block_infos]
 
         self.animation_blocks = [CompressedBlock.unpack_from(self.pak_data, info['size'], info['size_comp'], info['offset']) for info in self.animation_block_infos]
@@ -270,8 +270,8 @@ class LevelData:
     
         dump_block1 = bytearray(dump_pak_header['sub_blocks1_offset'])
 
-        for obj14, info in zip(self.obj14s, self.obj14_infos):
-            obj14.pack_into(dump_block1, info, f)
+        for illumation, info in zip(self.illumations, self.illumation_infos):
+            illumation.pack_into(dump_block1, info, f)
         for gfx_block, info in zip(self.gfx_blocks, self.gfx_block_infos):
             gfx_block.pack_into(dump_block1, info['offset'], f)
 
@@ -283,8 +283,8 @@ class LevelData:
             hk_shape.pack_into(dump_block1, info, f)
         for hk_constraint, info in zip(self.hk_constraints, self.hk_constraint_infos):
             hk_constraint.pack_into(dump_block1, info, f)
-        for game_objs_block, info in zip(self.game_objs_blocks, self.game_objs_block_infos):
-            game_objs_block.pack_into(dump_block1, info['offset'], f)
+        for effect, info in zip(self.effects, self.effect_infos):
+            effect.pack_into(dump_block1, info['offset'], f)
         for foliage, info in zip(self.foliages, self.foliage_infos):
             foliage.pack_into(dump_block1, info, f)
 
@@ -305,11 +305,11 @@ class LevelData:
         pack_into(self.texture_infos, dump_block1, dump_pak_header['texture_info_offset'], f)
         pack_into(self.animation_infos, dump_block1, dump_pak_header['animation_info_offset'], f)
         pack_into(self.hk_constraint_infos, dump_block1, dump_pak_header['hk_constraint_info_offset'], f)
-        pack_into(self.game_objs_block_infos, dump_block1, dump_pak_header['game_objs_block_info_offset'], f)
+        pack_into(self.effect_infos, dump_block1, dump_pak_header['effect_info_offset'], f)
         pack_into(self.foliage_infos, dump_block1, dump_pak_header['foliage_info_offset'], f)
         pack_into(self.pfield_infos, dump_block1, dump_pak_header['pfield_info_offset'], f)
         pack_into(self.gfx_block_infos, dump_block1, dump_pak_header['gfx_block_info_offset'], f)
-        pack_into(self.obj14_infos, dump_block1, dump_pak_header['obj14_info_offset'], f)
+        pack_into(self.illumation_infos, dump_block1, dump_pak_header['illumation_info_offset'], f)
         pack_into(self.dump_animation_block_infos, dump_block1, dump_pak_header['animation_block_info_offset'], f)
 
         obj_map = {

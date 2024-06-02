@@ -1061,3 +1061,54 @@ class HkShape6:
         
     def __repr__(self):
         return pprint.pformat(self.__dict__)
+
+class Animation:
+    Obj5Heder = structtuple("Animation_Obj5Header",
+        "objA_num", "I",
+        "objA_offset", "I",
+        "objB_num", "I",
+        "objB_offset", "I",
+    )
+    def __init__(self, info, block, offset, f='<'):
+        # self.info = unpack_from(lotrc.level.pak.AnimationInfo[f], buffer, off)
+        self.info = info
+        # for i, key in enumerate(blocks.keys()):
+        #     if (self.info['level_flag'] & (1 << i)) == 0:
+        #         continue
+        #     block = blocks[key]
+        #     offset = offsets[key]
+        #     print(len(block), offset)
+        self.obj2 = unpack_list_from(Uint[f], block, offset + self.info['obj2_offset'], self.info['obj2_num']*4)
+        self.obj3 = unpack_list_from(Uint[f], block, offset + self.info['obj3_offset'], self.info['obj3_num']*11)
+        self.keys = unpack_list_from(Uint[f], block, offset + self.info['keys_offset'], self.info['keys_num'])
+        if self.info['obj5_offset'] != 0:
+            self.obj5_header = unpack_from(self.Obj5Heder[f], block, offset + self.info['obj5_offset'])
+            self.obj5A = unpack_list_from(Uint[f], block, offset + self.obj5_header['objA_offset'], self.obj5_header['objA_num']*7)
+            self.obj5B = unpack_list_from(Uint[f], block, offset + self.obj5_header['objB_offset'], self.obj5_header['objB_num']*7)
+        if self.info['type'] == 3:
+            self.objC = lotrc.level.pak.hkaSplineSkeletalAnimation.unpack_from(block, offset, self.info, f)
+        elif self.info['type'] < 3:
+            warnings.warn(f"Unhandled amination type {self.info['type']}")
+        else:
+            warnings.warn(f"Unkown amination type {self.info['type']}")
+        #     break
+        # for i, key in enumerate(blocks.keys()):
+        #     if (self.info['level_flag'] & (1 << i)) != 0:
+        #         offsets[key] += self.info['size']
+
+    def dump(self, offset, infos, f='<'):
+        info = self.info.copy()
+        buffer = bytearray(info['size'])
+        
+        info['offset'] = offset
+        pack_into(self.obj2, buffer, self.info['obj2_offset'], f)
+        pack_into(self.obj3, buffer, self.info['obj3_offset'], f)
+        pack_into(self.keys, buffer, self.info['keys_offset'], f)
+        if self.info['obj5_offset'] != 0:
+            pack_into(self.obj5_header, buffer, self.info['obj5_offset'], f)
+            pack_into(self.obj5A, buffer, self.obj5_header['objA_offset'], f)
+            pack_into(self.obj5B, buffer, self.obj5_header['objB_offset'], f)
+        if self.info['type'] == 3:
+            self.objC.pack_into(buffer, 0, self.info, f)
+        infos['animation'].append(info)
+        return bytes(buffer)

@@ -40,12 +40,12 @@ Header = structtuple("LevelPAK_Header",
     'texture_info_size', 'I',
     'animation_info_size', 'I', 
     'hk_constraint_info_size', 'I', 
-    'game_objs_block_info_size', 'I', 
+    'effect_info_size', 'I', 
     'pfield_info_size', 'I',
     'gfx_block_info_size', 'I',
     'animation_block_info_size', 'I',
     'foliage_info_size', 'I',
-    'obj14_info_size', 'I',
+    'illumation_info_size', 'I',
     'unk_41', 'I',
     'obja_num', 'I', # object not used by game
     'obj0_num', 'I', # object not used by game
@@ -65,12 +65,12 @@ Header = structtuple("LevelPAK_Header",
     'texture_info_num', 'I', # 7
     'animation_info_num', 'I', # 8
     'hk_constraint_info_num', 'I', # 9
-    'game_objs_block_info_num', 'I', # 10
+    'effect_info_num', 'I', # 10
     'pfield_info_num', 'I', # 12
     'gfx_block_info_num', 'I',
     'animation_block_info_num', 'I',
     'foliage_info_num', 'I',
-    'obj14_info_num', 'I',
+    'illumation_info_num', 'I',
     'unk_66', 'I',
     'obja_offset', 'I', # 24 bytes
     'obj0_offset', 'I',
@@ -90,12 +90,12 @@ Header = structtuple("LevelPAK_Header",
     'texture_info_offset', 'I', # 0x12 bytes, max loaded is 0x800, related to MgSurfaceWin32
     'animation_info_offset', 'I',
     'hk_constraint_info_offset', 'I',
-    'game_objs_block_info_offset', 'I',
+    'effect_info_offset', 'I',
     'pfield_info_offset', 'I',
     'gfx_block_info_offset', 'I', # 0xc bytes, max loaded is 0x40
     'animation_block_info_offset', 'I', # 36 bytes
     'foliage_info_offset', 'I',
-    'obj14_info_offset', 'I',
+    'illumation_info_offset', 'I',
     'unk_91', 'I',
     'unk_92', 'I',
     'unk_93', 'I',
@@ -772,12 +772,12 @@ HkConstraintInfo = structtuple("HkConstraintInfo",
     'keys2_offset', 'I',
     'unk_13', 'I', # diff between versions
     'unk_14', 'f',
-    'unk_15', 'I',
-    'unk_16', 'I',
+    'vals2_num', 'I',
+    'vals2_offset', 'I',
     'unk_17', 'I',
 )
 
-GameObjBlockInfo = structtuple("GameObjBlockInfo",
+EffectInfo = structtuple("EffectInfo",
     'key', 'I',
     'level_flag', 'I',
     'offset', 'I',
@@ -833,7 +833,7 @@ FoliageInfo = structtuple("FoliageInfo", # something to do with textures
     "unk_19", "I",
 )
 
-Obj14Info = structtuple("Obj14", # points to list of ints in block1
+IllumationInfo = structtuple("Illumation", # points to list of ints in block1
     'guid', 'I',
     'num', 'I',
     'offset', 'I',
@@ -1092,6 +1092,7 @@ class HkConstraint:
         self.vals = unpack_list_from(Uint[f], buffer, info['vals_offset'], info['vals_num'] * 12)
         self.keys = unpack_list_from(Uint[f], buffer, info['keys_offset'], info['keys_num'])
         self.keys2 = unpack_list_from(Uint[f], buffer, info['keys2_offset'], info['keys2_num'] * 2)
+        self.vals2 = unpack_list_from(Uint[f], buffer, info['vals2_offset'], info['vals2_num'] * 42)
         self.max_offset = max(lotrc.types.MAX_OFFSET, max_offset)
         self.min_offset = lotrc.types.MIN_OFFSET
         return self
@@ -1106,6 +1107,7 @@ class HkConstraint:
         pack_into(self.vals, buffer, info['vals_offset'], f)
         pack_into(self.keys, buffer, info['keys_offset'], f)
         pack_into(self.keys2, buffer, info['keys2_offset'], f)
+        pack_into(self.vals2, buffer, info['vals2_offset'], f)
 
 class Animation:
     Obj5Heder = structtuple("Animation_Obj5Header", 
@@ -1436,7 +1438,7 @@ class IndexBuffer:
     def pack_into(self, buffer, info, f):
         pack_into(self.data, buffer, info['offset'], f)
 
-class Obj14:
+class Illumation:
     # The pc version in the same as the xbox version except every list has two 0xFFFFFFFFs at the end (so list is 2 elems longer)
     @classmethod
     def unpack_from(Self, buffer, info, f="<"):

@@ -348,7 +348,9 @@ class SubBlocks:
 
     def pack(self, f="<"):
         dump_block_headers = self.block_headers.copy()
-        offset = self.header.nbytes + dump_block_headers.nbytes
+        header_ = self.header.copy()
+        header_['block_num'] = len(self.blocks)
+        offset = header_.nbytes + dump_block_headers.nbytes
         buffer = bytes()
         off = (offset + 15) & 0xfffffff0
         buffer += bytes(off - offset)
@@ -362,7 +364,7 @@ class SubBlocks:
             off = (offset + 16) & 0xfffffff0
             buffer += bytes(off - offset)
             offset = off
-        return pack(self.header, f) + pack(dump_block_headers, f) + buffer
+        return pack(header_, f) + pack(dump_block_headers, f) + buffer
 
 def get_level_obj_format(key, fields):
     order = np.argsort(fields['offset'])
@@ -776,7 +778,7 @@ class Crowd:
             offset += pack_into(header, buffer, offset, f)
             offset += pack_into(keys, buffer, offset, f)
             pack_into(vals, buffer, offset, f)
-
+        
     def dump(self, f="<"):
         buffer = bytearray(self.size)
         self.pack_into(buffer, 0, f)

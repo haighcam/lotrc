@@ -190,12 +190,12 @@
 > - texture_info_num, u32, 7
 > - animation_info_num, u32, 8
 > - hk_constraint_info_num, u32, 9
-> - game_objs_block_info_num, u32, 10
+> - effect_info_num, u32, 10
 > - pfield_info_num, u32, 12
 > - obj13_info_num, u32
 > - animation_block_info_num, u32
 > - obj11_num, u32
-> - obj14_info_num, u32
+> - illumation_info_num, u32
 > - unk_66, u32
 > - obja_offset, u32, 24 bytes
 > - obj0_offset, u32
@@ -215,12 +215,12 @@
 > - texture_info_offset, u32,0x12 bytes, max loaded is 0x800, related to MgSurfaceWin32
 > - animation_info_offset, u32
 > - hk_constraint_info_offset, u32
-> - game_objs_block_info_offset, u32
+> - effect_info_offset, u32
 > - pfield_info_offset, u32
 > - obj13_info_offset, u32, 0xc bytes, max loaded is 0x40
 > - animation_block_info_offset, u32, 36 bytes
 > - obj11_offset, u32
-> - obj14_info_offset, u32
+> - illumation_info_offset, u32
 > - unk_91, u32
 > - unk_92, u32
 > - unk_93, u32
@@ -276,18 +276,18 @@
 > - texture_info, pointed to by header
 > - animation_info, pointed to by header
 > - hk_constraint_info, pointed to by header
-> - game_objs_block_info, pointed to by header
+> - effect_info, pointed to by header
 > - pfield_info, pointed to by header
 > - obj13_info, pointed to by header
 > - animation_block_info, pointed to by header
 > - obj11, pointed to by header
-> - obj14_info, pointed to by header
+> - illumation_info, pointed to by header
 > - meshes, pointed to by mesh_info
 > - hk_shapes, pointed to by buffer_info
 > - hk_constraints, pointed to by hk_contraint_info
-> - game_obj_blocks, pointed to by game_objs_block_info
+> - game_obj_blocks, pointed to by effect_info
 > - obj13s, pointed to by obj13_info
-> - obj14s, pointed to by obj14_info
+> - illumations, pointed to by illumation_info
 > - sub_block1, pointed to by header
 > - string_keys, pointed to by header
 > 
@@ -941,7 +941,7 @@
 > - unk_16, u32
 > - unk_17, u32
 >
-> game_objs_block_info:
+> effect_info:
 > - key, u32
 > - unk_1, u32
 > - offset, u32
@@ -992,7 +992,7 @@
 > - unk_18, u32
 > - unk_19, u32
 >
-> obj14 (points to list of ints in block1)
+> illumation (points to list of ints in block1)
 > - unk_0, u32
 > - num, u32
 > - offset, u32
@@ -1001,7 +1001,7 @@
 > hk_shape: see code
 > hk_constraint: see code
 > animation: see code
-> obj14: list of ints
+> illumation: list of ints
 > obj13: list of ints
 >
 ---
