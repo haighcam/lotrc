@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import os
 import pathlib
+import string
 import lotrc
 from lupa.lua51 import LuaRuntime
 
@@ -23,6 +24,7 @@ def get_global_keys():
     with open(pathlib.Path(os.path.dirname(lotrc.__file__)).as_posix() + "/conquest_strings.txt") as f:
         vals = f.read().split('\n')
     return {hash_string(i): i for i in vals}
+
 #### Lua stuff
 
 def decomp_lua(data):
@@ -333,3 +335,88 @@ def hash_string(string, mask=0):
         h = ((h << np.uint32(8))) ^ np.uint32(hashing_array[np.uint32(index_array[val])^(h>>np.uint32(24))])
     h = ~h
     return h
+
+
+### Level Editing Stuff
+
+def get_lua_strings(data):
+    valid_chars = set(string.printable.encode())
+    strings = []
+    off = 0
+    while off < len(data):
+        if data[off-1] == 0 and data[off] in valid_chars:
+            valid = True
+            l = struct.unpack_from("I", data, off-4)[0] - 1
+            # print(l, data[off:off+l])
+            if l > len(data) or l <= 1:
+                valid = False
+            else:
+                for i in range(l):
+                    if data[off+i] not in valid_chars:
+                        valid = False
+                        break
+            if valid:
+                strings.append(data[off:off+l].decode())
+                off += l
+        off += 1
+    return strings
+
+# some utilities for getting things from dumped level file
+def find_obj(vals, guid):
+    for obj in vals['objs']:
+        if obj['fields']['guid'] == guid:
+            return obj
+
+def find_type(vals, name):
+    for ty in vals['types']:
+        if ty['name'] == name:
+            return ty
+    
+# grabs an object and all sub objects from a dumped level file
+# parts can be uncommented to print some stuff about 
+#    meshes, effects and scripts that are needed for the objects to work propoerly (or you can try to find everything in a dumped json file
+def copy_tree(vals, guid, processed=None, gamemodemask=None, scripts=None, meshes=None, effects=None):
+    if processed is None:
+        processed = set()
+    if scripts is None:
+        scripts = set()
+    if meshes is None:
+        meshes = set()
+    if effects is None:
+        effects = set()
+    elif guid in processed:
+        return []
+    processed.add(guid)
+    obj = find_obj(vals, guid)
+    ty = find_type(vals, obj['type'])
+    objs = [obj]
+    if (val:=obj['fields'].get('AnimationScript')) is not None and val != '':
+        scripts.add(val)
+    if (val:=obj['fields'].get('InputEventScript')) is not None and val != '':
+        scripts.add(val)
+    if (val:=obj['fields'].get('EffectLookupTable')) is not None and val != '':
+        scripts.add(val)
+    if (val:=obj['fields'].get('BehaviorScriptList')) is not None:
+        scripts.update(val)
+    if (val:=obj['fields'].get('mesh')) is not None and val != '':
+        meshes.add(val)
+    if (val:=obj['fields'].get('PhysMesh')) is not None and val != '':
+        meshes.add(val)
+    if (val:=obj['fields'].get('meshes')) is not None:
+        meshes.update(val)
+    if gamemodemask is not None and 'GameModeMask' in obj['fields']:
+        obj['fields']['GameModeMask'] |= gamemodemask
+    for t in ty['fields']:
+        if t['type'] == 'guid':
+            val = obj['fields'][t['name']]
+            if val != 0:
+                objs.extend(copy_tree(vals, val, processed, gamemodemask, scripts, meshes, effects))
+        elif t['type'] == 'objectlist':
+            for val in obj['fields'][t['name']]:
+                objs.extend(copy_tree(vals, val, processed, gamemodemask, scripts, meshes, effects))
+        elif 'Effect' in t['name']:
+            if t['type'] == 'crc' and (val:=obj['fields'][t['name']]) != '':
+                effects.add(val)
+            elif t['type'] == 'crclist':
+                effects.update(obj['fields'][t['name']])
+    return objs
