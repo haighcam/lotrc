@@ -37,22 +37,30 @@ class_items = copy_tree(vals, class_guid, gamemodemask=gamemodemask, scripts=scr
 effects = effects.intersection(levelSrc.keys[i] for i in levelSrc.effects.keys())
 
 script_strings = {}
+script_data = {}
 for block in levelSrc.sub_blocks1.blocks:
     if isinstance(block, Lua):
         name = block.name.split('.lua')[0]
         strings = set(get_lua_strings(block.data))
         script_strings[name] = strings
+        script_data[name] = block.data
+
+animations = set()
+anim_tables = [get_animation_table(i, script_data) for i in scripts if i.startswith('ANM_')]
+for anim_table in anim_tables:
+    for anim in anim_table.values():
+        if isinstance(anim, list):
+            animations.update(anim)
+        else:
+            animations.add(anim)
 
 old_scripts = set(levelDst.keys[i].split('.lua')[0] for i in levelDst.sub_blocks1.block_headers['key'])
-valid_animations = set(levelSrc.animations.keys())
 new_scripts = set()
-animations = set()
 common_scripts = set()
 while len(scripts) != 0:
     k = scripts.pop()
     new_scripts.add(k)
     strings = script_strings[k]
-    animations.update(valid_animations.intersection(hash_(i) for i in strings))
     children = strings.intersection(script_strings.keys()).difference(new_scripts).difference(scripts)
     common_scripts.update(children.intersection(old_scripts))
     for k in children.difference(old_scripts):
@@ -77,17 +85,40 @@ effects = {(k := lotrc.types.hash_(i)): levelSrc.effects[k] for i in effects}
 
 # grab the animations needed for the balrog (from AT_GNT_Balrog)
 
-animations = {k: levelSrc.animations[k] for k in animations}
+animations = {(k := lotrc.types.hash_(i)): levelSrc.animations[k] for i in animations}
+
 
 # update the gamemode mask for all objects
-for k in textures.keys():
-    textures[k][0]['level_flag'] = gamemodemask
-for k in meshes.keys():
-    meshes[k].info['level_flag'] = gamemodemask
-for k in effects.keys():
-    effects[k].level_flag = gamemodemask
-for k in animations.keys():
-    animations[k].info['level_flag'] = gamemodemask
+new_animations = {}
+for k, anim in animations.items():
+    if k in levelDst.animations:
+        levelDst.animations[k].info['level_flag'] |= gamemodemask
+    else:
+        anim.info['level_flag'] = gamemodemask
+        new_animations[k] = anim
+new_meshes = {}
+for k, mesh in meshes.items():
+    if k in levelDst.meshes:
+        levelDst.meshes[k].info['level_flag'] |= gamemodemask
+    else:
+        mesh.info['level_flag'] = gamemodemask
+        new_meshes[k] = mesh
+
+new_textures = {}
+for k, texture in textures.items():
+    if k in levelDst.textures:
+        levelDst.textures[k][0]['level_flag'] |= gamemodemask
+    else:
+        texture[0]['level_flag'] = gamemodemask
+        new_textures[k] = texture
+
+new_effects = {}
+for k, effect in effects.items():
+    if k in levelDst.effects:
+        levelDst.effects[k].level_flag |= gamemodemask
+    else:
+        effect.level_flag = gamemodemask
+        new_effects[k] = effect
 
 # add all of the meshes, textures, effects and animations if they are not already there
 # (if they are already there you may need to update the gamemodemask, which this does not do)

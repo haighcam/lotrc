@@ -144,7 +144,13 @@ class LevelData:
             texture_infos.append(info.copy())
         bin_header['texdata_num'] = len(texture_datas)
         asset_data.update(sorted(texture_datas, key=lambda x: x[0][0]))
-        texture_infos = np.stack(texture_infos)
+        def sort_textures(x):
+            if x['key'] == 3804089404:
+                return 0
+            elif x['key'] == 4026460901:
+                return 1
+            return x['key']
+        texture_infos = np.stack(sorted(texture_infos, key=sort_textures))
 
         offset = bin_header.nbytes
         bin_data = bytearray()
@@ -343,7 +349,7 @@ class LevelData:
         print("animations done")
         
         effects = []
-        for key, effect in self.effects.items():
+        for key, effect in sorted(self.effects.items(), key=lambda x: x[0]):
             vals = effect.dump(f)
             effects.append((key, effect.level_flag, len(block1), len(vals)))
             block1 += vals

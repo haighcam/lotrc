@@ -396,6 +396,8 @@ def copy_tree(vals, guid, processed=None, gamemodemask=None, scripts=None, meshe
         scripts.add(val)
     if (val:=obj['fields'].get('EffectLookupTable')) is not None and val != '':
         scripts.add(val)
+    if (val:=obj['fields'].get('CameraScript')) is not None and val != '':
+        scripts.add(val)
     if (val:=obj['fields'].get('BehaviorScriptList')) is not None:
         scripts.update(val)
     if (val:=obj['fields'].get('mesh')) is not None and val != '':
@@ -420,3 +422,38 @@ def copy_tree(vals, guid, processed=None, gamemodemask=None, scripts=None, meshe
             elif t['type'] == 'crclist':
                 effects.update(obj['fields'][t['name']])
     return objs
+
+def get_animation_table(name, script_data):
+    def lua_import(script):
+        if script in loaded_scripts: return 
+        loaded_scripts.add(script)
+        lua.execute(lua_conv(script_data[script], b"L4808"))
+
+    lua = LuaRuntime()
+    
+    loaded_scripts = set()
+        
+    lua.globals()['import'] = lua_import
+    lua.globals()['inherit'] = lua_import
+    lua.globals()['imports'] = lua.table()
+    lua.globals()['MgScript'] = lua.table_from({
+        'Assert': lambda x, y: None,
+        'GetRandomNumber': lambda: 1
+    }) 
+    lua.globals()['DeepCopy'] = lambda x: x
+    lua.globals()['AppendTableIndex'] = lambda x,y: None
+    lua.globals()['AppendTable'] = lambda x,y: None
+    lua.globals()['MgAnim'] = lua.table_from({'GetRootSpeed': lambda x: None}) 
+    
+    lua.execute(lua_conv(script_data[name], b"L4808"))
+    
+    if lua.globals()['AnimTableUsed'] is None:
+        anim_table = dict(lua.globals()['AnimTable'])
+    else:
+        anim_table = {}
+        for table_name in list(lua.globals()['AnimTableUsed'].values()):
+            anim_table.update(dict(lua.globals()[table_name]))
+    for k,v in anim_table.items():
+        if isinstance(v, lua.table().__class__):
+            anim_table[k] = list(v.values())
+    return anim_table

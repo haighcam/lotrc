@@ -4,51 +4,55 @@ from lotrc.utils import *
 
 lotrc.types.DECOMP_LUA = False
 
-# replace CH_NML_SIL_Scout mesh in helm's deep with CH_hum_Wormtongue_01 from isengaurd
-src = 'CH_hum_Wormtongue_01'
+# replace CH_NML_SIL_Scout mesh in helm's deep with CH_hum_meshtongue_01 from isengaurd
+src = 'CH_hum_meshtongue_01'
 clss = 'CH_NML_SIL_Scout'
 
 # load the levels, this parser is currently limited and will break some levels, use the non alt version for other stuff
-levelHelm = lotrc.level_alt.LevelData("Levels/Helm'sDeep")
-levelIsen = lotrc.level_alt.LevelData("Levels/Isengard")
+dst_name = "Helm'sDeep"
+levelDst = lotrc.level_alt.LevelData(f"Levels/{dst_name}")
+levelSrc = lotrc.level_alt.LevelData("Levels/Isengard")
 
 # make the change in the level file
-vals = levelHelm.sub_blocks1.blocks[-1].to_dict(levelHelm.keys)
+vals = levelDst.sub_blocks1.blocks[-1].to_dict(levelDst.keys)
 for i, obj in enumerate(vals['objs']):
-    if obj['fields'].get('name') == clss: 
+    if obj['fields'].get('name') == clss or obj['fields'].get('Name') == clss: 
         print('found')
         break
-old_mesh = lotrc.types.hash_(vals['objs'][i]['fields']['mesh'])
-vals['objs'][i]['fields']['mesh'] = 'CH_hum_Wormtongue_01'
-levelHelm.sub_blocks1.blocks[-1] = lotrc.types.GameObjs.from_dict(vals, levelHelm.f)
+if 'meshes' in vals['objs'][i]['fields']:
+    old_mesh = lotrc.types.hash_(vals['objs'][i]['fields']['meshes'].pop())
+    vals['objs'][i]['fields']['meshes'].append(src)
+else:
+    old_mesh = lotrc.types.hash_(vals['objs'][i]['fields']['mesh'])
+    vals['objs'][i]['fields']['mesh'] = src
+levelDst.sub_blocks1.blocks[-1] = lotrc.types.GameObjs.from_dict(vals, levelDst.f)
 
 # grab the mesh and textures
-worm = levelIsen.meshes[hash_string('CH_hum_Wormtongue_01')]
+mesh = levelSrc.meshes[hash_string(src)]
 
 textures = []
-for mat in worm.mats:
+for mat in mesh.mats:
     textures.extend(i for i in mat['textures'] if i != 0)
     
 # set the level_flags so that the mesh actually shows up
-flags = levelHelm.meshes[old_mesh].info['level_flag']
+flags = levelDst.meshes[old_mesh].info['level_flag']
 for k in textures:
-    levelIsen.textures[k][0]['level_flag'] = flags
-worm.info['level_flag'] = flags
+    levelSrc.textures[k][0]['level_flag'] = flags
+mesh.info['level_flag'] = flags
 
 # add the stuff to helm's deep
-levelHelm.textures.update({k: levelIsen.textures[k] for k in np.unique(textures)})
-levelHelm.meshes[hash_string('CH_hum_Wormtongue_01')] = worm
+levelDst.textures.update({k: levelSrc.textures[k] for k in np.unique(textures)})
+levelDst.meshes[hash_string(src)] = mesh
 
 # add the debug strings as well, not sure if it is needed
-s = set(levelHelm.pak_strings)
-levelHelm.pak_strings.extend(i for i in levelIsen.pak_strings if i not in s)
-s = set(levelHelm.bin_strings)
-levelHelm.bin_strings.extend(i for i in levelIsen.bin_strings if i not in s)
-levelHelm.keys.update(levelIsen.keys)
+s = set(levelDst.pak_strings)
+levelDst.pak_strings.extend(i for i in levelSrc.pak_strings if i not in s)
+s = set(levelDst.bin_strings)
+levelDst.bin_strings.extend(i for i in levelSrc.bin_strings if i not in s)
+levelDst.keys.update(levelSrc.keys)
 # dump and write the level
-(infos, pak_data, bin_data) = levelHelm.dump()
-
-with open("Levels/Helm'sDeep.BIN", "wb") as f:
+(infos, pak_data, bin_data) = levelDst.dump()
+with open(f"Levels/{dst_name}.BIN", "wb") as f:
     f.write(bin_data)
-with open("Levels/Helm'sDeep.PAK", "wb") as f:
+with open(f"Levels/{dst_name}.PAK", "wb") as f:
     f.write(pak_data)
