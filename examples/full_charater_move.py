@@ -43,7 +43,7 @@ for block in levelSrc.sub_blocks1.blocks:
         name = block.name.split('.lua')[0]
         strings = set(get_lua_strings(block.data))
         script_strings[name] = strings
-        script_data[name] = block.data
+        script_data[hash_string(name)] = block.data
 
 animations = set()
 anim_tables = [get_animation_table(i, script_data) for i in scripts if i.startswith('ANM_')]

@@ -427,7 +427,7 @@ def get_animation_table(name, script_data):
     def lua_import(script):
         if script in loaded_scripts: return 
         loaded_scripts.add(script)
-        lua.execute(lua_conv(script_data[script], b"L4808"))
+        lua.execute(lua_conv(script_data[hash_string(script)], b"L4808"))
 
     lua = LuaRuntime()
     
@@ -441,11 +441,23 @@ def get_animation_table(name, script_data):
         'GetRandomNumber': lambda: 1
     }) 
     lua.globals()['DeepCopy'] = lambda x: x
-    lua.globals()['AppendTableIndex'] = lambda x,y: None
-    lua.globals()['AppendTable'] = lambda x,y: None
+    # lua.globals()['AppendTableIndex'] = lambda x,y: None
+    lua.globals()['AppendTableIndex'] = lua.eval("""
+function (t1, t2)
+    for key, val in pairs(t2) do
+        t1[key] = val
+    end
+end
+    """)
+    # lua.globals()['AppendTable'] = lambda x,y: None
+    lua.globals()['AppendTable'] = lua.eval("""
+function (t1, t2)
+    table.insert(t1, t2)
+end
+    """)
     lua.globals()['MgAnim'] = lua.table_from({'GetRootSpeed': lambda x: None}) 
     
-    lua.execute(lua_conv(script_data[name], b"L4808"))
+    lua.execute(lua_conv(script_data[hash_string(name)], b"L4808"))
     
     if lua.globals()['AnimTableUsed'] is None:
         anim_table = dict(lua.globals()['AnimTable'])

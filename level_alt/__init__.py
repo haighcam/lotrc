@@ -366,11 +366,12 @@ class LevelData:
                 continue
             elif k in self.keys and self.keys[k].startswith("Terrain"):
                 terrain.append(k)
-            elif k in self.keys and ("Road" in self.keys[k] or "Collision" in self.keys[k]):
+            elif k in self.keys and ("_Road_" in self.keys[k] or "_Collision_" in self.keys[k]):
                 collisions_roads.append(k)
             else:
                 normal.append(k)
-        for key in sorted(normal) + collisions_roads:
+        # for key in sorted(normal) + collisions_roads:
+        for key in sorted(normal) + sorted(collisions_roads, key=lambda x: int(self.keys[x].split('_')[-1])):
             vals = self.meshes[key].dump(len(block1), infos, f)
             block1 += vals
             block1 += bytes(((len(block1) + 15) & 0xFFFFFFF0) - len(block1))
@@ -542,13 +543,16 @@ class LevelData:
                     pak_header['hk_shape_info_offset'] + i * pak_.HkShapeInfo['<'].itemsize + 76,
                 ])
         for i, hk_constraint in enumerate(infos['hk_constraint']):
-                block2_offsets.extend([
-                    pak_header['hk_constraint_info_offset'] + i * pak_.HkConstraintInfo['<'].itemsize + 4,
-                    pak_header['hk_constraint_info_offset'] + i * pak_.HkConstraintInfo['<'].itemsize + 12,
-                    pak_header['hk_constraint_info_offset'] + i * pak_.HkConstraintInfo['<'].itemsize + 20,
-                    pak_header['hk_constraint_info_offset'] + i * pak_.HkConstraintInfo['<'].itemsize + 40,
-                    pak_header['hk_constraint_info_offset'] + i * pak_.HkConstraintInfo['<'].itemsize + 48,
-                ])
+            block2_offsets.extend([
+                pak_header['hk_constraint_info_offset'] + i * pak_.HkConstraintInfo['<'].itemsize + 4,
+                pak_header['hk_constraint_info_offset'] + i * pak_.HkConstraintInfo['<'].itemsize + 12,
+                pak_header['hk_constraint_info_offset'] + i * pak_.HkConstraintInfo['<'].itemsize + 20,
+                pak_header['hk_constraint_info_offset'] + i * pak_.HkConstraintInfo['<'].itemsize + 40,
+                pak_header['hk_constraint_info_offset'] + i * pak_.HkConstraintInfo['<'].itemsize + 48,
+            ])
+            if hk_constraint['vals2_offset'] != 0:
+                block2_offsets.append(pak_header['hk_constraint_info_offset'] + i * pak_.HkConstraintInfo['<'].itemsize + 60)
+
         for i in range(pak_header['effect_info_num']):
             block2_offsets.append(pak_header['effect_info_offset'] + i * pak_.EffectInfo['<'].itemsize + 8)    
         for i in range(pak_header['gfx_block_info_num']):
