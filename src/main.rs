@@ -3,14 +3,16 @@ use zerocopy::{ByteOrder, LE, BE};
 use log::warn;
 use serde::{Serialize, Deserialize};
 // use rmp_serde::Serializer;
-use serde_cbor::{Serializer, Deserializer, ser::IoWrite, de::IoRead};
+// use serde_cbor::{Serializer, Deserializer, ser::IoWrite, de::IoRead};
 use std::time::Instant;
 use std::iter::zip;
 use lotrc_rs_proc::OrderedData;
 
 mod types;
 mod pak;
+mod pak_alt;
 mod bin;
+mod level_alt;
 mod level_info;
 mod level;
 mod lua_stuff;
@@ -64,23 +66,25 @@ fn dump_dir<A: AsRef<Path>, B: AsRef<Path>>(source: A, dest: B) {
     }
 }
 
-
 fn main() {
     pretty_env_logger::init();
     // println!("{:?}", types::STRING_LOOKUP.lock().unwrap());
     {
         *types::DECOMP_LUA.lock().unwrap() = false;
     }
-
     // let level_info = LevelInfo::parse("../Levels/level_info.dat");
     // level_info.dump::<LE, _>("../level_info_test.dat");
     // level_info.to_file("things/level_data");
     // return ();
 
-    dump_dir(
-        "../Xbox/Levels", 
-        "things/Levels"
-    );
+    // dump_dir(
+    //     "../Xbox/Levels",
+    //     "things/Levels"
+    // );
+
+    let level = level_alt::Level::parse("../LevelsCopy/Mount_Doom");
+    level.to_file("things/Mount_Doom");
+    level.dump::<LE, _>("../Levels/Mount_Doom", false);
     
     // let mut level = Level::parse("../Xbox/AddOn/HeroesandMapsPack/Weathertop_DLC");
     
@@ -98,21 +102,4 @@ fn main() {
     //     "../Xbox/AddOn/HeroArenaBonus", 
     //     "../AddOn/HeroArenaBonus"
     // );
-
-    
-
-    // fs::write("BlackGates.ron", ron::to_string(&level).unwrap());
-    // let lua = lua_stuff::LuaCompiler::new().unwrap();
-    // let contents = fs::read("/home/cameron/Documents/Games/The Lord of the Rings Conquest 2/test_lua.lua").unwrap();
-    // let res = lua.decomp(contents.as_slice()).unwrap();
-    // let comp = lua.compile(&res, "test.lua");
-
-    // let pak_header: pak::Header = OrderedData::from_bytes::<LE>(&contents);
-    // let pak_header = pak::Header::<LE>::read_from_prefix(&contents);
-    // let pak_header = pak::Header::from_data(&contents, 0, &());
-    // level.to_file("/home/cameron/Documents/Games/The Lord of the Rings Conquest 2/lotrc_decomp_rs/things/MountDoomXbox");
-    // level.to_file("things/ShireXbox");
-    // level.to_file("/home/cameron/Documents/Games/The Lord of the Rings Conquest 2/lotrc_decomp_rs/things/Moria_DLC");
-    // println!("{:?}", res);
-    // println!("{:?}", comp);
 }

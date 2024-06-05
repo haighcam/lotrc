@@ -1,0 +1,3 @@
+[submodule "res/lua-bytecode.github.io"]
+	path = res/lua-bytecode.github.io
+	url = git@github.com:lua-bytecode/lua-bytecode.github.io.git

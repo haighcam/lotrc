@@ -1,10 +1,10 @@
 use std::{any::TypeId, collections::HashMap, fs::{self, File}, iter::{repeat, zip}, mem::size_of};
 use log::warn;
 use serde_json::{Value, json, to_vec_pretty, Map};
-use zerocopy::{AsBytes, ByteOrder, FromBytes, BE, F32, LE, U16, U32, U64};
+use zerocopy::{AsBytes, ByteOrder, FromBytes, BE, F32, LE, U16, U32, U64, I32};
 use flate2::read::ZlibDecoder;
 use flate2::write::ZlibEncoder;
-use serde::{Serialize, Deserialize};
+use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use std::path::Path;
 use std::sync::Mutex;
 use std::io::prelude::*;
@@ -90,6 +90,7 @@ impl <T> OrderedDataVec for Vec<T> where T: OrderedData {
 impl OrderedData for f32 { type LE = F32<LE>; type BE = F32<BE>; }
 impl OrderedData for u64 { type LE = U64<LE>; type BE = U64<BE>; }
 impl OrderedData for u32 { type LE = U32<LE>; type BE = U32<BE>; }
+impl OrderedData for i32 { type LE = I32<LE>; type BE = I32<BE>; }
 impl OrderedData for u16 { type LE = U16<LE>; type BE = U16<BE>; }
 impl OrderedData for u8 { type LE = u8; type BE = u8;}
 
@@ -175,6 +176,7 @@ pub fn update_strings(vals: &[String]) {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(from = "&str", into = "String")]
 pub enum Crc {
     Str(Box<str>),
     Key(u32)
@@ -218,6 +220,13 @@ impl PartialEq for Crc {
     }
 }
 
+impl PartialOrd for Crc {
+    fn partial_cmp(&self, other: &Self) -> std::option::Option<std::cmp::Ordering> {
+        self.key().partial_cmp(&other.key())
+    }
+
+}
+
 impl std::hash::Hash for Crc {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.key().hash(state)
@@ -225,6 +234,11 @@ impl std::hash::Hash for Crc {
 }
 
 impl Eq for Crc {}
+impl Ord for Crc {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.key().cmp(&other.key())
+    }
+}
 
 impl Default for Crc {
     fn default() -> Self {
@@ -251,9 +265,22 @@ impl<O: ByteOrder> From<Crc> for U32<O> {
     }
 }
 
+impl From<&str> for Crc {
+    fn from(value: &str) -> Self {
+        Crc::from_string(value)
+    }
+}
+
+impl From<Crc> for String {
+    fn from(value: Crc) -> Self {
+        value.to_string()
+    }
+}
+
 impl OrderedData for Crc { type LE = U32<LE>; type BE = U32<BE>; }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct Strings {
     pub strings: Vec<String>,
 }
@@ -573,6 +600,24 @@ impl BaseTypes {
         }
     }
 
+    pub fn dump_bytes<O: ByteOrder + 'static>(&self) -> Vec<u8> {
+        match self {
+            Self::CRC(val) => val.dump_bytes::<O>(),
+            Self::GUID(val) => val.dump_bytes::<O>(),
+            Self::Color(val) => val.dump_bytes::<O>(),
+            Self::Vector2(val) => val.dump_bytes::<O>(),
+            Self::Vector3(val) => val.dump_bytes::<O>(),
+            Self::Vector4(val) => val.dump_bytes::<O>(),
+            Self::Matrix4x4(val) => val.dump_bytes::<O>(),
+            Self::Float(val) => val.dump_bytes::<O>(),
+            Self::Int(val) => val.dump_bytes::<O>(),
+            Self::Bool(val) => val.dump_bytes::<O>(),
+            Self::Byte(val) => val.dump_bytes::<O>(),
+            _ => panic!("Not implemented for this type"),
+        }
+    }
+
+
     pub fn off_size<O: ByteOrder + 'static>(&self) -> usize {
         match self {
             Self::String(vals) => {
@@ -744,7 +789,7 @@ impl SubBlock {
             Data::KEY_PFIELDS => SubBlock::Data(Data::from_data(data, info.offset as usize, info.size as usize)),
             Spray::KEY => SubBlock::Spray(Spray::from_data::<O>(data, info.offset as usize, info.size as usize)),
             Crowd::KEY => SubBlock::Crowd(Crowd::from_data::<O>(data, info.offset as usize, info.size as usize)),
-            GameObjs::KEY => SubBlock::GameObjs(GameObjs::from_data::<O>(data, info.offset as usize, info.size as usize)),
+            GameObjs::KEY => SubBlock::GameObjs(GameObjs::from_data::<O>(data, info.offset as usize, info.size as usize, 0xFFFFFFFF)),
             AtlasUV::KEY1 | AtlasUV::KEY2 => SubBlock::AtlasUV(AtlasUV::from_data::<O>(data, info.offset as usize, info.size as usize)),
             _ => match info.key.str() {
                 Some(x) if x.ends_with(".lua") => SubBlock::Lua(Lua::from_data(data, info.offset as usize, info.size as usize, lua, x.to_string())),
@@ -1122,7 +1167,7 @@ pub struct GameObjsTypeField {
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct GameObjsObjHeader {
-    pub unk0: u32,
+    pub layer: u32,
     pub key: Crc,
     pub size: u16,
     pub z3: u16,
@@ -1131,6 +1176,7 @@ pub struct GameObjsObjHeader {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct GameObjs {
     pub size: usize,
+    pub level_flags: u32,
     pub header: GameObjsHeader,
     pub types: Vec<GameObjsTypeHeader>,
     pub type_fields: Vec<Vec<GameObjsTypeField>>,
@@ -1141,8 +1187,9 @@ pub struct GameObjs {
 
 impl GameObjs {
     pub const KEY: u32 = hash_string("Level".as_bytes(), None);
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize, size: usize) -> Self {
+    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize, size: usize, level_flags: u32) -> Self {
         let mut val = Self::default();
+        val.level_flags = level_flags;
         val.size = size;
         val.header = OrderedData::from_bytes::<O>(&data[offset..]);
         {
@@ -1216,6 +1263,17 @@ impl GameObjs {
 
     pub fn to_file<P: AsRef<Path>>(&self, path: P) {
         let val = json!({
+            "level_flags": self.level_flags,
+            "objs": zip(&self.obj_headers,& self.objs).map(|(o, fs)| {
+                let ts = &self.type_fields[*self.type_field_lookup.get(&o.key.key()).unwrap()];
+                let mut order: Vec<_> = (0..ts.len()).collect();
+                order.sort_by_key(|x| ts[*x].offset);
+                json!({
+                    "type": o.key.to_string(),
+                    "layer": o.layer,
+                    "fields": order.into_iter().map(|i| (ts[i].key.to_string(), fs[i].to_json())).collect::<Map<_,_>>()
+                })
+            }).collect::<Vec<_>>(),
             "types": zip(&self.types,& self.type_fields).map(|(t, fs)| {
                 json!({
                     "name": t.key.to_string(),
@@ -1229,16 +1287,7 @@ impl GameObjs {
                     }).collect::<Vec<_>>()
                 })
             }).collect::<Vec<_>>(),
-            "objs": zip(&self.obj_headers,& self.objs).map(|(o, fs)| {
-                let ts = &self.type_fields[*self.type_field_lookup.get(&o.key.key()).unwrap()];
-                let mut order: Vec<_> = (0..ts.len()).collect();
-                order.sort_by_key(|x| ts[*x].offset);
-                json!({
-                    "type": o.key.to_string(),
-                    "unk0": o.unk0,
-                    "fields": order.into_iter().map(|i| (ts[i].key.to_string(), fs[i].to_json())).collect::<Map<_,_>>()
-                })
-            }).collect::<Vec<_>>()
+
         });
         fs::write(path.as_ref().with_extension("json"), to_vec_pretty(&val).unwrap()).unwrap();
     }
@@ -1281,7 +1330,7 @@ impl GameObjs {
             }
             let size = (off + 15) as u16 & 0xFFF0;
             obj_headers.push(GameObjsObjHeader {
-                unk0: o["unk0"].as_u64().unwrap() as u32,
+                layer: o["layer"].as_u64().unwrap() as u32,
                 key,
                 size,
                 z3: 0,
@@ -1300,8 +1349,10 @@ impl GameObjs {
             z7: 0
         };
         let size = header.obj_offset as usize + obj_headers.iter().map(|x| x.size as usize).sum::<usize>() + objs.len() * GameObjsObjHeader::size::<LE>() ;
+        let level_flags = val["level_flags"].as_u64().unwrap() as u32;
         Self {
             size,
+            level_flags,
             header,
             types,
             type_fields,
@@ -1484,6 +1535,7 @@ pub struct AtlasUVVal {
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct AtlasUV {
     pub vals: Vec<AtlasUVVal>,
 }

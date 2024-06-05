@@ -1,4 +1,4 @@
-use std::{any::TypeId};
+use std::{any::TypeId, fs};
 use log::warn;
 use zerocopy::{ByteOrder, LE};
 use serde::{Serialize, Deserialize};
@@ -18,9 +18,9 @@ pub struct Header {
     pub asset_handle_num: u32,
     pub asset_handle_offset: u32,
     pub unk_7: u32,
-    pub unk_8: u32,
-    pub unk_9: u32,
-    pub unk_10: u32,
+    pub vdata_num: u32,
+    pub vdata_num_: u32,
+    pub texdata_num: u32,
     pub unk_11: u32,
     pub unk_12: u32,
     pub unk_13: u32,
@@ -144,11 +144,33 @@ impl Tex {
             Self::CubeTexture(val) => val.dump::<O>(),
         }
     }
+
+    pub fn info(&self) -> &TextureInfo {
+        match self {
+            Self::Texture(val) => &val.info,
+            Self::CubeTexture(val) => &val.info,
+        }
+    }
+
+    pub fn data(&self) -> &Vec<Vec<u8>> {
+        match self {
+            Self::Texture(val) => &val.levels,
+            Self::CubeTexture(val) => &val.faces,
+        }
+    }
+
+    pub fn to_file<P: AsRef<std::path::Path>>(&self, path: P) {
+        match self {
+            Self::Texture(val) => val.to_file(path),
+            Self::CubeTexture(val) => val.to_file(path),
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Texture {
     pub levels: Vec<Vec<u8>>,
+    pub info: TextureInfo,
     pub format: u32,
     pub kind: u32,
 }
@@ -159,6 +181,16 @@ pub fn get_stride_width(format: u32) -> Option<(u32, u32)> {
         7 | 8 | 13 => Some((4, 8)),
         3 => Some((1, 4)),
         6 => Some((1, 1)),
+        _ => None,
+    }
+}
+
+pub fn get_format(format: u32) -> Option<ddsfile::D3DFormat> {
+    match format {
+        10 | 0xb | 0xc | 0x11 => Some(ddsfile::D3DFormat::DXT5),
+        7 | 8  => Some(ddsfile::D3DFormat::DXT1),
+        3 => Some(ddsfile::D3DFormat::A8R8G8B8),
+        6 => Some(ddsfile::D3DFormat::A8),
         _ => None,
     }
 }
@@ -251,7 +283,7 @@ fn decomp_bc4(arr: &[u8], w: usize, h: usize) -> Vec<u8> {
 //     return np.frombuffer(arr, np.ubyte).reshape(h//2, 2, w//2, 2)[:,0,:,0].tobytes()
 
 impl Texture {
-    pub fn from_data<O: ByteOrder + 'static>(data0: &[u8], data1: &[u8], info: &mut TextureInfo) -> Self {
+    pub fn from_data<O: ByteOrder + 'static>(data0: &[u8], data1: &[u8], mut info: TextureInfo) -> Self {
         let sizes = (0..info.levels).map(|x| 2u32.pow(x as u32)).map(|x| (info.width as u32/x, info.height as u32/x)).collect::<Vec<_>>();
         let mut format = info.format;
         let kind = info.asset_type;
@@ -333,7 +365,7 @@ impl Texture {
         };
 
         Self {
-            levels, format, kind,
+            levels, format, kind, info,
             ..Default::default()
         }
     }
@@ -357,6 +389,35 @@ impl Texture {
             (vec![], vec![])
         }
     }
+
+    pub fn to_file<P: AsRef<std::path::Path>>(&self, path: P) {
+        let path = path.as_ref();
+        std::fs::write(path.with_extension("json"), serde_json::to_string_pretty(&self.info).unwrap()).unwrap();
+        let mut dds = ddsfile::Dds::new_d3d(ddsfile::NewD3dParams {
+            height: self.info.height as u32,
+            width: self.info.width as u32,
+            depth: None, 
+            format: get_format(self.format).unwrap(), 
+            mipmap_levels: Some(self.levels.len() as u32), 
+            caps2: None
+        }).unwrap();
+        dds.data.clear();
+        dds.data.extend(self.levels.iter().flatten());
+        dds.write(&mut fs::File::create(path.with_extension("dds")).unwrap()).unwrap();
+    }
+
+    pub fn from_file<P: AsRef<std::path::Path>>(&self, path: P) -> Self {
+        let path = path.as_ref();
+        let info: TextureInfo = serde_json::from_slice(&fs::read(path.with_extension("json")).unwrap()).unwrap();
+        let dds = ddsfile::Dds::read(fs::File::open(path.with_extension("dds")).unwrap()).unwrap();
+        let size = dds.get_main_texture_size().unwrap() as usize;
+        let data = &dds.data;
+        if info.levels == 1 {
+            Self::from_data::<LE>(&[], data, info)
+        } else {
+            Self::from_data::<LE>(&data[..size], &data[size..], info)
+        }
+    }
 }
 
 /*
@@ -373,12 +434,13 @@ impl Texture {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct CubeTexture {
     pub faces: Vec<Vec<u8>>,
+    pub info: TextureInfo,
     pub format: u32,
     pub kind: u32,
 }
 
 impl CubeTexture {
-    pub fn from_data<O: ByteOrder + 'static>(data0: &[u8], data1: &[u8], info: &TextureInfo) -> Self {
+    pub fn from_data<O: ByteOrder + 'static>(data0: &[u8], data1: &[u8], info: TextureInfo) -> Self {
         let format = info.format;
         let kind = info.asset_type;
         assert!(info.levels <= 1, "Cube Textures with > 1 level are unhanded");
@@ -416,6 +478,7 @@ impl CubeTexture {
             faces,
             format,
             kind,
+            info,
             ..Default::default()
         }
     }
@@ -430,5 +493,31 @@ impl CubeTexture {
             warn!("Exporting Textures to Xbox format is not supported");
             (vec![], vec![])
         }
+    }    
+    
+    pub fn to_file<P: AsRef<std::path::Path>>(&self, path: P) {
+        let path = path.as_ref();
+        std::fs::write(path.with_extension("json"), serde_json::to_string_pretty(&self.info).unwrap()).unwrap();
+        let mut dds = ddsfile::Dds::new_d3d(ddsfile::NewD3dParams { 
+            height: self.info.height as u32,
+            width: self.info.width as u32,
+            depth: None, 
+            format: get_format(self.format).unwrap(),
+            mipmap_levels: None, 
+            caps2: Some(ddsfile::Caps2::CUBEMAP | ddsfile::Caps2::CUBEMAP_ALLFACES),
+        }).unwrap();
+        dds.data.clear();
+        dds.data.extend(self.faces.iter().flatten());
+
+        dds.write(&mut fs::File::create(path.with_extension("dds")).unwrap()).unwrap();
+    }
+
+    pub fn from_file<P: AsRef<std::path::Path>>(&self, path: P) -> Self {
+        let path = path.as_ref();
+        let info: TextureInfo = serde_json::from_slice(&fs::read(path.with_extension("json")).unwrap()).unwrap();
+        let dds = ddsfile::Dds::read(fs::File::open(path.with_extension("dds")).unwrap()).unwrap();
+        let size = dds.get_main_texture_size().unwrap() as usize;
+        let data = &dds.data;
+        Self::from_data::<LE>(&data[..size], &data[size..], info)
     }
 }

@@ -1,13 +1,10 @@
-use std::{collections::HashMap, iter::zip, any::TypeId};
+use std::{any::TypeId, collections::HashMap, fmt::{write, Display}, iter::zip, num::ParseIntError, ops::Index, str::FromStr};
 use log::warn;
 use zerocopy::{ByteOrder, BE};
 use serde::{Serialize, Deserialize};
-use crate::types::Crc;
-
-use super::types::BaseTypes;
 
 use lotrc_rs_proc::OrderedData;
-use super::types::{OrderedData, Vector4, Matrix4x4, OrderedDataVec};
+use super::types::{BaseTypes, OrderedData, Vector4, Matrix4x4, OrderedDataVec, Vector2, Crc, Vector3};
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct Header {
@@ -73,12 +70,12 @@ pub struct Header {
     pub texture_info_num: u32,  // 7
     pub animation_info_num: u32,  // 8
     pub hk_constraint_info_num: u32,  // 9
-    pub gameobj_block_info_num: u32,  // 10
+    pub effect_info_num: u32,  // 10
     pub pfield_info_num: u32,  // 12
     pub gfx_block_info_num: u32, 
     pub animation_block_info_num: u32, 
     pub foliage_info_num: u32, 
-    pub obj14_info_num: u32, 
+    pub illumination_info_num: u32, 
     pub unk_66: u32, 
     pub obja_offset: u32,  // 24 bytes
     pub obj0_offset: u32, 
@@ -98,12 +95,12 @@ pub struct Header {
     pub texture_info_offset: u32,  //0x12 bytes, max loaded is 0x800, related to MgSurfaceWin32
     pub animation_info_offset: u32, 
     pub hk_constraint_info_offset: u32, 
-    pub gameobj_block_info_offset: u32, 
+    pub effect_info_offset: u32, 
     pub pfield_info_offset: u32, 
     pub gfx_block_info_offset: u32,  // 0xc bytes, max loaded is 0x40
     pub animation_block_info_offset: u32,  // 36 bytes
     pub foliage_info_offset: u32, 
-    pub obj14_info_offset: u32, 
+    pub illumination_info_offset: u32, 
     pub unk_91: u32, 
     pub unk_92: u32, 
     pub unk_93: u32, 
@@ -136,7 +133,7 @@ pub struct Header {
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct ObjA {
     #[ordered_data(LE)]
-    pub key: u32, //<I',
+    pub key: Crc, //<I',
     #[ordered_data(LE)]
     pub unk_1: u32, //<I',
     #[ordered_data(LE)]
@@ -154,13 +151,13 @@ pub struct Obj0{
     #[ordered_data(LE)]
     pub unk_0: u32, //<I',
     #[ordered_data(LE)]
-    pub key: u32, //<I',
+    pub key: Crc, //<I',
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct MeshInfo {
     pub key: Crc,
-    pub block_flag: u32,
+    pub level_flag: u32,
     pub mat_offset: u32,
     pub buffer_info_offset: u32, // pointer to obj2, uses mat_num of sequential objects
     pub unk_4: u32,
@@ -171,7 +168,7 @@ pub struct MeshInfo {
     pub unk_9: u32,
     pub unk_10: u32,
     pub unk_11: u32,
-    pub valCs_offset: u32, // ints (c & 0x3fffffff is an index into the obj2s referenced by this object)
+    pub vals_c_offset: u32, // ints (c & 0x3fffffff is an index into the obj2s referenced by this object)
     pub unk_13: u32, // (v1, v2, v3, v4, v5) * 4 (up to unk_23), v1 is a starting offset to obj2s, v2 is the end offset
     pub unk_14: u32,
     pub block_start: u32,
@@ -191,38 +188,38 @@ pub struct MeshInfo {
     pub unk_29: u32,
     pub unk_30: u32,
     pub unk_31: u32,
-    pub valCs_num: u32,
+    pub vals_c_num: u32,
     pub mat_num: u32,
     pub keys_offset: u32, // ints
     pub indices_offset: u32,
     pub matrices_offset: u32, // 16 ints (matrix?) for keys_num
     pub keys_num: u32,
-    pub valGs_offset: u32,
-    pub valGs_num: u32,
-    pub valIs_offset: u32,
+    pub vals_g_offset: u32,
+    pub vals_g_num: u32,
+    pub vals_i_offset: u32,
     pub vbuff_offset: u32,
     pub vbuff_num: u32,
     pub ibuff_offset: u32,
     pub ibuff_num: u32,
-    pub valDs_offset: u32, // f_num * 8 ints
+    pub vals_d_offset: u32, // f_num * 8 ints
     pub unk_46: u32,
     pub unk_47: u32,
-    pub valJs_num: u32,
-    pub valJs_offset: u32,
+    pub vals_j_num: u32,
+    pub vals_j_offset: u32,
     pub block_offset: u32,
-    pub valKs_offset: u32, // not sure on the size, seems to be 36 ints
-    pub asset_key: u32, // data in bin that is vertex & index buffer values
+    pub vals_k_offset: u32, // not sure on the size, seems to be 36 ints
+    pub asset_key: Crc, // data in bin that is vertex & index buffer values
     pub asset_type: u32,
     pub unk_54: u32,
     pub unk_55: u32,
-    pub shape_info_offset: u32,
-    pub shape_info_num: u32,
+    pub shape_offset: u32,
+    pub shape_num: u32,
     pub hk_constraint_data_offset: u32, // optional pointer to obje
-    pub unk_59: u32,
+    pub hk_constraint_data_num: u32,
     pub hk_constraint_offset: u32, // optional pointer to hkConstraint
     pub keys2_offset: u32,
     pub keys2_order_offset: u32,
-    pub valAs_offset: u32, // 8 ints
+    pub vals_a_offset: u32, // 8 ints
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
@@ -418,12 +415,12 @@ pub struct MatBase {
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct Mat1 {
-    base: MatBase,
+    pub base: MatBase,
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct Mat2 {
-    base: MatBase,
+    pub base: MatBase,
     pub unk_90: u32,
     pub unk_91: u32,
     pub unk_92: u32,
@@ -461,7 +458,7 @@ pub struct Mat2 {
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct Mat3 {
-    base: MatBase,
+    pub base: MatBase,
     pub unk_90: u32,
     pub unk_91: u32,
     pub unk_92: u32,
@@ -495,7 +492,7 @@ pub struct Mat3 {
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct Mat4 {
-    base: MatBase,
+    pub base: MatBase,
     pub unk_90: u32,
     pub unk_91: u32,
     pub unk_92: u32,
@@ -752,7 +749,7 @@ pub struct IBuffInfo {
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct TextureInfo {
     pub key: Crc,
-    pub block_flag: u32,
+    pub level_flag: u32,
     pub asset_key: Crc,
     pub asset_type: u32,
     pub kind: u32,
@@ -788,7 +785,7 @@ pub struct TextureInfo {
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct AnimationInfo {
     pub key: Crc,
-    pub block_flag: u32,
+    pub level_flag: u32,
     pub offset: u32,
     pub size: u32,
     pub kind: u32,
@@ -844,15 +841,15 @@ pub struct HkConstraintInfo {
     pub keys2_offset: u32,
     pub unk_13: u32,
     pub unk_14: f32, //f',
-    pub unk_15: u32,
-    pub unk_16: u32,
+    pub vals2_num: u32,
+    pub vals2_offset: u32,
     pub unk_17: u32,
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
-pub struct LevelBlockInfo {
-    pub key: u32,
-    pub unk_1: u32,
+pub struct EffectInfo {
+    pub key: Crc,
+    pub level_flags: u32,
     pub offset: u32,
     pub size: u32,
 }
@@ -891,10 +888,10 @@ pub struct AnimationBlockInfo {
 pub struct FoliageInfo {
     pub key: Crc, 
     pub unk_1: u32, 
-    pub s1a: u32, 
-    pub s2a: u32, 
-    pub s1b: u32, 
-    pub s2b: u32, 
+    pub s1a: i32, 
+    pub s2a: i32, 
+    pub s1b: i32, 
+    pub s2b: i32, 
     pub unk_6: u32, 
     pub offset: u32, 
     pub key_mesh: Crc, 
@@ -912,7 +909,7 @@ pub struct FoliageInfo {
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
-pub struct Obj14Info {
+pub struct IlluminationInfo {
     // points to list of ints in block1, maybe something to do with radiosity
     pub guid: u32,
     pub num: u32,
@@ -922,7 +919,7 @@ pub struct Obj14Info {
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct BlockAVal {
     pub unk_0: u32,
-    pub block_flag: u32,
+    pub level_flag: u32,
     pub key: Crc,
     pub unk_3: u32,
     pub unk_4: u32,
@@ -956,19 +953,19 @@ pub struct Mesh {
     pub indices: Vec<u32>,
     pub keys: Vec<u32>,
     pub matrices: Vec<Matrix4x4>,
-    pub valAs: Vec<u32>,
+    pub vals_a: Vec<u32>,
     pub mats: Vec<u32>,
-    pub valCs: Vec<u32>,
-    pub valDs: Vec<u32>,
+    pub vals_c: Vec<u32>,
+    pub vals_d: Vec<u32>,
     pub vbuffs: Vec<u32>,
     pub ibuffs: Vec<u32>,
-    pub valGs: Vec<u32>,
-    pub valJs: Vec<u32>,
+    pub vals_g: Vec<u32>,
+    pub vals_j: Vec<u32>,
     pub string_offsets: Vec<u32>,
     pub strings: Vec<String>,
-    pub valK_header: Vec<u16>,
-    pub valKs: Vec<u32>,
-    pub valIs: Vec<u32>,
+    pub val_k_header: Vec<u16>,
+    pub vals_k: Vec<u32>,
+    pub vals_i: Vec<u32>,
     pub keys2: Vec<u32>,
     pub keys2_order: Vec<u32>,
     pub block_header: u32,
@@ -985,16 +982,16 @@ impl Mesh {
         assert!(val.indices[0] == 0xffffffff);
         val.keys = OrderedDataVec::from_bytes::<O>(&data[info.keys_offset as usize..], info.keys_num as usize);
         val.matrices = OrderedDataVec::from_bytes::<O>(&data[info.matrices_offset as usize..], info.keys_num as usize);
-        val.valAs = OrderedDataVec::from_bytes::<O>(&data[info.valAs_offset as usize..], info.keys_num as usize * 8);
+        val.vals_a = OrderedDataVec::from_bytes::<O>(&data[info.vals_a_offset as usize..], info.keys_num as usize * 8);
         val.mats = OrderedDataVec::from_bytes::<O>(&data[info.mat_offset as usize..], info.mat_num as usize);
-        val.valCs = OrderedDataVec::from_bytes::<O>(&data[info.valCs_offset as usize..], info.valCs_num as usize);
-        val.valDs = OrderedDataVec::from_bytes::<O>(&data[info.valDs_offset as usize..], info.valCs_num as usize * 8);
+        val.vals_c = OrderedDataVec::from_bytes::<O>(&data[info.vals_c_offset as usize..], info.vals_c_num as usize);
+        val.vals_d = OrderedDataVec::from_bytes::<O>(&data[info.vals_d_offset as usize..], info.vals_c_num as usize * 8);
         val.vbuffs = OrderedDataVec::from_bytes::<O>(&data[info.vbuff_offset as usize..], info.vbuff_num as usize);
         val.ibuffs = OrderedDataVec::from_bytes::<O>(&data[info.ibuff_offset as usize..], info.ibuff_num as usize);
-        val.valGs = OrderedDataVec::from_bytes::<O>(&data[info.valGs_offset as usize..], info.valGs_num as usize * 16);
-        if (info.valJs_num == 0) && (info.valJs_offset != 0) && (info.valJs_offset != info.valGs_offset) {
-            // val.valJs = OrderedDataVec::from_bytes::<O>(&data[info.valJs_offset as usize..], info.keys_num as usize);
-            // for v in &val.valJs {
+        val.vals_g = OrderedDataVec::from_bytes::<O>(&data[info.vals_g_offset as usize..], info.vals_g_num as usize * 16);
+        if (info.vals_j_num == 0) && (info.vals_j_offset != 0) && (info.vals_j_offset != info.vals_g_offset) {
+            // val.vals_j = OrderedDataVec::from_bytes::<O>(&data[info.vals_j_offset as usize..], info.keys_num as usize);
+            // for v in &val.vals_j {
             //     let mut offset: u32 = OrderedData::from_bytes::<O>(&data[*v as usize..]);
             //     let start = offset;
             //     while data[offset as usize] != 0 { offset += 1; }
@@ -1003,17 +1000,17 @@ impl Mesh {
             //     val.strings.push(string);
             // }
         } else {
-            val.valJs = OrderedDataVec::from_bytes::<O>(&data[info.valJs_offset as usize..], info.valJs_num as usize);
+            val.vals_j = OrderedDataVec::from_bytes::<O>(&data[info.vals_j_offset as usize..], info.vals_j_num as usize);
         }
-        if info.valKs_offset != 0 {
-            val.valK_header = OrderedDataVec::from_bytes::<O>(&data[info.valKs_offset as usize..], 2);
-            if (val.valK_header[0] != 3) || (val.valK_header[0] != 6) {
+        if info.vals_k_offset != 0 {
+            val.val_k_header = OrderedDataVec::from_bytes::<O>(&data[info.vals_k_offset as usize..], 2);
+            if (val.val_k_header[0] != 3) || (val.val_k_header[0] != 6) {
                 warn!("unexpected valsK data {:?}", info.key);
             }
-            val.valKs = OrderedDataVec::from_bytes::<O>(&data[info.valKs_offset as usize + 4..], 35);
+            val.vals_k = OrderedDataVec::from_bytes::<O>(&data[info.vals_k_offset as usize + 4..], 35);
         }
-        if info.valIs_offset != 0 {
-            val.valIs = OrderedDataVec::from_bytes::<O>(&data[info.valIs_offset as usize..], info.valGs_num as usize);
+        if info.vals_i_offset != 0 {
+            val.vals_i = OrderedDataVec::from_bytes::<O>(&data[info.vals_i_offset as usize..], info.vals_g_num as usize);
         }
         if info.keys2_offset != 0 {
             assert!(info.keys2_order_offset != 0);
@@ -1045,8 +1042,8 @@ impl Mesh {
             }
         }
         // not sure why this pops up once, maybe it is padding between items?
-        if (info.valCs_offset == info.vbuff_offset) && (info.valCs_offset == info.ibuff_offset) && (info.valCs_offset == info.valDs_offset) {
-            val.val = OrderedDataVec::from_bytes::<O>(&data[info.valCs_offset as usize..], 4);
+        if (info.vals_c_offset == info.vbuff_offset) && (info.vals_c_offset == info.ibuff_offset) && (info.vals_c_offset == info.vals_d_offset) {
+            val.val = OrderedDataVec::from_bytes::<O>(&data[info.vals_c_offset as usize..], 4);
         }
         val
     }
@@ -1055,28 +1052,28 @@ impl Mesh {
         self.indices.to_bytes::<O>(&mut data[info.indices_offset as usize..]);
         self.keys.to_bytes::<O>(&mut data[info.keys_offset as usize..]);
         self.matrices.to_bytes::<O>(&mut data[info.matrices_offset as usize..]);
-        self.valAs.to_bytes::<O>(&mut data[info.valAs_offset as usize..]);
+        self.vals_a.to_bytes::<O>(&mut data[info.vals_a_offset as usize..]);
         self.mats.to_bytes::<O>(&mut data[info.mat_offset as usize..]);
-        self.valCs.to_bytes::<O>(&mut data[info.valCs_offset as usize..]);
-        self.valDs.to_bytes::<O>(&mut data[info.valDs_offset as usize..]);
+        self.vals_c.to_bytes::<O>(&mut data[info.vals_c_offset as usize..]);
+        self.vals_d.to_bytes::<O>(&mut data[info.vals_d_offset as usize..]);
         self.vbuffs.to_bytes::<O>(&mut data[info.vbuff_offset as usize..]);
         self.ibuffs.to_bytes::<O>(&mut data[info.ibuff_offset as usize..]);
-        self.valGs.to_bytes::<O>(&mut data[info.valGs_offset as usize..]);
-        if (info.valJs_num) == 0 && (info.valJs_offset != 0) && (info.valJs_offset != info.valGs_offset) {
-            self.valJs.to_bytes::<O>(&mut data[info.valJs_offset as usize..]);
-            for (v, (off, string)) in zip(&self.valJs, zip(&self.string_offsets,& self.strings)) {
+        self.vals_g.to_bytes::<O>(&mut data[info.vals_g_offset as usize..]);
+        if (info.vals_j_num) == 0 && (info.vals_j_offset != 0) && (info.vals_j_offset != info.vals_g_offset) {
+            self.vals_j.to_bytes::<O>(&mut data[info.vals_j_offset as usize..]);
+            for (v, (off, string)) in zip(&self.vals_j, zip(&self.string_offsets,& self.strings)) {
                 off.to_bytes::<O>(&mut data[*v as usize..]);
                 data[*off as usize..*off as usize+string.len()].copy_from_slice(string.as_bytes());
             }
         } else {
-            self.valJs.to_bytes::<O>(&mut data[info.valJs_offset as usize..]);
+            self.vals_j.to_bytes::<O>(&mut data[info.vals_j_offset as usize..]);
         }
-        if info.valKs_offset != 0 {
-            self.valK_header.to_bytes::<O>(&mut data[info.valKs_offset as usize..]);
-            self.valKs.to_bytes::<O>(&mut data[info.valKs_offset as usize + 4..])
+        if info.vals_k_offset != 0 {
+            self.val_k_header.to_bytes::<O>(&mut data[info.vals_k_offset as usize..]);
+            self.vals_k.to_bytes::<O>(&mut data[info.vals_k_offset as usize + 4..])
         }
-        if info.valIs_offset != 0 {
-            self.valIs.to_bytes::<O>(&mut data[info.valIs_offset as usize..]);
+        if info.vals_i_offset != 0 {
+            self.vals_i.to_bytes::<O>(&mut data[info.vals_i_offset as usize..]);
         }
         if info.keys2_offset != 0 {
             self.keys2.to_bytes::<O>(&mut data[info.keys2_offset as usize..]);
@@ -1096,8 +1093,8 @@ impl Mesh {
                 extra.to_bytes::<O>(&mut data[offset + s..]);
             }
         }
-        if (info.valCs_offset == info.vbuff_offset) && (info.valCs_offset == info.ibuff_offset) && (info.valCs_offset == info.valDs_offset) {
-            self.val.to_bytes::<O>(&mut data[info.valCs_offset as usize..]);
+        if (info.vals_c_offset == info.vbuff_offset) && (info.vals_c_offset == info.ibuff_offset) && (info.vals_c_offset == info.vals_d_offset) {
+            self.val.to_bytes::<O>(&mut data[info.vals_c_offset as usize..]);
         }
     }
 }
@@ -1605,8 +1602,8 @@ impl Animation {
     pub fn unpack_block<O: ByteOrder + 'static>(anims: &mut [Self], infos: &[AnimationInfo], data: & [u8], offset: usize, index: usize) {
         let mut offset = offset;
         for (anim, info) in zip(anims, infos) {
-            let block_flag = 1u32 << index;
-            if block_flag & info.block_flag != 0 {
+            let level_flag = 1u32 << index;
+            if level_flag & info.level_flag != 0 {
                 anim.unpack_from_block::<O>(data, offset, index, info);
                 offset += info.size as usize;
             }
@@ -1616,8 +1613,8 @@ impl Animation {
     pub fn pack_block<O: ByteOrder + 'static>(anims: & [Self], infos: &[AnimationInfo], data: &mut [u8], offset: usize, index: usize) {
         let mut offset = offset;
         for (anim, info) in zip(anims, infos) {
-            let block_flag = 1u32 << index;
-            if block_flag & info.block_flag != 0 {
+            let level_flag = 1u32 << index;
+            if level_flag & info.level_flag != 0 {
                 anim.pack_into_block::<O>(data, offset, index, info);
                 offset += info.size as usize;
             }
@@ -1625,7 +1622,7 @@ impl Animation {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum VertexUsage {
     Position,
     Normal,
@@ -1636,6 +1633,127 @@ pub enum VertexUsage {
     TextureCoord(usize),
     PSize,
     Pad,
+}
+
+impl Display for VertexUsage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Position => write!(f, "Position"),
+            Self::Normal => write!(f, "Normal"),
+            Self::Tangent => write!(f, "Tangent"),
+            Self::BiNormal => write!(f, "BiNormal"),
+            Self::BlendWeight => write!(f, "BlendWeight"),
+            Self::BlendIndices(i) => write!(f, "BlendIndices({})", i),
+            Self::TextureCoord(i) => write!(f, "TextureCoord({})", i),
+            Self::PSize => write!(f, "PSize"),
+            Self::Pad => write!(f, "Pad"),
+        }
+    }
+}
+
+
+#[derive(Debug)]
+pub struct VertexUsageParseError;
+impl Display for VertexUsageParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "VertexUsageParseError")
+    }
+}
+
+impl From<ParseIntError> for VertexUsageParseError {
+    fn from(_value: ParseIntError) -> Self {
+        Self
+    }
+}
+
+impl FromStr for VertexUsage {
+    type Err = VertexUsageParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Position" => Ok(Self::Position),
+            "Normal" => Ok(Self::Normal),
+            "Tangent" => Ok(Self::Tangent),
+            "BiNormal" => Ok(Self::BiNormal),
+            "BlendWeight" => Ok(Self::BlendWeight),
+            "PSize" => Ok(Self::PSize),
+            "Pad" => Ok(Self::Pad),
+            s => {
+                if s.starts_with("BlendIndices(") {
+                    Ok(s[13..].split(')').next().unwrap().parse::<usize>().map(|i| Self::BlendIndices(i))?)
+                } else if s.starts_with("TextureCoord(") {
+                    Ok(s[13..].split(')').next().unwrap().parse::<usize>().map(|i| Self::TextureCoord(i))?)
+                } else {
+                    Err(VertexUsageParseError)
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum VertexTypes {
+    Vector2(Vec<f32>,Vec<f32>),
+    Vector3(Vec<f32>,Vec<f32>,Vec<f32>),
+    Vector4(Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>),
+    Unorm4x8 (Vec<u32>),
+    Pad (Vec<u32>),
+    None,
+}
+
+impl VertexTypes {
+    pub fn new(format: u32) -> Self {
+        match format {
+            BaseTypes::INT_KEY => Self::Pad(vec![]),
+            BaseTypes::COLOR_KEY => Self::Unorm4x8(vec![]),
+            BaseTypes::VECTOR2_KEY => Self::Vector2(vec![], vec![]),
+            BaseTypes::VECTOR3_KEY => Self::Vector3(vec![], vec![], vec![]),
+            BaseTypes::VECTOR4_KEY => Self::Vector4(vec![], vec![], vec![], vec![]),
+            _ => Self::None
+        }
+    }
+
+    pub fn get(&self, i: usize) -> BaseTypes {
+        match self {
+            Self::Pad(vals) => BaseTypes::Int(vals[i]),
+            Self::Unorm4x8(vals) => BaseTypes::Color(vals[i]),
+            Self::Vector2(x, y) => BaseTypes::Vector2(Vector2 {x: x[i], y: y[i]}),
+            Self::Vector3(x, y, z) => BaseTypes::Vector3(Vector3 {x: x[i], y: y[i], z: z[i]}),
+            Self::Vector4(x, y, z, w) => BaseTypes::Vector4(Vector4 {x: x[i], y: y[i], z: z[i], w: w[i]}),
+            Self::None => BaseTypes::Int(0)
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            Self::Pad(vals) => vals.len(),
+            Self::Unorm4x8(vals) => vals.len(),
+            Self::Vector2(x, y) => x.len().min(y.len()),
+            Self::Vector3(x, y, z) => x.len().min(y.len()).min(z.len()),
+            Self::Vector4(x, y, z, w) => x.len().min(y.len()).min(z.len()).min(w.len()),
+            Self::None => 0
+        }
+    }
+
+    pub fn push(&mut self, val: BaseTypes) {
+        match self {
+            Self::Pad(vals) => if let BaseTypes::Int(val) = val {
+                vals.push(val);
+            },
+            Self::Unorm4x8(vals) => if let BaseTypes::Color(val) = val {
+                vals.push(val);
+            },
+            Self::Vector2(x, y)=> if let BaseTypes::Vector2(val) = val {
+                x.push(val.x); y.push(val.y);
+            },
+            Self::Vector3(x, y, z)=> if let BaseTypes::Vector3(val) = val {
+                x.push(val.x); y.push(val.y); z.push(val.z);
+            },
+            Self::Vector4(x, y, z, w) => if let BaseTypes::Vector4(val) = val {
+                x.push(val.x); y.push(val.y); z.push(val.z); w.push(val.w);
+            },
+            Self::None => ()
+        }
+    }
 }
 
 fn get_vertex_format<O: ByteOrder + 'static>(fmt1: u32, fmt2: u32) -> (Vec<(u32, VertexUsage)>, usize) {
@@ -1747,9 +1865,13 @@ fn get_vertex_format<O: ByteOrder + 'static>(fmt1: u32, fmt2: u32) -> (Vec<(u32,
     (fmt, s)
 }
 
-#[derive(Default, Debug, Serialize, Deserialize)]
+use serde_with::serde_as;
+#[serde_as]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct VertexBuffer {
-    pub vals: Vec<Vec<BaseTypes>>
+    #[serde_as(as = "serde_with::Map<serde_with::DisplayFromStr, _>")]
+    pub vals: Vec<(VertexUsage, VertexTypes)>
 }
 
 impl VertexBuffer {
@@ -1759,18 +1881,19 @@ impl VertexBuffer {
         });
         assert!(info.size as usize % *size == 0);
         let n = info.size as usize / *size;
-        let mut vals = Vec::with_capacity(n);
+        // let mut vals = Vec::with_capacity(n);
         let mut offset = info.offset as usize;
+        let mut vals = fmt.iter().map(|(t, u)| (u.clone(), VertexTypes::new(*t))).collect::<Vec<_>>();
         for _ in 0..n {
-            let mut val = Vec::with_capacity(fmt.len());
-            for kind in fmt.iter() {
-                let mut v = BaseTypes::from_data::<O>(&data[offset..], kind.0);
-                if (TypeId::of::<O>() == TypeId::of::<BE>()) && (kind.1 == VertexUsage::BlendWeight) {
+            // let mut val = Vec::with_capacity(fmt.len());
+            for (kind, (usage, val)) in zip(fmt.iter().map(|(x, _)| x), &mut vals) {
+                let mut v = BaseTypes::from_data::<O>(&data[offset..], *kind);
+                if (TypeId::of::<O>() == TypeId::of::<BE>()) && (*usage == VertexUsage::BlendWeight) {
                     match &mut v {
                         BaseTypes::Vector4(val) => {
                             val.x = val.x/2.0 + 0.5;
                             val.y = val.y/2.0 + 0.5;
-                            val.z = val.z/2.0 + 0.5;    
+                            val.z = val.z/2.0 + 0.5;
                         },
                         BaseTypes::Color(val) => {
                             let z = *val & 0x3FF;
@@ -1787,7 +1910,7 @@ impl VertexBuffer {
                 offset += v.size::<O>();
                 val.push(v);
             }
-            vals.push(val);
+            // vals.push(val);
         }
         Self { vals }
     }
@@ -1795,16 +1918,29 @@ impl VertexBuffer {
     pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut[u8], info: &VBuffInfo) {
         let mut offset = info.offset as usize;
         let mut off_ = 0;
-        for val in &self.vals {
-            for v in val {
+        let i = self.vals.iter().map(|(_, x)| x.len()).min().unwrap();
+        for i in 0..i {
+            for (_, val) in &self.vals {
+                let v = val.get(i);
                 v.into_data::<O>(&mut data[offset..], &mut off_);
                 offset += v.size::<O>();
             }
         }
+        // for val in &self.vals {
+        //     for v in val {
+        //         v.into_data::<O>(&mut data[offset..], &mut off_);
+        //         offset += v.size::<O>();
+        //     }
+        // }
+    }
+    pub fn dump<O: ByteOrder + 'static>(&self) -> Vec<u8> {
+        // self.vals.iter().flat_map(|x| x.iter().flat_map(|x| x.dump_bytes::<O>())).collect()
+        let i = self.vals.iter().map(|(_, x)| x.len()).min().unwrap();
+        (0..i).flat_map(|i| self.vals.iter().flat_map(move |(_, val)| val.get(i).dump_bytes::<O>())).collect()
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum IndexBuffer {
     U16 { vals: Vec<u16> },
     U32 { vals: Vec<u32> },
@@ -1829,19 +1965,26 @@ impl IndexBuffer {
             Self::U32 { vals } => vals.to_bytes::<O>(data)
         };
     }
+    pub fn dump<O: ByteOrder + 'static>(&self) -> Vec<u8> {
+        match self {
+            Self::U16 { vals } => vals.dump_bytes::<O>(),
+            Self::U32 { vals } => vals.dump_bytes::<O>()
+        }
+    }
+
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
-pub struct Obj14 {
+pub struct Illumination {
     pub vals: Vec<u32>
 }
 
-impl Obj14 {
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], info: &Obj14Info) -> Self {
+impl Illumination {
+    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], info: &IlluminationInfo) -> Self {
         Self { vals: OrderedDataVec::from_bytes::<O>(&data[info.offset as usize..], info.num as usize) }
     }
 
-    pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut [u8], info: &Obj14Info) {
+    pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut [u8], info: &IlluminationInfo) {
         self.vals.to_bytes::<O>(&mut data[info.offset as usize..]);
     }
 }

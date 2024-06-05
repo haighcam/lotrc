@@ -1,7 +1,7 @@
 use std::io::Write;
 use mlua::prelude::*;
 
-const LUA_BYTECODE: &str = include_str!("../res/lua-bytecode.lua");
+const LUA_BYTECODE: &str = include_str!("../res/lua-bytecode.github.io/lua-bytecode.lua");
 
 #[derive(Debug, Default)]
 pub struct LuaCompiler {
@@ -34,19 +34,7 @@ impl LuaCompiler {
         let mut temp_file = tempfile::NamedTempFile::new().unwrap();
         temp_file.write_all(code).unwrap();
         let path = temp_file.path();
-        let output = std::process::Command::new("java").args(&["-jar", "/home/cameron/Documents/Games/The Lord of the Rings Conquest 2/lotrc_decomp_rs/unluac.jar", path.to_str().unwrap()]).output()?;
-
-        // let code: Vec<u8> = self.lua.globals().get::<_, LuaFunction>("lua_bytecode")?.call::<_, LuaString>((
-        //     self.lua.create_string(code)?,
-        //     "L4808"
-        // ))?.as_bytes().to_vec();
-        // let mut process = std::process::Command::new("/home/cameron/Documents/Games/The Lord of the Rings Conquest 2/lotrc_decomp_rs/luadec").arg("-").stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).spawn().unwrap();
-        // {
-        //     let mut stdin = process.stdin.take().unwrap();
-        //     stdin.write_all(code.as_slice()).unwrap();
-        //     stdin.flush().unwrap();    
-        // }
-        // let output = process.wait_with_output()?;
+        let output = std::process::Command::new("java").args(&["-jar", "unluac.jar", path.to_str().unwrap()]).output()?;
         Ok(String::from_utf8(output.stdout).unwrap())
     }
 }

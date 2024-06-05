@@ -46,11 +46,11 @@ pub struct Level {
     pub texture_infos: Vec<pak::TextureInfo>,
     pub animation_infos: Vec<pak::AnimationInfo>,
     pub hk_constraint_infos: Vec<pak::HkConstraintInfo>,
-    pub gameobj_block_infos: Vec<pak::LevelBlockInfo>,
+    pub effect_infos: Vec<pak::EffectInfo>,
     pub foliage_infos: Vec<pak::FoliageInfo>,
     pub pfield_infos: Vec<pak::PFieldInfo>,
     pub gfx_block_infos: Vec<pak::GFXBlockInfo>,
-    pub obj14_infos: Vec<pak::Obj14Info>,
+    pub illumination_infos: Vec<pak::IlluminationInfo>,
     pub animation_block_infos: Vec<pak::AnimationBlockInfo>,
     pub dump_animation_block_infos: Vec<pak::AnimationBlockInfo>,
 
@@ -58,9 +58,9 @@ pub struct Level {
     pub shapes: Vec<pak::Shape>,
     pub hk_shapes: Vec<pak::HkShape>,
     pub hk_constraints: Vec<pak::HkConstraint>,
-    pub gameobj_blocks: Vec<types::GameObjs>,
+    pub effects: Vec<types::GameObjs>,
     pub gfx_blocks: Vec<types::Data>,
-    pub obj14s: Vec<pak::Obj14>,
+    pub illuminations: Vec<pak::Illumination>,
     pub foliages: Vec<pak::Foliage>,
 
     pub animation_blocks: Vec<types::CompressedBlock>,
@@ -149,11 +149,11 @@ impl Level {
         val.texture_infos = OrderedDataVec::from_bytes::<O>(&val.block1.data[val.pak_header.texture_info_offset as usize..], val.pak_header.texture_info_num as usize);
         val.animation_infos = OrderedDataVec::from_bytes::<O>(&val.block1.data[val.pak_header.animation_info_offset as usize..], val.pak_header.animation_info_num as usize);
         val.hk_constraint_infos = OrderedDataVec::from_bytes::<O>(&val.block1.data[val.pak_header.hk_constraint_info_offset as usize..], val.pak_header.hk_constraint_info_num as usize);
-        val.gameobj_block_infos = OrderedDataVec::from_bytes::<O>(&val.block1.data[val.pak_header.gameobj_block_info_offset as usize..], val.pak_header.gameobj_block_info_num as usize);
+        val.effect_infos = OrderedDataVec::from_bytes::<O>(&val.block1.data[val.pak_header.effect_info_offset as usize..], val.pak_header.effect_info_num as usize);
         val.foliage_infos = OrderedDataVec::from_bytes::<O>(&val.block1.data[val.pak_header.foliage_info_offset as usize..], val.pak_header.foliage_info_num as usize);
         val.pfield_infos = OrderedDataVec::from_bytes::<O>(&val.block1.data[val.pak_header.pfield_info_offset as usize..], val.pak_header.pfield_info_num as usize);
         val.gfx_block_infos = OrderedDataVec::from_bytes::<O>(&val.block1.data[val.pak_header.gfx_block_info_offset as usize..], val.pak_header.gfx_block_info_num as usize);
-        val.obj14_infos = OrderedDataVec::from_bytes::<O>(&val.block1.data[val.pak_header.obj14_info_offset as usize..], val.pak_header.obj14_info_num as usize);
+        val.illumination_infos = OrderedDataVec::from_bytes::<O>(&val.block1.data[val.pak_header.illumination_info_offset as usize..], val.pak_header.illumination_info_num as usize);
         val.animation_block_infos = OrderedDataVec::from_bytes::<O>(&val.block1.data[val.pak_header.animation_block_info_offset as usize..], val.pak_header.animation_block_info_num as usize);
         println!("packed items extracted in {:?}", time.elapsed());
 
@@ -161,9 +161,9 @@ impl Level {
         val.shapes = val.shape_infos.iter().map(|info| pak::Shape::from_data::<O>(val.block1.data.as_slice(), info)).collect();
         val.hk_shapes = val.hk_shape_infos.iter().map(|info| pak::HkShape::from_data::<O>(val.block1.data.as_slice(), info)).collect();
         val.hk_constraints = val.hk_constraint_infos.iter().map(|info| pak::HkConstraint::from_data::<O>(val.block1.data.as_slice(), info)).collect();
-        val.gameobj_blocks = val.gameobj_block_infos.iter().map(|info| types::GameObjs::from_data::<O>(val.block1.data.as_slice(), info.offset as usize, info.size as usize)).collect();
+        val.effects = val.effect_infos.iter().map(|info| types::GameObjs::from_data::<O>(val.block1.data.as_slice(), info.offset as usize, info.size as usize, info.level_flags)).collect();
         val.gfx_blocks = val.gfx_block_infos.iter().map(|info| types::Data::from_data(val.block1.data.as_slice(), info.offset as usize, info.size as usize)).collect();
-        val.obj14s = val.obj14_infos.iter().map(|info| pak::Obj14::from_data::<O>(val.block1.data.as_slice(), info)).collect();
+        val.illuminations = val.illumination_infos.iter().map(|info| pak::Illumination::from_data::<O>(val.block1.data.as_slice(), info)).collect();
         val.foliages = val.foliage_infos.iter().map(|info| pak::Foliage::from_data::<O>(val.block1.data.as_slice(), info)).collect();
         println!("item extra extracted in {:?}", time.elapsed());
 
@@ -189,8 +189,8 @@ impl Level {
             let data0 = &val.asset_data.get(&(info.asset_key.key(), info.asset_type)).unwrap().data;
             let data1 = &val.asset_data.get(&(hash_string("*".as_bytes(), Some(info.asset_key.key())), info.asset_type)).unwrap().data;
             match info.kind {
-                0 | 7 | 8 => Some((info.asset_key.clone(), bin::Tex::Texture(bin::Texture::from_data::<O>(&data0[..], &data1[..], info)))),
-                1 | 9 => Some((info.asset_key.clone(), bin::Tex::CubeTexture(bin::CubeTexture::from_data::<O>(&data0[..], &data1[..], info)))),
+                0 | 7 | 8 => Some((info.asset_key.clone(), bin::Tex::Texture(bin::Texture::from_data::<O>(&data0[..], &data1[..], info.clone())))),
+                1 | 9 => Some((info.asset_key.clone(), bin::Tex::CubeTexture(bin::CubeTexture::from_data::<O>(&data0[..], &data1[..], info.clone())))),
                 _ => {
                     warn!("Unsupported Texture Type {}", info.kind);
                     None
@@ -207,7 +207,7 @@ impl Level {
                 val.vbuffs.push(vec![]);
                 val.ibuffs.push(vec![]);
             } else {
-                let buffer = &val.asset_data.get(&(info.asset_key, info.asset_type)).unwrap().data;
+                let buffer = &val.asset_data.get(&(info.asset_key.key(), info.asset_type)).unwrap().data;
                 val.vbuffs.push(mesh.vbuffs.iter().map(|info| pak::VertexBuffer::from_data::<O>(&buffer[..], &val.vbuff_infos[*val.vbuff_info_map.get(&info).unwrap()], &mut val.vertex_formats)).collect());
                 val.ibuffs.push(mesh.ibuffs.iter().map(|info| pak::IndexBuffer::from_data::<O>(&buffer[..], &val.ibuff_infos[*val.ibuff_info_map.get(&info).unwrap()])).collect());    
             }
@@ -238,7 +238,7 @@ impl Level {
         let off = (bin_data.len() + 2047) & 0xfffff800;
         bin_data.extend(vec![0u8; off-bin_data.len()]);
         for ((mesh, info), (vbuffs, ibuffs)) in zip(zip(&self.meshes, &self.mesh_infos), zip(&self.vbuffs, &self.ibuffs)) {
-            let key = (info.asset_key, info.asset_type);
+            let key = (info.asset_key.key(), info.asset_type);
             if (info.vbuff_num != 0) || (info.ibuff_num != 0) {
                 let i = *self.asset_handle_lookup.get(&key).unwrap();
                 let asset_handle = dump_asset_handles.get_mut(i).unwrap();
@@ -353,8 +353,8 @@ impl Level {
         for (foliage, info) in zip(&self.foliages, &self.foliage_infos) {
             foliage.into_data::<O>(&mut dump_block1, info);
         }
-        for (obj14, info) in zip(&self.obj14s, &self.obj14_infos) {
-            obj14.into_data::<O>(&mut dump_block1, info);
+        for (illumination, info) in zip(&self.illuminations, &self.illumination_infos) {
+            illumination.into_data::<O>(&mut dump_block1, info);
         }
         for (gfx_block, info) in zip(&self.gfx_blocks, &self.gfx_block_infos) {
             gfx_block.into_data(&mut dump_block1, info.offset as usize);
@@ -372,8 +372,8 @@ impl Level {
         for (hk_constraint, info) in zip(&self.hk_constraints, &self.hk_constraint_infos) {
             hk_constraint.into_data::<O>(&mut dump_block1, info);
         }
-        for (gameobj_block, info) in zip(&self.gameobj_blocks, &self.gameobj_block_infos) {
-            gameobj_block.into_data::<O>(&mut dump_block1, info.offset as usize);
+        for (effect, info) in zip(&self.effects, &self.effect_infos) {
+            effect.into_data::<O>(&mut dump_block1, info.offset as usize);
         }
         println!("item extras in {:?}", time.elapsed());
 
@@ -394,11 +394,11 @@ impl Level {
         self.texture_infos.to_bytes::<O>(&mut dump_block1[dump_pak_header.texture_info_offset as usize..]);
         self.animation_infos.to_bytes::<O>(&mut dump_block1[dump_pak_header.animation_info_offset as usize..]);
         self.hk_constraint_infos.to_bytes::<O>(&mut dump_block1[dump_pak_header.hk_constraint_info_offset as usize..]);
-        self.gameobj_block_infos.to_bytes::<O>(&mut dump_block1[dump_pak_header.gameobj_block_info_offset as usize..]);
+        self.effect_infos.to_bytes::<O>(&mut dump_block1[dump_pak_header.effect_info_offset as usize..]);
         self.foliage_infos.to_bytes::<O>(&mut dump_block1[dump_pak_header.foliage_info_offset as usize..]);
         self.pfield_infos.to_bytes::<O>(&mut dump_block1[dump_pak_header.pfield_info_offset as usize..]);
         self.gfx_block_infos.to_bytes::<O>(&mut dump_block1[dump_pak_header.gfx_block_info_offset as usize..]);
-        self.obj14_infos.to_bytes::<O>(&mut dump_block1[dump_pak_header.obj14_info_offset as usize..]);
+        self.illumination_infos.to_bytes::<O>(&mut dump_block1[dump_pak_header.illumination_info_offset as usize..]);
         self.dump_animation_block_infos.to_bytes::<O>(&mut dump_block1[dump_pak_header.animation_block_info_offset as usize..]);
         println!("packed items in {:?}", time.elapsed());
 
@@ -512,11 +512,11 @@ impl Level {
         self.texture_infos.serialize(&mut Serializer::new(IoWrite::new(File::create(path.join("texture_infos")).unwrap()))).unwrap();
         self.animation_infos.serialize(&mut Serializer::new(IoWrite::new(File::create(path.join("animation_infos")).unwrap()))).unwrap();
         self.hk_constraint_infos.serialize(&mut Serializer::new(IoWrite::new(File::create(path.join("hk_constraint_infos")).unwrap()))).unwrap();
-        self.gameobj_block_infos.serialize(&mut Serializer::new(IoWrite::new(File::create(path.join("gameobj_block_infos")).unwrap()))).unwrap();
+        self.effect_infos.serialize(&mut Serializer::new(IoWrite::new(File::create(path.join("effect_infos")).unwrap()))).unwrap();
         self.foliage_infos.serialize(&mut Serializer::new(IoWrite::new(File::create(path.join("foliage_infos")).unwrap()))).unwrap();
         self.pfield_infos.serialize(&mut Serializer::new(IoWrite::new(File::create(path.join("pfield_infos")).unwrap()))).unwrap();
         self.gfx_block_infos.serialize(&mut Serializer::new(IoWrite::new(File::create(path.join("gfx_block_infos")).unwrap()))).unwrap();
-        self.obj14_infos.serialize(&mut Serializer::new(IoWrite::new(File::create(path.join("obj14_infos")).unwrap()))).unwrap();
+        self.illumination_infos.serialize(&mut Serializer::new(IoWrite::new(File::create(path.join("illumination_infos")).unwrap()))).unwrap();
         self.animation_block_infos.serialize(&mut Serializer::new(IoWrite::new(File::create(path.join("animation_block_infos")).unwrap()))).unwrap();
         self.dump_animation_block_infos.serialize(&mut Serializer::new(IoWrite::new(File::create(path.join("dump_animation_block_infos")).unwrap()))).unwrap();
         println!("packed items in {:?}", time.elapsed());
@@ -528,12 +528,12 @@ impl Level {
         println!("shapes in {:?}", time.elapsed());
         self.hk_constraints.serialize(&mut Serializer::new(IoWrite::new(File::create(path.join("hk_constraints")).unwrap()))).unwrap();
         println!("constriaints in {:?}", time.elapsed());
-        self.gameobj_blocks.serialize(&mut Serializer::new(IoWrite::new(File::create(path.join("gameobj_blocks")).unwrap()))).unwrap();
+        self.effects.serialize(&mut Serializer::new(IoWrite::new(File::create(path.join("effects")).unwrap()))).unwrap();
         println!("gameobjs in {:?}", time.elapsed());
         self.gfx_blocks.serialize(&mut Serializer::new(IoWrite::new(File::create(path.join("gfx_blocks")).unwrap()))).unwrap();
         println!("gfx_blocks in {:?}", time.elapsed());
-        self.obj14s.serialize(&mut Serializer::new(IoWrite::new(File::create(path.join("obj14s")).unwrap()))).unwrap();
-        println!("obj14s in {:?}", time.elapsed());
+        self.illuminations.serialize(&mut Serializer::new(IoWrite::new(File::create(path.join("illuminations")).unwrap()))).unwrap();
+        println!("illuminations in {:?}", time.elapsed());
         println!("packed item extras in {:?}", time.elapsed());
 
         // for (i, anim) in self.animation_blocks.iter().enumerate() {
