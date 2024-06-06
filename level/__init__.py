@@ -5,6 +5,8 @@ from collections import OrderedDict
 import lotrc.level.pak as pak
 import lotrc.level.bin as bin
 
+ConvVertexData = True
+
 class LevelData:
     def __init__(self, name):
         with open(f"{name}.PAK", 'rb') as f:
@@ -151,7 +153,7 @@ class LevelData:
                 self.vbuffs.append([pak.VertexBuffer.unpack_from(buffer, self.vbuff_infos[self.vbuff_info_map[info]], self.vertex_formats, self.f) for info in mesh.vbuffs['val']])
                 self.ibuffs.append([pak.IndexBuffer.unpack_from(buffer, self.ibuff_infos[self.ibuff_info_map[info]], self.f) for info in mesh.ibuffs['val']])
                 self.processed_buffers.add((info['asset_key'], info['asset_type']))
-        if self.f == ">":
+        if self.f == ">" and ConvVertexData:
             for vbuffs in self.vbuffs:
                 if vbuffs is None: continue
                 for vbuff in vbuffs:
@@ -166,9 +168,9 @@ class LevelData:
                             v = np.array([(val>>20)&0x3FF, (val>>10)&0x3FF, val&0x3FF])
                             inds = v & 0x200 != 0
                             v = v.astype(float)
-                            v[inds] = (v[inds] - 512) / 512 * 127
-                            v[~inds] = v[~inds] / 511 * (255-127) + 127
-                            v = np.round(v).astype(np.ubyte)
+                            v[inds] = (v[inds] - 1024)
+                            v = (v + 512 - 4)/4
+                            v = np.clip(np.round(v), 0, 255).astype(np.ubyte)
                             vbuff.data['weight']['val'] = v[0] | (v[1] << 8) | (v[2] << 16) | (127 << 24)
 
         self.pak_blockA = unpack_list_from(pak.BlockAVal[self.f], self.pak_data, self.pak_header['blockA_offset'], self.pak_header['blockA_num'])

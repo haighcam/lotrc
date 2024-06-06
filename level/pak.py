@@ -413,8 +413,8 @@ Mat2 = structtuple("Mat2", # something to do with MgMaterial
     'unk_117', 'I',
     'unk_118', 'I',
     'unk_119', 'I',
-    'unk_120', 'H',
-    'unk_120_', 'H',
+    'unk_120', '4S',
+    # 'unk_120_', 'H',
     'unk_121', 'I',
 )
 

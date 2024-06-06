@@ -11,7 +11,7 @@ class LevelData:
             data = f.read()
         if data[8] == 19:
             self.f = '<'
-        elif data[13] == 19:
+        elif data[11] == 19:
             self.f = '>'
             
         with open(f"{file}.bin", "rb") as f:

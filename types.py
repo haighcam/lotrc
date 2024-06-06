@@ -698,11 +698,12 @@ class Spray:
         "unk_16", "I",
     )
     Obj2 = structtuple("SprayObj2",
-        "unk_0", "f",
-        "unk_1", "f",
-        "unk_2", "f",
-        "unk_3", "f",
-        "unk_4", "f",
+        "unk_0", "I",
+        "unk_1", "I",
+        "unk_2", "I",
+        "unk_3", "I",
+        "unk_4", "H",
+        "unk_5", "H",
     )
     @classmethod
     def unpack_from(Self, buffer, offset, size, f="<"):
