@@ -154,9 +154,21 @@ class LevelData:
                 self.ibuffs.append([pak.IndexBuffer.unpack_from(buffer, self.ibuff_infos[self.ibuff_info_map[info]], self.f) for info in mesh.ibuffs['val']])
                 self.processed_buffers.add((info['asset_key'], info['asset_type']))
         if self.f == ">" and ConvVertexData:
-            for vbuffs in self.vbuffs:
+            for mesh, vbuffs in zip(self.meshes, self.vbuffs):
                 if vbuffs is None: continue
-                for vbuff in vbuffs:
+                for ind, vbuff in zip(mesh.vbuffs['val'], vbuffs):
+                    ind = self.vbuff_info_map[ind]
+                    if self.vbuff_infos[ind]['fmt1'] & 0x80000 != 0 and self.vbuff_infos[ind]['fmt1'] & 0x400 == 0:
+                        self.vbuff_infos[ind]['fmt1'] |= 0x400
+                        vals = np.frombuffer(vbuff.data['binorm'].tobytes(), np.ubyte).reshape(-1, 4)
+                        binorm = np.frombuffer(vals[:, [1,0,0,0]].tobytes(), np.uint32)
+                        tan = np.frombuffer(np.pad(vals[:, [2,3]], 1, constant_values=0)[1:-1].tobytes(),  np.uint32)
+                        new_buff = new(pak.get_vertex_format(self.vbuff_infos[ind]['fmt1'], self.vbuff_infos[ind]['fmt2'])[self.f], [0]*vbuff.data.size)
+                        for f in vbuff.data.dtype.names:
+                            new_buff[f] = vbuff.data[f].copy()
+                        new_buff['binorm'] = binorm
+                        new_buff['tan'] = tan
+                        vbuff.data = new_buff
                     if 'weight' in vbuff.data.dtype.names:
                         if 'x' in vbuff.data.dtype.fields['weight'][0].names:
                             vbuff.data['weight']['x'] = vbuff.data['weight']['x']/2 + 0.5
@@ -170,8 +182,12 @@ class LevelData:
                             v = v.astype(float)
                             v[inds] = (v[inds] - 1024)
                             v = (v + 512 - 4)/4
-                            v = np.clip(np.round(v), 0, 255).astype(np.ubyte)
+                            v = np.clip(np.round(v), 0, 255).astype(np.uint)
+                            # if self.vbuff_infos[ind]['fmt1'] & 0x80000 != 0:
+                            #     print(v)
                             vbuff.data['weight']['val'] = v[0] | (v[1] << 8) | (v[2] << 16) | (127 << 24)
+                            # if self.vbuff_infos[ind]['fmt1'] & 0x80000 != 0:
+                            #     print(vbuff.data['weight']['val'])
 
         self.pak_blockA = unpack_list_from(pak.BlockAVal[self.f], self.pak_data, self.pak_header['blockA_offset'], self.pak_header['blockA_num'])
         self.remaps = []
@@ -187,13 +203,46 @@ class LevelData:
         for mesh, info, vbuffs, ibuffs in zip(self.meshes, self.mesh_infos, self.vbuffs, self.ibuffs):
             key = (info['asset_key'], info['asset_type'])
             if (info['vbuff_num'] == 0 and info['ibuff_num'] == 0): continue # or key in self.textures: continue
+            # buffer = bytearray(self.asset_handles[self.asset_handle_lookup[key]]['size'])
+            # for vbuff, info in zip(vbuffs, mesh.vbuffs['val']):
+            #     vbuff.pack_into(buffer, self.vbuff_infos[self.vbuff_info_map[info]], f)
+            # for ibuff, info in zip(ibuffs, mesh.ibuffs['val']):
+            #     ibuff.pack_into(buffer, self.ibuff_infos[self.ibuff_info_map[info]], f)
+
+            buffer = bytes()
+            for i in range(max(len(vbuffs), len(ibuffs))):
+                if i < len(vbuffs):
+                    off = mesh.vbuffs[i]['val']
+                    info = self.vbuff_infos[self.vbuff_info_map[off]]
+                    vals = vbuffs[i].pack(f)
+                    info['offset'] = len(buffer)
+                    info['size'] = len(vals)
+                    buffer += vals
+                    for buff_info in self.buffer_infos:
+                        if buff_info['vbuff_info_offset'] == off:
+                            buff_info['v_size'] = vbuffs[i].data.itemsize
+                            buff_info['vbuff_size'] = info['size']
+                        if buff_info['vbuff_info_offset_2'] == off:
+                            buff_info['v_size_2'] = vbuffs[i].data.itemsize
+                            buff_info['vbuff_size_2'] = info['size']
+                        if buff_info['vbuff_info_offset_3'] == off:
+                            buff_info['v_size_3'] = vbuffs[i].data.itemsize
+                            buff_info['vbuff_size_3'] = info['size']
+                if i < len(ibuffs):
+                    info = self.ibuff_infos[self.ibuff_info_map[mesh.ibuffs[i]['val']]]
+                    vals = ibuffs[i].pack(f)
+                    info['offset'] = len(buffer)
+                    info['size'] = len(vals)
+                    buffer += vals
+            self.dump_asset_data[key] = bytes(buffer)
+
             buffer = bytearray(self.asset_handles[self.asset_handle_lookup[key]]['size'])
             for vbuff, info in zip(vbuffs, mesh.vbuffs['val']):
                 vbuff.pack_into(buffer, self.vbuff_infos[self.vbuff_info_map[info]], f)
             for ibuff, info in zip(ibuffs, mesh.ibuffs['val']):
                 ibuff.pack_into(buffer, self.ibuff_infos[self.ibuff_info_map[info]], f)
             self.dump_asset_data[key] = bytes(buffer)
-            
+
         for key, texture in self.textures.items():
             data0, data1 = texture.dump(f)
             self.dump_asset_data[(key, texture.type)] = data0

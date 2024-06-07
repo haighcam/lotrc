@@ -742,11 +742,11 @@ class Crowd:
     )
     
     Vals = structtuple("Crowd_Val",
-        "unk_0", "I",
-        "unk_1", "I",
-        "unk_2", "I",
-        "unk_3", "I",
-        "unk_4", "I",
+        "unk_0", "f",
+        "unk_1", "f",
+        "unk_2", "f",
+        "unk_3", "f",
+        "unk_4", "f",
     )
     @classmethod
     def unpack_from(Self, buffer, offset_, size, f="<"):

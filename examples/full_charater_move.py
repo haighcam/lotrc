@@ -24,7 +24,7 @@ vals_dest = levelDst.sub_blocks1.blocks[-1].to_dict(levelDst.keys)
 # these are the guids for the corresponding objects in the dst level
 spawn_emmiter_guid = 7052754
 gamemode_guid = 7052744 # gamemode object, needed for adding relevant soundbanks
-gamemodemask = 43 # grabbed from a different class in the spawn list, ensures the ported objects will be visible in the targeted gamemode
+gamemodemask = 3 # grabbed from a different class in the spawn list, ensures the ported objects will be visible in the targeted gamemode
 
 # from the src level
 class_guid = 109012487

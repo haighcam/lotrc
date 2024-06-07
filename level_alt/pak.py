@@ -1078,9 +1078,10 @@ class Animation:
         #     block = blocks[key]
         #     offset = offsets[key]
         #     print(len(block), offset)
+        self.obj1 = unpack_list_from(Uint[f], block, offset + self.info['obj1_offset'], self.info['obj1_num']*2)
         self.obj2 = unpack_list_from(Uint[f], block, offset + self.info['obj2_offset'], self.info['obj2_num']*4)
         self.obj3 = unpack_list_from(Uint[f], block, offset + self.info['obj3_offset'], self.info['obj3_num']*11)
-        self.keys = unpack_list_from(Uint[f], block, offset + self.info['keys_offset'], self.info['keys_num'])
+        self.keys = unpack_list_from(Uint[f], block, offset + self.info['keys_offset'], self.info['keys_num'] + info['obj1_num'])
         if self.info['obj5_offset'] != 0:
             self.obj5_header = unpack_from(self.Obj5Heder[f], block, offset + self.info['obj5_offset'])
             self.obj5A = unpack_list_from(Uint[f], block, offset + self.obj5_header['objA_offset'], self.obj5_header['objA_num']*7)
@@ -1101,6 +1102,7 @@ class Animation:
         buffer = bytearray(info['size'])
         
         info['offset'] = offset
+        pack_into(self.obj1, buffer, self.info['obj1_offset'], f)
         pack_into(self.obj2, buffer, self.info['obj2_offset'], f)
         pack_into(self.obj3, buffer, self.info['obj3_offset'], f)
         pack_into(self.keys, buffer, self.info['keys_offset'], f)

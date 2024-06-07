@@ -723,7 +723,7 @@ AnimationInfo = structtuple("AnimationInfo",
     'type', 'I',
     'unk_5', 'I',
     'keys_num', 'I',
-    'something_num', 'I',
+    'keys2_num', 'I',
     'unk_8', 'I',
     'vala', 'I',
     'unk_10', 'I',
@@ -734,8 +734,8 @@ AnimationInfo = structtuple("AnimationInfo",
     'unk_15', 'I',
     'block_starts_offset', 'I',
     'block_starts_num', 'I',
-    'block_ends_offset', 'I',
-    'block_ends_num', 'I',
+    'block_starts2_offset', 'I',
+    'block_starts2_num', 'I',
     'objC3_offset', 'I',
     'objC3_num', 'I',
     'objC4_offset', 'I',
@@ -1117,6 +1117,7 @@ class Animation:
         "objB_offset", "I",
     )
     def __init__(self):
+        self.obj1 = {}
         self.obj2 = {}
         self.obj3 = {}
         self.keys = {}
@@ -1126,9 +1127,10 @@ class Animation:
         self.objC = {}
 
     def unpack_from_block(self, buffer, offset, index, info, f="<"):
+        self.obj1[index] = unpack_list_from(Uint[f], buffer, offset + info['obj1_offset'], info['obj1_num']*2)
         self.obj2[index] = unpack_list_from(Uint[f], buffer, offset + info['obj2_offset'], info['obj2_num']*4)
         self.obj3[index] = unpack_list_from(Uint[f], buffer, offset + info['obj3_offset'], info['obj3_num']*11)
-        self.keys[index] = unpack_list_from(Uint[f], buffer, offset + info['keys_offset'], info['keys_num'])
+        self.keys[index] = unpack_list_from(Uint[f], buffer, offset + info['keys_offset'], info['keys_num'] + info['obj1_num'])
         if info['obj5_offset'] != 0:
             self.obj5_header[index] = unpack_from(self.Obj5Heder[f], buffer, offset + info['obj5_offset'])
             self.obj5A[index] = unpack_list_from(Uint[f], buffer, offset + self.obj5_header[index]['objA_offset'], self.obj5_header[index]['objA_num']*7)
@@ -1141,6 +1143,7 @@ class Animation:
             warnings.warn(f"Unkown amination type {info['type']}")
         
     def pack_into_block(self, buffer, offset, index, info, f="<"):
+        pack_into(self.obj1[index], buffer, offset + info['obj1_offset'], f)
         pack_into(self.obj2[index], buffer, offset + info['obj2_offset'], f)
         pack_into(self.obj3[index], buffer, offset + info['obj3_offset'], f)
         pack_into(self.keys[index], buffer, offset + info['keys_offset'], f)
@@ -1281,16 +1284,20 @@ class hkaSplineSkeletalAnimation:
     def unpack_from(Self, buffer, offset, header, f="<"):
         self = Self()
         self.block_starts = unpack_list_from(Uint[f], buffer, offset + header['block_starts_offset'], header['block_starts_num'])
-        self.block_ends = unpack_list_from(Uint[f], buffer, offset + header['block_ends_offset'], header['block_ends_num'])
+        self.block_starts2 = unpack_list_from(Uint[f], buffer, offset + header['block_starts2_offset'], header['block_starts2_num'])
         self.objC3 = unpack_list_from(Uint[f], buffer, offset + header['objC3_offset'], header['objC3_num'])
         self.objC4 = unpack_list_from(Uint[f], buffer, offset + header['objC4_offset'], header['objC4_num'])
         self.flags, self.vals_a, self.vals_b, self.vals_c = [], [], [], []
-        for start in self.block_starts['val']:
-            self.flags.append(unpack_list_from(self.Flags[f], buffer, offset + header['block_offset'] + start, header['keys_num']))
+        self.flags2, self.vals_d = [], []
+        for start, start2 in zip(self.block_starts['val'], self.block_starts2['val']):
+            off = offset + header['block_offset'] + start
+            self.flags.append(unpack_list_from(self.Flags[f], buffer, off, header['keys_num']))
+            self.flags2.append(unpack_list_from(Ubyte[f], buffer, off + self.flags[-1].nbytes, header['keys2_num']))
             off = offset + header['block_offset'] + start + header['data_offset']
             self.vals_a.append([])
             self.vals_b.append([])
             self.vals_c.append([])
+            self.vals_d.append([])
             for flag in self.flags[-1]:
                 self.vals_a[-1].append(hkaSplineSkeletalAnimationObj1.unpack_from(buffer, off, flag['a'], flag['f'] & 3, f))
                 off += self.vals_a[-1][-1].nbytes
@@ -1298,15 +1305,21 @@ class hkaSplineSkeletalAnimation:
                 off += self.vals_b[-1][-1].nbytes
                 self.vals_c[-1].append(hkaSplineSkeletalAnimationObj1.unpack_from(buffer, off, flag['c'], (flag['f'] >> 6) & 3, f))
                 off += self.vals_c[-1][-1].nbytes
+            off = offset + header['block_offset'] + start + start2
+            for flag in self.flags2[-1]['val']:
+                self.vals_d[-1].append(hkaSplineSkeletalAnimationObj1.unpack_from(buffer, off, flag & 0xf9, (flag >> 1) & 3, f))
+                off += self.vals_d[-1][-1].nbytes
         return self
         
     def pack_into(self, buffer, offset, header, f="<"):
         pack_into(self.block_starts, buffer, offset + header['block_starts_offset'], f)
-        pack_into(self.block_ends, buffer, offset + header['block_ends_offset'], f)
+        pack_into(self.block_starts2, buffer, offset + header['block_starts2_offset'], f)
         pack_into(self.objC3, buffer, offset + header['objC3_offset'], f)
         pack_into(self.objC4, buffer, offset + header['objC4_offset'], f)
-        for i, start in enumerate(self.block_starts['val']):
-            pack_into(self.flags[i], buffer, offset + header['block_offset'] + start, f)
+        for i, (start, start2) in enumerate(zip(self.block_starts['val'], self.block_starts2['val'])):
+            off = offset + header['block_offset'] + start
+            pack_into(self.flags[i], buffer, off, f)
+            pack_into(self.flags2[i], buffer, off + self.flags[i].nbytes, f)
             off = offset + header['block_offset'] + start + header['data_offset']
             for j, flag in enumerate(self.flags[i]):
                 self.vals_a[i][j].pack_into(buffer, off, flag['a'], flag['f'] & 3, f)
@@ -1315,6 +1328,10 @@ class hkaSplineSkeletalAnimation:
                 off += self.vals_b[i][j].nbytes
                 self.vals_c[i][j].pack_into(buffer, off, flag['c'], (flag['f'] >> 6) & 3, f)
                 off += self.vals_c[i][j].nbytes
+            off = offset + header['block_offset'] + start + start2
+            for j, flag in enumerate(self.flags2[i]['val']):
+                self.vals_d[i][j].pack_into(buffer, off, flag & 0xf9, (flag >> 1) & 3, f)
+                off += self.vals_d[i][j].nbytes
         return
 
 def get_vertex_format(fmt1, fmt2):
@@ -1422,6 +1439,8 @@ class VertexBuffer:
         return self
     def pack_into(self, buffer, info, f):
         pack_into(self.data, buffer, info['offset'], f)
+    def pack(self, f):
+        return pack(self.data, f)
 
 class IndexBuffer:
     @classmethod
@@ -1437,6 +1456,8 @@ class IndexBuffer:
         return self
     def pack_into(self, buffer, info, f):
         pack_into(self.data, buffer, info['offset'], f)
+    def pack(self, f):
+        return pack(self.data, f)
 
 class Illumation:
     # The pc version in the same as the xbox version except every list has two 0xFFFFFFFFs at the end (so list is 2 elems longer)

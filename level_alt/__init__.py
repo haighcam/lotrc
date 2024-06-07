@@ -430,9 +430,10 @@ class LevelData:
         light_blocks = new(pak_.IllumationInfo[f], light_blocks)
         infos['light_blocks'] = light_blocks
 
-        block1 += bytes(((len(block1) + 15) & 0xFFFFFFF0) - len(block1))
+        block1 += bytes(((len(block1) + 31) & 0xFFFFFFE0) - len(block1))
         pak_header['sub_blocks1_offset'] = len(block1)
         block1 += self.sub_blocks1.pack(f)
+        block1 += bytes(((len(block1) + 15) & 0xFFFFFFF0) - len(block1))
         pak_header['string_keys_offset'] = len(block1)
         block1 += self.string_keys.pack(f)
 
@@ -551,7 +552,7 @@ class LevelData:
                 pak_header['hk_constraint_info_offset'] + i * pak_.HkConstraintInfo['<'].itemsize + 48,
             ])
             if hk_constraint['vals2_offset'] != 0:
-                block2_offsets.append(pak_header['hk_constraint_info_offset'] + i * pak_.HkConstraintInfo['<'].itemsize + 60)
+                block2_offsets.append(pak_header['hk_constraint_info_offset'] + i * pak_.HkConstraintInfo['<'].itemsize + 64)
 
         for i in range(pak_header['effect_info_num']):
             block2_offsets.append(pak_header['effect_info_offset'] + i * pak_.EffectInfo['<'].itemsize + 8)    
@@ -606,6 +607,10 @@ class LevelData:
         pak_header['blockA_offset'] = pak_offset
         pak_header['blockA_num'] = self.pak_blockA.size
         pak_data += pack(self.pak_blockA, f)
+        
+        off =  (pak_offset + 4095) & 0xfffff000
+        pak_data += bytes(off - pak_offset)
+        pak_offset = off
 
         pak_data = pack(pak_header, f) + bytes(pak_data)
         infos['block1'] = block1
