@@ -30,18 +30,23 @@ levelDst.sub_blocks1.blocks[-1] = lotrc.types.GameObjs.from_dict(vals, levelDst.
 # grab the mesh and textures
 mesh = levelSrc.meshes[hash_string(src)]
 
-textures = []
+textures = set()
 for mat in mesh.mats:
-    textures.extend(i for i in mat['textures'] if i != 0)
+    textures.update(i for i in mat['textures'] if i != 0)
     
 # set the level_flags so that the mesh actually shows up
 flags = levelDst.meshes[old_mesh].info['level_flag']
+new_textures = {}
 for k in textures:
-    levelSrc.textures[k][0]['level_flag'] = flags
+    if k in levelDst.textures:
+        levelDst.textures[k][0]['level_flag'] |= flags
+    else:
+        levelSrc.textures[k][0]['level_flag'] = flags
+        new_textures[k] = levelSrc.textures[k]
 mesh.info['level_flag'] = flags
 
 # add the stuff to helm's deep
-levelDst.textures.update({k: levelSrc.textures[k] for k in np.unique(textures)})
+levelDst.textures.update(new_textures)
 levelDst.meshes[hash_string(src)] = mesh
 
 # add the debug strings as well, not sure if it is needed

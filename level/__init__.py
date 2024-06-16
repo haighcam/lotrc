@@ -177,14 +177,24 @@ class LevelData:
                         else:
                             # sketchy conv of xbox 10 bit weights to pc 8 bit weights
                             val = vbuff.data['weight']['val']
-                            v = np.array([(val>>20)&0x3FF, (val>>10)&0x3FF, val&0x3FF])
-                            inds = v & 0x200 != 0
-                            v = v.astype(float)
-                            v[inds] = (v[inds] - 1024)
-                            v = (v + 512 - 4)/4
+                            # v = np.array([(val>>20)&0x3FF, (val>>10)&0x3FF, val&0x3FF])
+                            # inds = v & 0x200 != 0
+                            # v = v.astype(float)
+                            # # v[inds] = (v[inds] - 512) / 512 * 127
+                            # # v[~inds] = v[~inds] / 511 * (255-127) + 127
+                            # # v = np.round(v).astype(np.uint32)
+                            # v[inds] = (v[inds] - 1024)
+                            # v = (v + 512 - 4)/4
+                            # v = np.clip(np.round(v), 0, 255).astype(np.uint)
+                            # # if self.vbuff_infos[ind]['fmt1'] & 0x80000 != 0:
+                            # #     print(v)
+                            v = np.array([(val>>20)&0x3FF, (val>>10)&0x3FF, val&0x3FF]) ^ 0x200
+                            # inds = v & 0x200 != 0
+                            v = v.astype(np.float32)
+                            # v[inds] = (v[inds] - 1024)
+                            v = (v - 4)/4
                             v = np.clip(np.round(v), 0, 255).astype(np.uint)
-                            # if self.vbuff_infos[ind]['fmt1'] & 0x80000 != 0:
-                            #     print(v)
+
                             vbuff.data['weight']['val'] = v[0] | (v[1] << 8) | (v[2] << 16) | (127 << 24)
                             # if self.vbuff_infos[ind]['fmt1'] & 0x80000 != 0:
                             #     print(vbuff.data['weight']['val'])
@@ -236,12 +246,12 @@ class LevelData:
                     buffer += vals
             self.dump_asset_data[key] = bytes(buffer)
 
-            buffer = bytearray(self.asset_handles[self.asset_handle_lookup[key]]['size'])
-            for vbuff, info in zip(vbuffs, mesh.vbuffs['val']):
-                vbuff.pack_into(buffer, self.vbuff_infos[self.vbuff_info_map[info]], f)
-            for ibuff, info in zip(ibuffs, mesh.ibuffs['val']):
-                ibuff.pack_into(buffer, self.ibuff_infos[self.ibuff_info_map[info]], f)
-            self.dump_asset_data[key] = bytes(buffer)
+            # buffer = bytearray(self.asset_handles[self.asset_handle_lookup[key]]['size'])
+            # for vbuff, info in zip(vbuffs, mesh.vbuffs['val']):
+            #     vbuff.pack_into(buffer, self.vbuff_infos[self.vbuff_info_map[info]], f)
+            # for ibuff, info in zip(ibuffs, mesh.ibuffs['val']):
+            #     ibuff.pack_into(buffer, self.ibuff_infos[self.ibuff_info_map[info]], f)
+            # self.dump_asset_data[key] = bytes(buffer)
 
         for key, texture in self.textures.items():
             data0, data1 = texture.dump(f)
