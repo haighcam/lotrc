@@ -334,7 +334,9 @@ class SubBlocks:
                 self.blocks.append(AtlasUV.unpack_from(buffer, offset+header['offset'], header['size'], f))
             elif (t := name.split('.')[-1]) == 'lua':
                 self.blocks.append(Lua.unpack_from(buffer, offset+header['offset'], header['size'], name, f))
-            elif t in ['csv', 'txt', 'dat', 'ssa']:
+            elif t == 'ssa':
+                self.blocks.append(SSA(buffer[offset+header['offset']:offset+header['offset']+header['size']], f))
+            elif t in ['csv', 'txt', 'dat']:
                 self.blocks.append(Data.unpack_from(buffer, offset+header['offset'], header['size'], f))
             else:
                 warnings.warn(f"Unhandled block type: {name}, treating as raw bytes")
@@ -826,3 +828,42 @@ class PFields(Data):
     # has data from obj12, 2D something
     # no change from big to little endian
 
+class SSA:
+    Val = structtuple("SSAVal",
+        "t_start", "f", 
+        "t_end", "f", 
+        "unk_2", "I", 
+        "unk_3", "I", 
+        "off", "I", 
+    )
+    def __init__(self, data, f='<'):
+        if f == "<":
+            str_format = "utf-16-le"
+        elif f == ">":
+            str_format = "utf-16-be"
+        else:
+            raise ValueError("invalid format")
+
+        self.n = unpack_from(Uint[f], data, 0)
+        self.vals = unpack_list_from(self.Val[f], data, 4, self.n['val'])
+        self.strings = []
+        offs = list(self.vals['off']) + [len(data)]
+        for i in range(self.n['val']):
+            self.strings.append(data[offs[i]:offs[i+1]].decode(str_format))
+            
+    def dump(self, f='<'):
+        if f == "<":
+            str_format = "utf-16-le"
+        elif f == ">":
+            str_format = "utf-16-be"
+        else:
+            raise ValueError("invalid format")
+        off = 4 + self.vals.nbytes
+        string_data = bytes()
+        vals = self.vals.copy()
+        for string, val in zip(self.strings, vals):
+            val['off'] = off
+            dat = string.encode(str_format)
+            off += len(dat)
+            string_data += dat
+        return pack(new(Uint[f], len(vals)), f) + pack(vals, f) + string_data
