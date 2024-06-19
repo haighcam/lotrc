@@ -130,7 +130,7 @@ class Texture:
             elif self.format in [7,8,13]:
                 s = 4
                 d = 8
-            elif self.format == 3:
+            elif self.format in [3, 4]:
                 if info['levels'] > 1:
                     raise ValueError("Not Supported")
                 s = 1
@@ -198,7 +198,7 @@ class Texture:
             print(e)
 
     def dump(self, f='<'):
-        if self.format not in [3, 7, 8, 10, 0xb, 0xc, 0x11, 6]:
+        if self.format not in [3, 4, 7, 8, 10, 0xb, 0xc, 0x11, 6]:
             return self.data0, self.data1
         if f == '<':
             if len(self.levels) > 1:
@@ -215,7 +215,7 @@ class Texture:
             return decomp_dxt5(self.levels[level], self.sizes[level][1], self.sizes[level][0])
         elif self.format in [7,8]:
             return decomp_dxt1(self.levels[level], self.sizes[level][1], self.sizes[level][0])
-        elif self.format == 3:
+        elif self.format in [3,4]:
             return np.frombuffer(self.levels[level], 'B').reshape(self.sizes[level][1], self.sizes[level][0], 4)
         elif self.format == 6:
             return np.frombuffer(self.levels[level], 'B').reshape(self.sizes[level][1], self.sizes[level][0])
@@ -236,7 +236,7 @@ class CubeTexture:
         elif self.format in [7,8]:
             s = 4
             d = 8
-        elif self.format == 3:
+        elif self.format in [3,4]:
             s = 1
             d = 4
         else:
@@ -254,7 +254,7 @@ class CubeTexture:
             self.faces = [conv_img(self.data[data_size*i:data_size*i+data_size], self.size[1], self.size[0], self.format) for i in range(6)]
 
     def dump(self, f='<'):
-        if self.format not in [3, 7, 8, 10, 0xb, 0xc, 0x11]:
+        if self.format not in [3, 4, 7, 8, 10, 0xb, 0xc, 0x11]:
             return self.data0, self.data
         if f == '<':
             return b'', b''.join(self.faces)
@@ -268,5 +268,5 @@ class CubeTexture:
             return decomp_dxt5(self.faces[face], self.size[1], self.size[0])
         elif self.format in [7,8]:
             return decomp_dxt1(self.faces[face], self.size[1], self.size[0])
-        elif self.format == 3:
+        elif self.format in [3,4]:
             return np.frombuffer(self.faces[face], 'B').reshape(self.size[1], self.size[0], 4)
