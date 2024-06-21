@@ -55,6 +55,7 @@ for anim_table in anim_tables:
             animations.add(anim)
 
 old_scripts = set(levelDst.keys[i].split('.lua')[0] for i in levelDst.sub_blocks1.block_headers['key'])
+scripts.difference_update(old_scripts)
 new_scripts = set()
 common_scripts = set()
 while len(scripts) != 0:
