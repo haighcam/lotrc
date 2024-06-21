@@ -4,8 +4,8 @@ from lotrc.utils import *
 
 lotrc.types.DECOMP_LUA = False
 
-# replace CH_NML_SIL_Scout mesh in helm's deep with CH_hum_meshtongue_01 from isengaurd
-src = 'CH_hum_meshtongue_01'
+# replace CH_NML_SIL_Scout mesh in helm's deep with CH_hum_Wormtongue_01 from isengaurd
+src = 'CH_hum_Wormtongue_01'
 clss = 'CH_NML_SIL_Scout'
 
 # load the levels, this parser is currently limited and will break some levels, use the non alt version for other stuff
