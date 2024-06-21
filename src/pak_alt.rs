@@ -1,7 +1,7 @@
 use std::{collections::{HashMap, HashSet}, iter::zip};
 use itertools::Itertools;
 use log::warn;
-use zerocopy::{ByteOrder, BE};
+use zerocopy::ByteOrder;
 use serde::{Serialize, Deserialize};
 use crate::types::Crc;
 
@@ -443,11 +443,11 @@ impl Mesh {
         }
         mat_order.iter_mut().for_each(|x| *x = *mat_map.get(x).unwrap());
 
-        let mut vbuff_map: HashMap<_, _> = (0..self.vbuffs.len() as u32).map(|x| (x, infos.header.vbuff_info_offset + (VBuffInfo::size::<O>() * infos.vbuff.len()) as u32)).collect();
+        let mut vbuff_map: HashMap<_, _> = (0..self.vbuffs.len()).map(|x| (x as u32, infos.header.vbuff_info_offset + (VBuffInfo::size::<O>() * (infos.vbuff.len() + x)) as u32)).collect();
         let vbuff_order: Vec<u32> = self.vbuff_order.iter().map(|x| *vbuff_map.get(x).unwrap()).collect();
         infos.vbuff.extend(self.vbuffs.clone());
 
-        let mut ibuff_map: HashMap<_, _> = (0..self.ibuffs.len() as u32).map(|x| (x, infos.header.ibuff_info_offset + (IBuffInfo::size::<O>() * infos.ibuff.len()) as u32)).collect();
+        let mut ibuff_map: HashMap<_, _> = (0..self.ibuffs.len()).map(|x| (x as u32, infos.header.ibuff_info_offset + (IBuffInfo::size::<O>() * (infos.ibuff.len() + x)) as u32)).collect();
         let ibuff_order: Vec<u32> = self.ibuff_order.iter().map(|x| *ibuff_map.get(x).unwrap()).collect();
         infos.ibuff.extend(self.ibuffs.clone());
 
@@ -492,7 +492,7 @@ impl Mesh {
         let mut shape_offsets = Vec::with_capacity(self.shapes.len());
         for shape in &self.shapes {
             if let Some(extra) = &shape.extra {
-                shape_offsets.push(Some(offset));
+                shape_offsets.push(Some(offset as u32));
                 let vals = extra.dump::<O>();
                 offset += vals.len();
                 data.extend(vals);
@@ -607,8 +607,8 @@ impl Mesh {
         info.shape_offset = if self.shapes.len() != 0 {
             infos.header.shape_info_offset + (ShapeInfo::size::<O>() * infos.shape.len()) as u32
         } else { 0 };
-        for shape in &self.shapes {
-            let vals = shape.dump::<O>(offset, None, infos);
+        for (shape, off) in zip(&self.shapes, shape_offsets) {
+            let vals = shape.dump::<O>(offset, off, infos);
             offset += vals.len();
             data.extend(vals);    
         }
@@ -750,7 +750,6 @@ impl HkConstraint {
             info.vals2_offset = offset as u32;
             info.vals2_num = self.vals2.len() as u32 / 42;
             let vals = self.vals2.dump_bytes::<O>();
-            offset += vals.len();
             data.extend(vals);
         } else {
             info.vals2_num = 0;
@@ -862,7 +861,7 @@ impl ShapeExtra {
         let offs: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[offset..], info.num as usize);
         offset += offs.size::<O>();
         let mut off = offset + *offs.last().unwrap() as usize;
-        while data[off] != 0 || data[off+1] != 0 { off += 1; }
+        while (data[off] != 0) || (data[off+1] != 0) { off += 1; }
         Self { info, offs, data: data[offset..off].to_vec() }
     }
 
@@ -1110,7 +1109,6 @@ impl HkShape {
                 info.b_num = (b.len() / 3 - *b_extra) as u32;
                 info.b_offset = offset as u32;
                 let vals = b.dump_bytes::<O>();
-                offset += vals.len();
                 data.extend(vals);
 
                 infos.hk_shape.push(HkShapeInfo::HkShape5(info));
@@ -1144,7 +1142,6 @@ impl HkShape {
 
                 let off: usize = (offset + 3) & 0xFFFFFFFC;
                 data.extend(vec![0u8; off-offset]);
-                offset = off;
 
                 infos.hk_shape.push(HkShapeInfo::HkShape6(info));
                 data
@@ -1156,33 +1153,35 @@ impl HkShape {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Animation {
     pub info: AnimationInfo,
+    pub obj1: Vec<u32>,
     pub obj2: Vec<u32>,
-    pub obj3: Vec<u32>,
+    pub obj3: Vec<animation::Obj3>,
     pub keys: Vec<Crc>,
     pub obj5_header: Option<animation::Obj5Header>,
-    pub obj5A: Vec<u32>,
-    pub obj5B: Vec<u32>,
-    pub objC: Option<animation::HkaSplineSkeletalAnimation>,
+    pub obj5_a: Vec<u32>,
+    pub obj5_b: Vec<u32>,
+    pub obj_c: Option<animation::HkaSplineSkeletalAnimation>,
 }
 
 impl Animation {
     pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offsets: &mut Vec<usize>, blocks: & Vec<Vec<u8>>) -> Self {
         let info: AnimationInfo = OrderedData::from_bytes::<O>(data);
         let (_, (offset, block)) = zip(offsets.iter().cloned(), blocks.iter()).enumerate().find(|(i, _)| {
-            info.level_flag & (1 << i) != 0
+            info.gamemodemask & (1 << i) != 0
         }).unwrap();
+        let obj1 = OrderedDataVec::from_bytes::<O>(&block[offset + info.obj1_offset as usize..], info.obj1_num as usize * 2);
         let obj2 = OrderedDataVec::from_bytes::<O>(&block[offset + info.obj2_offset as usize..], info.obj2_num as usize * 4);
-        let obj3 = OrderedDataVec::from_bytes::<O>(&block[offset + info.obj3_offset as usize..], info.obj3_num as usize * 11);
-        let keys = OrderedDataVec::from_bytes::<O>(&block[offset + info.keys_offset as usize..], info.keys_num as usize);
-        let (obj5_header, obj5A, obj5B) = if info.obj5_offset != 0 {
+        let obj3 = OrderedDataVec::from_bytes::<O>(&block[offset + info.obj3_offset as usize..], info.obj3_num as usize);
+        let keys = OrderedDataVec::from_bytes::<O>(&block[offset + info.keys_offset as usize..], (info.keys_num + info.obj1_num) as usize);
+        let (obj5_header, obj5_a, obj5_b) = if info.obj5_offset != 0 {
             let obj5_header: animation::Obj5Header = OrderedData::from_bytes::<O>(&block[offset + info.obj5_offset as usize..]);
-            let obj5A = OrderedDataVec::from_bytes::<O>(&block[offset + obj5_header.objA_offset as usize..], obj5_header.objA_num as usize * 7);
-            let obj5B = OrderedDataVec::from_bytes::<O>(&block[offset + obj5_header.objB_offset as usize..], obj5_header.objB_num as usize * 7);
-            (Some(obj5_header), obj5A, obj5B)
+            let obj5_a = OrderedDataVec::from_bytes::<O>(&block[offset + obj5_header.obj_a_offset as usize..], obj5_header.obj_a_num as usize * 7);
+            let obj5_b = OrderedDataVec::from_bytes::<O>(&block[offset + obj5_header.obj_b_offset as usize..], obj5_header.obj_b_num as usize * 7);
+            (Some(obj5_header), obj5_a, obj5_b)
         } else {(
             None, vec![], vec![]
         )};
-        let objC = if info.kind == 3 {
+        let obj_c = if info.kind == 3 {
             Some(animation::HkaSplineSkeletalAnimation::from_data::<O>(&block[..], offset, &info))
         } else if info.kind < 3 {
             warn!("Unhandled animation type {} at offset {}", info.kind, offset);
@@ -1191,24 +1190,25 @@ impl Animation {
             warn!("Unknown animation type {} at offset {}", info.kind, offset);
             None
         };
-        offsets.iter_mut().enumerate().filter(|(i, _)| info.level_flag & (1 << i) != 0).for_each(|(_, x)| *x += info.size as usize );
-        Self { info, obj2, obj3, keys, obj5A, obj5B, obj5_header, objC }
+        offsets.iter_mut().enumerate().filter(|(i, _)| info.gamemodemask & (1 << i) != 0).for_each(|(_, x)| *x += info.size as usize );
+        Self { info, obj1, obj2, obj3, keys, obj5_a, obj5_b, obj5_header, obj_c }
     }
 
     pub fn dump<O: ByteOrder + 'static>(&self, offset: usize, infos: &mut DumpInfos) -> Vec<u8> {
         let mut info = self.info.clone();
         info.offset = offset as u32;
         let mut data = vec![0u8; info.size as usize];
+        self.obj1.to_bytes::<O>(&mut data[info.obj1_offset as usize..]);
         self.obj2.to_bytes::<O>(&mut data[info.obj2_offset as usize..]);
         self.obj3.to_bytes::<O>(&mut data[info.obj3_offset as usize..]);
         self.keys.to_bytes::<O>(&mut data[info.keys_offset as usize..]);
         if let Some(obj5_header) = &self.obj5_header {
             obj5_header.to_bytes::<O>(&mut data[info.obj5_offset as usize..]);
-            self.obj5A.to_bytes::<O>(&mut data[obj5_header.objA_offset as usize..]);
-            self.obj5B.to_bytes::<O>(&mut data[obj5_header.objB_offset as usize..]);
+            self.obj5_a.to_bytes::<O>(&mut data[obj5_header.obj_a_offset as usize..]);
+            self.obj5_b.to_bytes::<O>(&mut data[obj5_header.obj_b_offset as usize..]);
         }
-        if let Some(objC) = &self.objC {
-            objC.into_data::<O>(&mut data, 0, &info);
+        if let Some(obj_c) = &self.obj_c {
+            obj_c.into_data::<O>(&mut data, 0, &info);
         }
         infos.animation.push(info);
         data

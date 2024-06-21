@@ -66,17 +66,17 @@ pub struct AssetHandle {
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Radiosity {
-    // probably not correctly modeled
-    pub data: Vec<u32>
+    pub data: Vec<u32>,
+    pub usage: u32
 }
 
 impl Radiosity {
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8]) -> Self {
+    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], usage: u32) -> Self {
         if data.len() % 4 != 0 {
             warn!("Radiosity length is incorrect?")
         }
         let data = OrderedDataVec::from_bytes::<O>(data, data.len()/4);
-        Self { data }
+        Self { data, usage }
     }
 
     pub fn dump<O: ByteOrder + 'static>(&self) -> Vec<u8> {
@@ -113,7 +113,7 @@ format
     0x1d -> 0x50 D16
     0x1e -> 0x5a574152 or 0x5a544e49 or 0x34324644, RAWZ or INTZ or DF24
     0x1f, 0x20 -> 0x32 L8
-    0x21 -> 0x6f R16F 
+    0x21 -> 0x6f R16F
     0x22 -> 0x70 G16R16F
     0x23 -> 0x72 R32F
     0x24 -> 0x73 G32R32F
@@ -128,6 +128,7 @@ format
 pub enum Tex {
     Texture(Texture),
     CubeTexture(CubeTexture),
+    Unknown(Vec<Vec<u8>>, TextureInfo),
 }
 
 impl Tex {
@@ -135,13 +136,27 @@ impl Tex {
         match self {
             Self::Texture(val) => val.kind,
             Self::CubeTexture(val) => val.kind,
+            _ => 0,
         }
     }
+
+    pub fn from_data<O: ByteOrder + 'static>(data0: &[u8], data1: &[u8], info: &mut TextureInfo) -> Self {
+        match info.kind {
+            0 | 7 | 8 => Self::Texture(Texture::from_data::<O>(data0, data1, info)),
+            1 | 9 => Self::CubeTexture(CubeTexture::from_data::<O>(data0, data1, info)),
+            _ => {
+                warn!("Unsupported Texture Type {} for texture {:?}", info.kind, info.key);
+                Self::Unknown(vec![data0.to_vec(), data1.to_vec()], info.clone())
+            }
+        }
+    }
+
 
     pub fn dump<O: ByteOrder + 'static>(&self) -> (Vec<u8>, Vec<u8>) {
         match self {
             Self::Texture(val) => val.dump::<O>(),
             Self::CubeTexture(val) => val.dump::<O>(),
+            Self::Unknown(vals, ..) => (vals[0].clone(), vals[1].clone()),
         }
     }
 
@@ -149,22 +164,48 @@ impl Tex {
         match self {
             Self::Texture(val) => &val.info,
             Self::CubeTexture(val) => &val.info,
+            Self::Unknown(_, info) => info
         }
     }
 
-    pub fn data(&self) -> &Vec<Vec<u8>> {
-        match self {
-            Self::Texture(val) => &val.levels,
-            Self::CubeTexture(val) => &val.faces,
-        }
-    }
+    // pub fn data(&self) -> &Vec<Vec<u8>> {
+    //     match self {
+    //         Self::Texture(val) => &val.levels,
+    //         Self::CubeTexture(val) => &val.faces,
+    //         Self::Unknown(vals, ..) => vals
+    //     }
+    // }
 
     pub fn to_file<P: AsRef<std::path::Path>>(&self, path: P) {
         match self {
             Self::Texture(val) => val.to_file(path),
             Self::CubeTexture(val) => val.to_file(path),
+            Self::Unknown(vals, info, ) => {
+                let path = path.as_ref();
+                let name = path.file_stem().unwrap().to_str().unwrap();
+                std::fs::write(path.with_extension("json"), serde_json::to_string_pretty(info).unwrap()).unwrap();
+                for (i, val) in vals.iter().enumerate() {
+                    std::fs::write(path.parent().unwrap().join(format!("{}-{}.bin", name, i)), val).unwrap();
+                }
+            }
         }
     }
+
+    pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> Self {
+        let path = path.as_ref();
+        let info: TextureInfo = serde_json::from_slice(&fs::read(path.with_extension("json")).unwrap()).unwrap();
+        match info.kind {
+            0 | 7 | 8 => Self::Texture(Texture::from_file(path, info)),
+            1 | 9 => Self::CubeTexture(CubeTexture::from_file(path, info)),
+            _ => {
+                let name = path.file_stem().unwrap().to_str().unwrap();
+                let data0 = std::fs::read(path.parent().unwrap().join(format!("{}-0.bin", name))).unwrap();
+                let data1 = std::fs::read(path.parent().unwrap().join(format!("{}-1.bin", name))).unwrap();
+                Self::Unknown(vec![data0, data1], info)
+            }
+        }
+    }
+
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -179,7 +220,7 @@ pub fn get_stride_width(format: u32) -> Option<(u32, u32)> {
     match format {
         10 | 0xb | 0xc | 0x11 => Some((4, 16)),
         7 | 8 | 13 => Some((4, 8)),
-        3 => Some((1, 4)),
+        3 | 4 => Some((1, 4)),
         6 => Some((1, 1)),
         _ => None,
     }
@@ -188,7 +229,8 @@ pub fn get_stride_width(format: u32) -> Option<(u32, u32)> {
 pub fn get_format(format: u32) -> Option<ddsfile::D3DFormat> {
     match format {
         10 | 0xb | 0xc | 0x11 => Some(ddsfile::D3DFormat::DXT5),
-        7 | 8  => Some(ddsfile::D3DFormat::DXT1),
+        7 | 8 | 13  => Some(ddsfile::D3DFormat::DXT1),
+        4 => Some(ddsfile::D3DFormat::X8R8G8B8),
         3 => Some(ddsfile::D3DFormat::A8R8G8B8),
         6 => Some(ddsfile::D3DFormat::A8),
         _ => None,
@@ -204,15 +246,15 @@ fn xg_address2d_tiled_xy(offset: u32, width: u32, texel_pitch: u32) -> (usize, u
     let offset_t = ((offset_b & !4095) >> 3) + ((offset_b & 1792) >> 2) + (offset_b & 63);
     let offset_m = offset_t >> (7 + log_bpp);
 
-    let macro_x = ((offset_m % (aligned_width >> 5)) << 2);
-    let tile_x = ((((offset_t >> (5 + log_bpp)) & 2) + (offset_b >> 6)) & 3);
+    let macro_x = (offset_m % (aligned_width >> 5)) << 2;
+    let tile_x = (((offset_t >> (5 + log_bpp)) & 2) + (offset_b >> 6)) & 3;
     let macro_x = (macro_x + tile_x) << 3;
     let micro_x = ((((offset_t >> 1) & !15) + (offset_t & 15)) & ((texel_pitch << 3) - 1)) >> log_bpp;
 
-    let macro_y = ((offset_m / (aligned_width >> 5)) << 2);
+    let macro_y = (offset_m / (aligned_width >> 5)) << 2;
     let tile_y = ((offset_t >> (6 + log_bpp)) & 1) + (((offset_b & 2048) >> 10));
     let macro_y = (macro_y + tile_y) << 3;
-    let micro_y = ((((offset_t & (((texel_pitch << 6) - 1) & !31)) + ((offset_t & 15) << 1)) >> (3 + log_bpp)) & !1);
+    let micro_y = (((offset_t & (((texel_pitch << 6) - 1) & !31)) + ((offset_t & 15) << 1)) >> (3 + log_bpp)) & !1;
 
     (
         (macro_x + micro_x) as usize,
@@ -248,7 +290,7 @@ pub fn conv_img(data: &[u8], height: usize, width: usize, f: u32) -> (Vec<u8>, u
     let h_ = height / s;
     let w_ = width / s;
     let (h, w) = match f {
-        7 | 8 | 10 | 0xb | 0xc | 0x11 => (
+        7 | 8 | 10 | 13 | 0xb | 0xc | 0x11 => (
             h_.max(32), w_.max(32)
         ),
         _ => (
@@ -283,7 +325,7 @@ fn decomp_bc4(arr: &[u8], w: usize, h: usize) -> Vec<u8> {
 //     return np.frombuffer(arr, np.ubyte).reshape(h//2, 2, w//2, 2)[:,0,:,0].tobytes()
 
 impl Texture {
-    pub fn from_data<O: ByteOrder + 'static>(data0: &[u8], data1: &[u8], mut info: TextureInfo) -> Self {
+    pub fn from_data<O: ByteOrder + 'static>(data0: &[u8], data1: &[u8], info: &mut TextureInfo) -> Self {
         let sizes = (0..info.levels).map(|x| 2u32.pow(x as u32)).map(|x| (info.width as u32/x, info.height as u32/x)).collect::<Vec<_>>();
         let mut format = info.format;
         let kind = info.asset_type;
@@ -321,15 +363,15 @@ impl Texture {
                 let mut packed_data = vec![];
                 let mut offset = 0;
                 let mut d = 0;
-                let (mut pw, mut ph) = (0,0);
+                let (mut pw, mut _ph) = (0,0);
                 for i in 0..info.levels as usize {
-                    let (m, M) = (sizes[i].0.min(sizes[i].1) as usize, sizes[i].0.max(sizes[i].1) as usize);
+                    let (m, m_) = (sizes[i].0.min(sizes[i].1) as usize, sizes[i].0.max(sizes[i].1) as usize);
                     if m > 16 {
                         levels.push(conv_img(&data[offset..offset+data_sizes[i]], sizes[i].1 as usize, sizes[i].0 as usize, format).0);
                         offset += data_sizes[i];
                     } else {
                         if m == 16 {
-                            (packed_data, d, pw, ph) = if wide_img {
+                            (packed_data, d, pw, _ph) = if wide_img {
                                 conv_img(&data[offset..], sizes[i].1 as usize*2, sizes[i].0 as usize, format)
                             } else {
                                 conv_img(&data[offset..], sizes[i].1 as usize, sizes[i].0 as usize*2, format)
@@ -344,7 +386,7 @@ impl Texture {
                                 packed_data.chunks(pw * d).take(block_sizes[i].1 as usize).flat_map(|x| &x[off*d..(off + block_sizes[i].0 as usize)*d]).cloned().collect()
                             });
                         } else {
-                            let off = M;
+                            let off = m_;
                             levels.push(if wide_img  {
                                 packed_data.chunks(pw * d).take(block_sizes[i].1 as usize).flat_map(|x| &x[off*d..(off + block_sizes[i].0 as usize)*d]).cloned().collect()
                             } else {
@@ -365,7 +407,7 @@ impl Texture {
         };
 
         Self {
-            levels, format, kind, info,
+            levels, format, kind, info: info.clone(),
             ..Default::default()
         }
     }
@@ -397,7 +439,7 @@ impl Texture {
             height: self.info.height as u32,
             width: self.info.width as u32,
             depth: None, 
-            format: get_format(self.format).unwrap(), 
+            format: get_format(self.format).unwrap(),
             mipmap_levels: Some(self.levels.len() as u32), 
             caps2: None
         }).unwrap();
@@ -406,30 +448,18 @@ impl Texture {
         dds.write(&mut fs::File::create(path.with_extension("dds")).unwrap()).unwrap();
     }
 
-    pub fn from_file<P: AsRef<std::path::Path>>(&self, path: P) -> Self {
+    pub fn from_file<P: AsRef<std::path::Path>>(path: P, mut info: TextureInfo) -> Self {
         let path = path.as_ref();
-        let info: TextureInfo = serde_json::from_slice(&fs::read(path.with_extension("json")).unwrap()).unwrap();
         let dds = ddsfile::Dds::read(fs::File::open(path.with_extension("dds")).unwrap()).unwrap();
         let size = dds.get_main_texture_size().unwrap() as usize;
         let data = &dds.data;
         if info.levels == 1 {
-            Self::from_data::<LE>(&[], data, info)
+            Self::from_data::<LE>(&[], data, &mut info)
         } else {
-            Self::from_data::<LE>(&data[..size], &data[size..], info)
+            Self::from_data::<LE>(&data[..size], &data[size..], &mut info)
         }
     }
 }
-
-/*
-    def get_img(self, level=0):
-        if self.format in [10, 0xb, 0xc, 0x11]:
-            return decomp_dxt5(self.levels[level], self.sizes[level][1], self.sizes[level][0])
-        elif self.format in [7,8]:
-            return decomp_dxt1(self.levels[level], self.sizes[level][1], self.sizes[level][0])
-        elif self.format == 3:
-            return np.frombuffer(self.levels[level], 'B').reshape(self.sizes[level][1], self.sizes[level][0], 4)
-*/
-
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct CubeTexture {
@@ -440,7 +470,7 @@ pub struct CubeTexture {
 }
 
 impl CubeTexture {
-    pub fn from_data<O: ByteOrder + 'static>(data0: &[u8], data1: &[u8], info: TextureInfo) -> Self {
+    pub fn from_data<O: ByteOrder + 'static>(data0: &[u8], data1: &[u8], info: &TextureInfo) -> Self {
         let format = info.format;
         let kind = info.asset_type;
         assert!(info.levels <= 1, "Cube Textures with > 1 level are unhanded");
@@ -459,7 +489,6 @@ impl CubeTexture {
 
         let size = (info.width, info.height);
         let block_size = (size.0 as u32/s, size.1 as u32/s);
-        let mut offset = 0;
         let mut faces = Vec::with_capacity(6);
 
         if TypeId::of::<O>() == TypeId::of::<LE>() {
@@ -478,7 +507,7 @@ impl CubeTexture {
             faces,
             format,
             kind,
-            info,
+            info: info.clone(),
             ..Default::default()
         }
     }
@@ -501,8 +530,8 @@ impl CubeTexture {
         let mut dds = ddsfile::Dds::new_d3d(ddsfile::NewD3dParams { 
             height: self.info.height as u32,
             width: self.info.width as u32,
-            depth: None, 
-            format: get_format(self.format).unwrap(),
+            depth: None,
+            format: get_format(self.format).expect(format!("Unknown format {}", self.format).as_str()),
             mipmap_levels: None, 
             caps2: Some(ddsfile::Caps2::CUBEMAP | ddsfile::Caps2::CUBEMAP_ALLFACES),
         }).unwrap();
@@ -512,12 +541,9 @@ impl CubeTexture {
         dds.write(&mut fs::File::create(path.with_extension("dds")).unwrap()).unwrap();
     }
 
-    pub fn from_file<P: AsRef<std::path::Path>>(&self, path: P) -> Self {
+    pub fn from_file<P: AsRef<std::path::Path>>(path: P, info: TextureInfo) -> Self {
         let path = path.as_ref();
-        let info: TextureInfo = serde_json::from_slice(&fs::read(path.with_extension("json")).unwrap()).unwrap();
         let dds = ddsfile::Dds::read(fs::File::open(path.with_extension("dds")).unwrap()).unwrap();
-        let size = dds.get_main_texture_size().unwrap() as usize;
-        let data = &dds.data;
-        Self::from_data::<LE>(&data[..size], &data[size..], info)
+        Self::from_data::<LE>(&[], &dds.data, &info)
     }
 }

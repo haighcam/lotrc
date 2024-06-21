@@ -9,3 +9,4 @@
 *.ipynb
 **/*.lua
 **/.ipynb_checkpoints
+Cargo.lock

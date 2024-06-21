@@ -1,13 +1,14 @@
-use std::{collections::HashMap, fs::{self, File}, path::Path, any::TypeId};
-use zerocopy::{ByteOrder, LE, BE};
-use log::warn;
-use serde::{Serialize, Deserialize};
-// use rmp_serde::Serializer;
-// use serde_cbor::{Serializer, Deserializer, ser::IoWrite, de::IoRead};
-use std::time::Instant;
-use std::iter::zip;
-use lotrc_rs_proc::OrderedData;
+use std::{
+    fs, 
+    path::{Path, PathBuf},
+    collections::VecDeque,
+};
+use audio::AudioTable;
+use zerocopy::LE;
+use log::error;
+use clap::{Parser, Args};
 
+mod audio;
 mod types;
 mod pak;
 mod pak_alt;
@@ -20,86 +21,160 @@ mod lua_stuff;
 use level::Level;
 use level_info::LevelInfo;
 
-fn conv_dir<A: AsRef<Path>, B: AsRef<Path>>(source: A, dest: B) {
-    let source = source.as_ref();
-    let dest = dest.as_ref();
-    let paths = fs::read_dir(source).unwrap();
-
-    for path in paths.map(|x| x.unwrap().path()) {
-        if let Some("PAK") = path.extension().and_then(|x| x.to_str()) {
-            let name = path.file_stem().unwrap().to_str().unwrap();
-            println!("Parsing Level {}", name);
-            let mut level = Level::parse(source.join(name));
-            let (pak, bin) = level.to_data::<LE>(true);
-
-            fs::write(dest.join(name).with_extension("PAK"), pak).unwrap();
-            fs::write(dest.join(name).with_extension("BIN"), bin).unwrap();
-        }
-        
-        // println!("{}")
-    }
+fn v3_styling() -> clap::builder::styling::Styles {
+    use clap::builder::styling::*;
+    Styles::styled()
+        .header(clap::builder::styling::AnsiColor::Yellow.on_default())
+        .usage(AnsiColor::Green.on_default())
+        .literal(AnsiColor::Green.on_default())
+        .placeholder(AnsiColor::Green.on_default())
 }
 
-fn dump_dir<A: AsRef<Path>, B: AsRef<Path>>(source: A, dest: B) {
-    let source = source.as_ref();
-    let dest = dest.as_ref();
-    let paths = fs::read_dir(source).unwrap();
-    fs::create_dir(dest).ok();
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None, styles=v3_styling())]
+struct CliArgs {
+    /// Input files or folders
+    #[arg(num_args = 1..)]
+    input: Vec<String>,
 
-    for path in paths.map(|x| x.unwrap().path()) {
-        match path.extension().and_then(|x| x.to_str()) {
-            Some("PAK") => {
-                let name = path.file_stem().unwrap().to_str().unwrap();
-                println!("Parsing Level {}", name);
-                let mut level = Level::parse(source.join(name));
-                level.to_file(dest.join(name))
-            },
-            Some("dat") => {
-                println!("Parsing level_info");
-                let name = path.file_stem().unwrap().to_str().unwrap();
-                let level_info = LevelInfo::parse(source.join(path.file_name().unwrap()));
+    /// Output folder
+    #[arg(short, long)]
+    output: Option<String>,
+
+    #[command(flatten)]
+    command: Commands,
+
+    /// Decompile lua files when loading a level
+    #[arg(long)]
+    lua_decomp: bool,
+
+    /// Compile lua files when loading a level, also converts endianess for xbox lua files
+    #[arg(long, requires="unluac")]
+    lua_recomp: bool,
+
+    /// Zlib compression level to use when compiling levels, lower numbers are faster
+    #[arg(long, value_parser = clap::value_parser!(u32).range(0..10))]
+    compression: Option<u32>,
+
+    /// Path to unluac.jar if decompiling lua files
+    #[arg(long)]
+    unluac: Option<String>,
+}
+
+#[derive(Args, Debug)]
+#[group(required = false, multiple = false)]
+struct Commands {
+    /// Compile the inputs to new levels / level_infos
+    #[arg(short, long)]
+    compile: bool,
+
+    /// Dump the inputs to an editable form
+    #[arg(short, long)]
+    dump: bool,
+
+    #[arg(long, hide=true)]
+    alt_comp: bool
+}
+
+fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands) {
+    let mut q = VecDeque::from(vec![(PathBuf::new(), src.as_ref().to_path_buf())]);
+    let dest = dest.as_ref();
+    while let Some((name, src)) = q.pop_front() {
+        let mut raw_name = src.file_name().unwrap().to_str().unwrap().split('.');
+        let name = name.join(raw_name.next().unwrap());
+        let ext = raw_name.collect::<Vec<_>>().join(".");
+        if src.with_extension("PAK").is_file() {
+            if args.compile {
+                Level::parse(src).dump::<LE, _>(dest.join(name));
+            } else if args.alt_comp {
+                level_alt::Level::parse(src).dump::<LE, _>(dest.join(name));
+            } else {
+                level_alt::Level::parse(src).to_file(dest.join(name));
+            }
+        } else if src.file_name().unwrap() == "level_info.dat" {
+            let level_info = LevelInfo::parse(src);
+            if args.compile {
+                level_info.dump::<LE, _>(dest.join(name));
+            } else {
                 level_info.to_file(dest.join(name));
-            },
-            _ => ()
-        }        
-        // println!("{}")
+            }
+        } else if !src.with_extension("PAK").is_file() && src.with_extension("bin").is_file() {
+            let table: AudioTable = AudioTable::parse(src);
+            if args.compile {
+                table.dump::<LE, _>(dest.join(name))
+            } else {
+                table.to_file(dest.join(name));
+            }
+        } else if ext == "audio.json" {
+            let table = AudioTable::from_file(src);
+            if args.dump {
+                table.to_file(dest.join(name));
+            } else {
+                table.dump::<LE, _>(dest.join(name))
+            }
+        } else if src.is_dir() {
+            if src.join("index.json").is_file() {
+                let level_info = LevelInfo::from_file(src);
+                if args.dump {
+                    level_info.to_file(dest.join(name));
+                } else {
+                    level_info.dump::<LE, _>(dest.join(name));
+                }
+            } else if src.join("pak_header.json").is_file() {
+                let level = level_alt::Level::from_file(src);
+                if args.dump {
+                    level.to_file(dest.join(name));
+                } else {
+                    level.dump::<LE, _>(dest.join(name))
+                }
+            } else {
+                for path in fs::read_dir(&src).unwrap().map(|x| x.unwrap().path()) {
+                    q.push_back((name.clone(), path));
+                }
+            }
+        } else {
+            error!("Could not parse input {:?}", src);
+        }
     }
 }
 
 fn main() {
-    pretty_env_logger::init();
-    // println!("{:?}", types::STRING_LOOKUP.lock().unwrap());
-    {
-        *types::DECOMP_LUA.lock().unwrap() = false;
+    let logger = pretty_env_logger::formatted_builder()
+        .filter_level(log::LevelFilter::Info)
+        .format(|buf, record| {
+            use std::io::Write;
+            use pretty_env_logger::env_logger::fmt::Color;
+        
+            let mut style = buf.style();
+            let level = match record.level() {
+                log::Level::Trace => style.set_color(Color::Magenta).value("TRACE"),
+                log::Level::Debug => style.set_color(Color::Blue).value("DEBUG"),
+                log::Level::Info => style.set_color(Color::Green).value("INFO "),
+                log::Level::Warn => style.set_color(Color::Yellow).value("WARN "),
+                log::Level::Error => style.set_color(Color::Red).value("ERROR"),
+            };
+        
+            writeln!(buf, " {} > {}", level, record.args())
+        })
+        .build();
+
+    let multi = indicatif::MultiProgress::new();
+    indicatif_log_bridge::LogWrapper::new(multi.clone(), logger).try_init().unwrap();
+
+    let args = CliArgs::parse_from(wild::args_os());
+
+    *types::DECOMP_LUA.lock().unwrap() = args.lua_decomp;
+    *types::RECOMP_LUA.lock().unwrap() = args.lua_recomp;
+    if let Some(compression) = args.compression {
+        *types::COMPRESSION.lock().unwrap() = flate2::Compression::new(compression);
     }
-    // let level_info = LevelInfo::parse("../Levels/level_info.dat");
-    // level_info.dump::<LE, _>("../level_info_test.dat");
-    // level_info.to_file("things/level_data");
-    // return ();
+    if let Some(unluac) = args.unluac {
+        *types::UNLUAC.lock().unwrap() = unluac;
+    }
 
-    // dump_dir(
-    //     "../Xbox/Levels",
-    //     "things/Levels"
-    // );
-
-    let level = level_alt::Level::parse("../LevelsCopy/Mount_Doom");
-    level.to_file("things/Mount_Doom");
-    level.dump::<LE, _>("../Levels/Mount_Doom", false);
-    
-    // let mut level = Level::parse("../Xbox/AddOn/HeroesandMapsPack/Weathertop_DLC");
-    
-    // if let Some(types::SubBlock::GameObjs(gameobjs)) = level.sub_blocks1.blocks.last_mut() {
-    //     gameobjs.to_file("Test.json");
-    //     *gameobjs = types::GameObjs::from_file("Test.json");
-    // }
-
-    // level.to_file("things/Weathertop_DLC");
-
-    // level.dump::<LE, _>("../AddOn/HeroesandMapsPack/Weathertop_DLC_A", true);
-    // level.dump::<LE, _>("../AddOn/HeroesandMapsPack/Weathertop_DLC", true);
-
-    // conv_dir(
-    //     "../Xbox/AddOn/HeroArenaBonus", 
-    //     "../AddOn/HeroArenaBonus"
-    // );
+    let exe_dir = std::env::current_exe().unwrap().parent().unwrap().to_owned();
+    let output: PathBuf = args.output.map(|x| x.into()).unwrap_or(exe_dir);
+    for input in args.input {
+        parse(input, output.clone(), &args.command);
+    }
 }

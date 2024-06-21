@@ -1,10 +1,10 @@
-use std::{any::TypeId, collections::HashMap, fs::{self, File}, iter::{repeat, zip}, mem::size_of};
+use std::{any::TypeId, collections::HashMap, fs, iter::zip, mem::size_of};
 use log::warn;
 use serde_json::{Value, json, to_vec_pretty, Map};
 use zerocopy::{AsBytes, ByteOrder, FromBytes, BE, F32, LE, U16, U32, U64, I32};
 use flate2::read::ZlibDecoder;
 use flate2::write::ZlibEncoder;
-use serde::{Serialize, Deserialize, Serializer, Deserializer};
+use serde::{Serialize, Deserialize};
 use std::path::Path;
 use std::sync::Mutex;
 use std::io::prelude::*;
@@ -168,7 +168,13 @@ lazy_static::lazy_static! {
         Mutex::new(CONQUEST_STRINGS.split('\n').map(|x| (hash_string(x.as_bytes(), None), String::from(x))).collect())
     };
 
-    pub static ref DECOMP_LUA: Mutex<bool> = Mutex::new(true);
+    pub static ref DECOMP_LUA: Mutex<bool> = Mutex::new(false);
+
+    pub static ref RECOMP_LUA: Mutex<bool> = Mutex::new(false);
+
+    pub static ref UNLUAC: Mutex<String> = Mutex::new("unluac.jar".to_string());
+
+    pub static ref COMPRESSION: Mutex<flate2::Compression> = Mutex::new(flate2::Compression::default());
 }
 
 pub fn update_strings(vals: &[String]) {
@@ -331,7 +337,6 @@ impl Strings {
         let strings = vals.as_array().unwrap().iter().map(|x| x.as_str().unwrap().to_string()).collect::<Vec<_>>();
         Self { strings }
     }
-
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
@@ -352,27 +357,12 @@ impl CompressedBlock {
         Self { data }
     }
 
-    pub fn into_data(&self, data: &mut [u8], offset: usize) {
-        if self.data.is_empty() { return }
-        let mut z = ZlibEncoder::new(&mut data[offset..], flate2::Compression::default());
-        z.write_all(self.data.as_slice()).unwrap();
-        z.finish().unwrap();
-    }
-
     pub fn dump(&self) -> Vec<u8> {
         if self.data.is_empty() { return Vec::new(); }
-        let mut z = ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
+        // let mut z = ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
+        let mut z = ZlibEncoder::new(Vec::new(), COMPRESSION.lock().unwrap().clone());
         z.write_all(self.data.as_slice()).unwrap();
         z.finish().unwrap()
-    }
-
-    pub fn to_file<P: AsRef<Path>>(&self, path: P) {
-        std::fs::write(path, &self.data).unwrap();
-    }
-
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Self {
-        let data: Vec<u8> = std::fs::read(path).unwrap();
-        Self { data }
     }
 }
 
@@ -422,7 +412,10 @@ pub struct Bool {
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct Weight {
     pub x: u32,
-    pub y: u32,
+    pub a: u8,
+    pub b: u8,
+    pub c: u8,
+    pub d: u8,
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
@@ -600,6 +593,63 @@ impl BaseTypes {
         }
     }
 
+    pub fn dump<O: ByteOrder + 'static>(&self, data: &mut Vec<u8>, off: usize) {
+        match self {
+            Self::CRC(val) => val.to_bytes::<O>(&mut data[off..]),
+            Self::GUID(val) => val.to_bytes::<O>(&mut data[off..]),
+            Self::Color(val) => val.to_bytes::<O>(&mut data[off..]),
+            Self::Vector2(val) => val.to_bytes::<O>(&mut data[off..]),
+            Self::Vector3(val) => val.to_bytes::<O>(&mut data[off..]),
+            Self::Vector4(val) => val.to_bytes::<O>(&mut data[off..]),
+            Self::Matrix4x4(val) => val.to_bytes::<O>(&mut data[off..]),
+            Self::Float(val) => val.to_bytes::<O>(&mut data[off..]),
+            Self::Int(val) => val.to_bytes::<O>(&mut data[off..]),
+            Self::Bool(val) => val.to_bytes::<O>(&mut data[off..]),
+            Self::Byte(val) => val.to_bytes::<O>(&mut data[off..]),
+            Self::String(vals) => {
+                List{ num: vals.len() as u16, offset: (data.len() - off - List::size::<O>()) as u16}.to_bytes::<O>(&mut data[off..]);
+                data.extend(vals.as_bytes());
+                if vals.len() != 0 { data.push(0) };
+            },
+            Self::StringList(vals) => {
+                List{ num: vals.len() as u16, offset: (data.len() - off - List::size::<O>()) as u16}.to_bytes::<O>(&mut data[off..]);
+                let mut off_ = data.len();
+                data.extend(vec![0u8; vals.len() * List::size::<O>()]);
+                for v in vals {
+                    List{ num: v.len() as u16, offset: (data.len() - off_ - List::size::<O>()) as u16}.to_bytes::<O>(&mut data[off_..]);
+                    data.extend(v.as_bytes());
+                    if v.len() != 0 { data.push(0) }
+                    off_ += 4;
+                }
+            },
+            Self::ObjectList(vals) => {
+                List{ num: vals.len() as u16, offset: (data.len() - off - List::size::<O>()) as u16}.to_bytes::<O>(&mut data[off..]);
+                data.extend(vals.dump_bytes::<O>());
+            },
+            Self:: NodeList(vals) => {
+                List{ num: vals.len() as u16, offset: (data.len() - off - List::size::<O>()) as u16}.to_bytes::<O>(&mut data[off..]);
+                data.extend(vals.dump_bytes::<O>());
+            },
+            Self::IntList(vals) => {
+                List{ num: vals.len() as u16, offset: (data.len() - off - List::size::<O>()) as u16}.to_bytes::<O>(&mut data[off..]);
+                data.extend(vals.dump_bytes::<O>());
+            },
+            Self::CRCList(vals) => {
+                List{ num: vals.len() as u16, offset: (data.len() - off - List::size::<O>()) as u16}.to_bytes::<O>(&mut data[off..]);
+                data.extend(vals.dump_bytes::<O>());
+            },
+            Self::WeightList(vals) => {
+                List{ num: vals.len() as u16, offset: (data.len() - off - List::size::<O>()) as u16}.to_bytes::<O>(&mut data[off..]);
+                data.extend(vals.dump_bytes::<O>());
+            },
+            Self::MatrixList(vals) => {
+                List{ num: vals.len() as u16, offset: (data.len() - off - List::size::<O>()) as u16}.to_bytes::<O>(&mut data[off..]);
+                data.extend(vals.dump_bytes::<O>());
+            },
+        }
+    }
+
+
     pub fn dump_bytes<O: ByteOrder + 'static>(&self) -> Vec<u8> {
         match self {
             Self::CRC(val) => val.dump_bytes::<O>(),
@@ -656,25 +706,25 @@ impl BaseTypes {
 
     pub fn size<O: ByteOrder + 'static>(&self) -> usize {
         match self {
-            Self::CRC(val) => u32::size::<O>(),
-            Self::GUID(val) => u32::size::<O>(),
-            Self::Color(val) => u32::size::<O>(),
-            Self::Vector2(val) => Vector2::size::<O>(),
-            Self::Vector3(val) => Vector3::size::<O>(),
-            Self::Vector4(val) => Vector4::size::<O>(),
-            Self::Matrix4x4(val) => Matrix4x4::size::<O>(),
-            Self::Float(val) => f32::size::<O>(),
-            Self::Int(val) => u32::size::<O>(),
-            Self::Bool(val) => Bool::size::<O>(),
-            Self::Byte(val) => u8::size::<O>(),
-            Self::String(val, ..) => List::size::<O>(),
-            Self::StringList(val, ..) => List::size::<O>(),
-            Self::ObjectList(val, ..) => List::size::<O>(),
-            Self:: NodeList(val, ..) => List::size::<O>(),
-            Self::IntList(val, ..) => List::size::<O>(),
-            Self::CRCList(val, ..) => List::size::<O>(),
-            Self::WeightList(val, ..) => List::size::<O>(),
-            Self::MatrixList(val, ..) => List::size::<O>(),
+            Self::CRC(..) => u32::size::<O>(),
+            Self::GUID(..) => u32::size::<O>(),
+            Self::Color(..) => u32::size::<O>(),
+            Self::Vector2(..) => Vector2::size::<O>(),
+            Self::Vector3(..) => Vector3::size::<O>(),
+            Self::Vector4(..) => Vector4::size::<O>(),
+            Self::Matrix4x4(..) => Matrix4x4::size::<O>(),
+            Self::Float(..) => f32::size::<O>(),
+            Self::Int(..) => u32::size::<O>(),
+            Self::Bool(..) => Bool::size::<O>(),
+            Self::Byte(..) => u8::size::<O>(),
+            Self::String(..) => List::size::<O>(),
+            Self::StringList(..) => List::size::<O>(),
+            Self::ObjectList(..) => List::size::<O>(),
+            Self:: NodeList(..) => List::size::<O>(),
+            Self::IntList(..) => List::size::<O>(),
+            Self::CRCList(..) => List::size::<O>(),
+            Self::WeightList(..) => List::size::<O>(),
+            Self::MatrixList(..) => List::size::<O>(),
         }
     }
 
@@ -702,7 +752,7 @@ impl BaseTypes {
             Self::NodeList(vals) => json!(vals.iter().map(|x| json!([x.x, x.y, x.z, x.w])).collect::<Vec<_>>()),
             Self::IntList(vals) => json!(vals.iter().map(|x| json!(x)).collect::<Vec<_>>()),
             Self::CRCList(vals) => json!(vals.iter().map(|x| json!(x.to_string())).collect::<Vec<_>>()),
-            Self::WeightList(vals) => json!(vals.iter().map(|x| json!([x.x, x.y])).collect::<Vec<_>>()),
+            Self::WeightList(vals) => json!(vals.iter().map(|x| json!([x.x, x.a, x.b, x.c, x.d])).collect::<Vec<_>>()),
             Self::MatrixList(vals) => json!(vals.iter().map(|val| json!([
                 val.x.x, val.x.y, val.x.z, val.x.w,
                 val.y.x, val.y.y, val.y.z, val.y.w,
@@ -753,7 +803,7 @@ impl BaseTypes {
             Self::CRCLIST_KEY => Self::CRCList(val.as_array().unwrap().into_iter().map(|x| Crc::from_string(x.as_str().unwrap())).collect()),
             Self::WEIGHTLIST_KEY => Self::WeightList(val.as_array().unwrap().into_iter().map(|x| {
                 let vals = x.as_array().unwrap().into_iter().map(|x| x.as_u64().unwrap() as u32).collect::<Vec<_>>();
-                Weight { x: vals[0], y: vals[1]}
+                Weight { x: vals[0], a: vals[1] as u8, b: vals[2] as u8, c: vals[3] as u8, d: vals[4] as u8}
             }).collect()),
             Self::MATRIXLIST_KEY => Self::MatrixList(val.as_array().unwrap().into_iter().map(|x| {
                 let vals = x.as_array().unwrap().into_iter().map(|x| x.as_f64().unwrap() as f32).collect::<Vec<_>>();
@@ -779,6 +829,7 @@ pub enum SubBlock {
     GameObjs(GameObjs),
     AtlasUV(AtlasUV),
     Lua(Lua),
+    SSA(SSA),
 }
 
 impl SubBlock {
@@ -793,6 +844,7 @@ impl SubBlock {
             AtlasUV::KEY1 | AtlasUV::KEY2 => SubBlock::AtlasUV(AtlasUV::from_data::<O>(data, info.offset as usize, info.size as usize)),
             _ => match info.key.str() {
                 Some(x) if x.ends_with(".lua") => SubBlock::Lua(Lua::from_data(data, info.offset as usize, info.size as usize, lua, x.to_string())),
+                Some(x) if x.ends_with(".ssa") => SubBlock::SSA(SSA::from_data::<O>(data, info.offset as usize, info.size as usize)),
                 Some(x) if x.ends_with(".csv") || x.ends_with(".txt") || x.ends_with(".dat") => 
                     SubBlock::Data(Data::from_data(data, info.offset as usize, info.size as usize)),
                 _ =>  {
@@ -812,6 +864,7 @@ impl SubBlock {
             SubBlock::GameObjs(val) => val.dump::<O>(),
             SubBlock::AtlasUV(val) => val.dump::<O>(),
             SubBlock::Lua(val) => val.dump(lua),
+            SubBlock::SSA(val) => val.dump::<O>(),
         }
     }
 
@@ -824,6 +877,7 @@ impl SubBlock {
             SubBlock::GameObjs(val) => val.size,
             SubBlock::AtlasUV(val) => val.vals.size::<O>(),
             SubBlock::Lua(val) => val.data.len(),
+            SubBlock::SSA(val) => val.size(),
         }
     }
 
@@ -837,6 +891,7 @@ impl SubBlock {
             SubBlock::GameObjs(val) => val.to_file(path),
             SubBlock::AtlasUV(val) => val.to_file(path),
             SubBlock::Lua(val) => val.to_file(path),
+            SubBlock::SSA(val) => val.to_file(path),
         }
     }
 
@@ -851,6 +906,7 @@ impl SubBlock {
             AtlasUV::KEY1 | AtlasUV::KEY2 => SubBlock::AtlasUV(AtlasUV::from_file(path)),
             _ => match info.key.str() {
                 Some(x) if x.ends_with(".lua") => SubBlock::Lua(Lua::from_file(path, lua)),
+                Some(x) if x.ends_with(".ssa") => SubBlock::SSA(SSA::from_file(path)),
                 Some(x) if x.ends_with(".csv") || x.ends_with(".txt") || x.ends_with(".dat") => 
                     SubBlock::Data(Data::from_file(path)),
                 _ =>  {
@@ -879,6 +935,7 @@ pub struct SubBlocksBlockHeader {
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct SubBlocks {
+    #[serde(skip)]
     pub header: SubBlocksHeader,
     pub block_headers: Vec<SubBlocksBlockHeader>,
     #[serde(skip)]
@@ -909,23 +966,26 @@ impl SubBlocks {
     pub fn dump<O: ByteOrder + 'static>(&self, lua: &LuaCompiler) -> Vec<u8> {
         let mut block_headers = self.block_headers.clone();
         let mut offset = SubBlocksHeader::size::<O>() + block_headers.size::<O>();
-        let data = zip(&self.blocks, &mut block_headers).flat_map(|(block, header)| {
-            let block_data = block.dump::<O>(lua);
-            let off = (offset + 16) & 0xfffffff0;
-            let start = vec![0u8; off - offset];
-            offset = off;
-            header.offset = offset as u32;
-            header.size = block_data.len() as u32;
+        let mut data = vec![];
+        let off = (offset + 15) & 0xfffffff0;
+        data.extend(vec![0u8; off - offset]);
+        offset = off;
+        for (block, block_header) in zip(&self.blocks, &mut block_headers) {
+            let block_data: Vec<u8> = block.dump::<O>(lua);
+            block_header.offset = offset as u32;
+            block_header.size = block_data.len() as u32;
             offset += block_data.len();
-            start.into_iter().chain(block_data)
-        }).collect::<Vec<_>>();
-        let extra = ((offset + 16) & 0xFFFFFFF0) - offset;
-        self.header.dump_bytes::<O>().into_iter().chain(block_headers.dump_bytes::<O>().into_iter()).chain(data.into_iter()).chain(repeat(0u8).take(extra)).collect()
+            data.extend(block_data);
+            let off = (offset + 16) & 0xfffffff0;
+            data.extend(vec![0u8; off - offset]);
+            offset = off;
+        }
+        self.header.dump_bytes::<O>().into_iter().chain(block_headers.dump_bytes::<O>().into_iter()).chain(data.into_iter()).collect()
     }
 
     pub fn to_file<P: AsRef<Path>>(&self, path: P, keys: &StringKeys) {
         let path = path.as_ref();
-        std::fs::create_dir(path).ok();
+        std::fs::create_dir_all(path).ok();
         fs::write(path.join("index.json"), serde_json::to_string_pretty(self).unwrap()).unwrap();
         for (block, info) in zip(&self.blocks, &self.block_headers) {
             block.to_file(path.join(info.key.str().unwrap()), keys)
@@ -936,14 +996,15 @@ impl SubBlocks {
         let path = path.as_ref();
         let mut val = serde_json::from_slice::<Self>(&fs::read(path.join("index.json")).unwrap()).unwrap();
         val.blocks = val.block_headers.iter().map(|info| SubBlock::from_file(path.join(info.key.str().unwrap()), info, lua)).collect();
+        val.header.block_num = val.blocks.len() as u32;
         val
     }
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct StringKeysHeader {
-    pub numA: u16,
-    pub numB: u16,
+    pub num_a: u16,
+    pub num_b: u16,
     pub z2: u32,
     pub z3: u32,
     pub z4: u32,
@@ -967,11 +1028,11 @@ impl StringKeys {
     pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize) -> Self {
         let mut offset: usize = offset;
         let header: StringKeysHeader = OrderedData::from_bytes::<O>(&data[offset..]);
-        assert!(header.numA == header.numB, "Seems to be true");
+        assert!(header.num_a == header.num_b, "Seems to be true");
         offset += StringKeysHeader::size::<O>();
-        let vals: Vec<StringKeysVal> = OrderedDataVec::from_bytes::<O>(&data[offset..], header.numA as usize);
+        let vals: Vec<StringKeysVal> = OrderedDataVec::from_bytes::<O>(&data[offset..], header.num_a as usize);
         offset += vals.size::<O>();
-        let pad = OrderedDataVec::from_bytes::<O>(&data[offset..], header.numA as usize);
+        let pad = OrderedDataVec::from_bytes::<O>(&data[offset..], header.num_a as usize);
         Self { header, vals, pad }
     }
 
@@ -1002,8 +1063,8 @@ impl StringKeys {
         let vals = serde_json::from_slice::<Value>(&fs::read(path.as_ref().with_extension("json")).unwrap()).unwrap();
         let keys = vals.as_array().unwrap().iter().map(|val| Crc::from_string(val.as_str().unwrap())).collect::<Vec<_>>();
         let header = StringKeysHeader {
-            numA: keys.len() as u16,
-            numB: keys.len() as u16,
+            num_a: keys.len() as u16,
+            num_b: keys.len() as u16,
             z2: 0,
             z3: 0,
             z4: 0,
@@ -1051,15 +1112,6 @@ impl LangStrings {
         val
     }
 
-    pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut[u8], offset: usize) {
-        let mut offset = offset;
-        for string in self.strings.iter() {
-            let s = string.encode_utf16().collect::<Vec<_>>();
-            s.to_bytes::<O>(&mut data[offset..]);
-            offset += s.len() * 2 + 2;
-        }
-    }
-
     pub fn dump<O: ByteOrder + 'static>(&self) -> Vec<u8> {
         let vals = self.strings.iter().flat_map(|x| x.encode_utf16().chain([0u16])).collect::<Vec<_>>();
         vals.dump_bytes::<O>()
@@ -1081,6 +1133,58 @@ impl LangStrings {
     }
 }
 
+#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
+pub struct SSAVal {
+    pub t_start: f32,
+    pub t_end: f32,
+    pub unk_2: u32,
+    pub unk_3: u32,
+    pub off: u32,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct SSA {
+    pub vals: Vec<SSAVal>,
+    pub strings: Vec<String>,
+}
+
+impl SSA {
+    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize, size: usize) -> Self {
+        let n = <u32 as OrderedData>::from_bytes::<O>(&data[offset..]) as usize;
+        let vals: Vec<SSAVal> = OrderedDataVec::from_bytes::<O>(&data[offset + 4..], n as usize);
+        let offs = vals.iter().map(|x| x.off as usize).chain([size]).collect::<Vec<_>>();
+        let strings = (0..n).map(|i| {
+            let s: Vec<u16> = OrderedDataVec::from_bytes::<O>(&data[offset + offs[i]..], (offs[i+1] - offs[i])/2);
+            String::from_utf16(s.as_slice()).unwrap()
+        }).collect::<Vec<_>>();
+        Self { vals, strings }
+    }
+
+    pub fn dump<O: ByteOrder + 'static>(&self) -> Vec<u8> {
+        let mut data = vec![0u8; 4 + (SSAVal::size::<O>() * self.vals.len())];
+        (self.vals.len() as u32).to_bytes::<O>(&mut data);
+        let mut vals: Vec<SSAVal> = self.vals.clone();
+        for (string, val) in zip(&self.strings, &mut vals) {
+            val.off = data.len() as u32;
+            data.extend(string.encode_utf16().collect::<Vec<_>>().dump_bytes::<O>());
+        }
+        vals.to_bytes::<O>(&mut data[4..]);
+        data
+    }
+
+    pub fn size(&self) -> usize {
+        self.strings.iter().map(|x| x.encode_utf16().map(|_| 2).sum::<usize>()).sum::<usize>() + 4 + (SSAVal::size::<LE>() * self.vals.len())
+    }
+
+    pub fn to_file<P: AsRef<Path>>(&self, path: P) {
+        fs::write(path.as_ref().with_extension("json"), serde_json::to_string_pretty(self).unwrap()).unwrap();
+    }
+
+    pub fn from_file<P: AsRef<Path>>(path: P) -> Self {
+        serde_json::from_slice(&fs::read(path.as_ref().with_extension("json")).unwrap()).unwrap()
+    }
+}
+
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Lua {
     pub name: String,
@@ -1092,7 +1196,7 @@ impl Lua {
     pub fn from_data(data: &[u8], offset: usize, size: usize, lua: &LuaCompiler, name: String) -> Self {
         let data = data[offset..offset+size].to_vec();
         let code = if *DECOMP_LUA.lock().unwrap() {
-            lua.decomp(data.as_slice()).unwrap()
+            lua.decomp(data.as_slice(), UNLUAC.lock().unwrap().clone()).unwrap()
         } else {
             String::new()
         };
@@ -1109,13 +1213,15 @@ impl Lua {
                     panic!("{:?}", e)
                 }
             }
-        } else {
+        } else if *RECOMP_LUA.lock().unwrap() {
             lua.convert(&self.data, "L4404").unwrap()
+        } else {
+            self.data.clone()
         }
     }
 
     pub fn to_file<P: AsRef<Path>>(&self, path: P) {
-        if *DECOMP_LUA.lock().unwrap(){
+        if *DECOMP_LUA.lock().unwrap() {
             std::fs::write(path, self.code.as_bytes()).unwrap();
         } else {
             std::fs::write(path, &self.data).unwrap();
@@ -1125,13 +1231,24 @@ impl Lua {
     pub fn from_file<P: AsRef<Path>>(path: P, lua: &LuaCompiler) -> Self {
         let path = path.as_ref();
         let name: String = path.file_name().unwrap().to_str().unwrap().into();
-        let val = std::fs::read(path).unwrap();
+        let mut val = std::fs::read(path).unwrap();
         let (data, code) = if (val[0] == 0x1bu8) && (val[1] == 76) && (val[2] == 117) && (val[3] == 97) {
-            let code = lua.decomp(&val).unwrap();
+            let code = if *DECOMP_LUA.lock().unwrap() {
+                lua.decomp(&val, UNLUAC.lock().unwrap().clone()).unwrap()
+            } else {
+                String::new()
+            };
+            if *RECOMP_LUA.lock().unwrap() {
+                val = lua.convert(&val, "L4404").unwrap();
+            }
             (val, code)
         } else {
-            let code = String::from_utf8(val).unwrap();
-            let data = lua.compile(&code, &name).unwrap();
+            let code = String::from_utf8(val.clone()).unwrap();
+            let data = if *RECOMP_LUA.lock().unwrap() {
+                lua.compile(&code, &name).unwrap()
+            } else {
+                val
+            };
             (data, code)
         };
         
@@ -1176,7 +1293,7 @@ pub struct GameObjsObjHeader {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct GameObjs {
     pub size: usize,
-    pub level_flags: u32,
+    pub gamemodemask: u32,
     pub header: GameObjsHeader,
     pub types: Vec<GameObjsTypeHeader>,
     pub type_fields: Vec<Vec<GameObjsTypeField>>,
@@ -1187,9 +1304,9 @@ pub struct GameObjs {
 
 impl GameObjs {
     pub const KEY: u32 = hash_string("Level".as_bytes(), None);
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize, size: usize, level_flags: u32) -> Self {
+    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize, size: usize, gamemodemask: u32) -> Self {
         let mut val = Self::default();
-        val.level_flags = level_flags;
+        val.gamemodemask = gamemodemask;
         val.size = size;
         val.header = OrderedData::from_bytes::<O>(&data[offset..]);
         {
@@ -1245,10 +1362,10 @@ impl GameObjs {
                 for (val, t) in zip(fields, ts) {
                     off = off - t.offset as usize;
                     val.into_data::<O>(&mut data[offset + t.offset as usize..], &mut off);
-                    off = off + t.offset as usize;
-                    if t.key.key() == BaseTypes::INTLISTS_KEY {
+                    if t.kind.key() == BaseTypes::INTLISTS_KEY {
                         off = (off + 15) & 0xFFFFFFF0;
                     }
+                    off = off + t.offset as usize;
                 }
                 offset += obj.size as usize;
             }
@@ -1256,14 +1373,48 @@ impl GameObjs {
     }
 
     pub fn dump<O: ByteOrder + 'static>(&self) -> Vec<u8> {
-        let mut data = vec![0u8; self.size];
-        self.into_data::<O>(data.as_mut_slice(), 0);
+        let mut data = vec![0u8; GameObjsHeader::size::<O>()];
+        let types_offset = data.len();
+        for (obj, type_fields) in zip(self.types.iter(), self.type_fields.iter()) {
+            data.extend(obj.dump_bytes::<O>());
+            data.extend(type_fields.dump_bytes::<O>());
+        }
+        data.extend(vec![0u8; ((data.len() + 15) & 0xFFFFFFF0) - data.len()]);
+        let objs_offset = data.len();
+        for (obj, fields) in zip(&self.obj_headers, self.objs.iter()) {
+            let obj_off = data.len();
+            data.extend(vec![0u8; GameObjsObjHeader::size::<O>()]);
+            let ts = self.type_fields.get(*self.type_field_lookup.get(&obj.key.key()).unwrap()).unwrap();
+            let obj_size = zip(fields, ts).map(|(t, f)| f.offset as usize + t.size::<O>()).fold(0, usize::max);
+            let mut vals = vec![0u8; (obj_size + 15) & 0xFFFFFFF0];
+            for (val, t) in zip(fields, ts) {
+                val.dump::<O>(&mut vals, t.offset as usize);
+                if t.kind.key() == BaseTypes::INTLISTS_KEY {
+                    // println!("{}", vals.len());
+                    vals.extend(vec![0u8; ((vals.len() + 15) & 0xFFFFFFF0) - vals.len()]);
+                }
+            }
+            vals.extend(vec![0u8; ((vals.len() + 15) & 0xFFFFFFF0) - vals.len()]);
+            data.extend(vals);
+            let mut obj = obj.clone();
+            obj.size = (data.len() - obj_off - GameObjsObjHeader::size::<O>()) as u16;
+            obj.to_bytes::<O>(&mut data[obj_off..]);
+        }
+        let mut header = self.header.clone();
+        header.types_offset = types_offset as u32;
+        header.types_num = self.types.len() as u32;
+        header.obj_num = self.objs.len() as u32;
+        header.obj_offset = objs_offset as u32;
+        header.to_bytes::<O>(&mut data);
         data
+        // let mut data = vec![0u8; self.size];
+        // self.into_data::<O>(data.as_mut_slice(), 0);
+        // data
     }
 
     pub fn to_file<P: AsRef<Path>>(&self, path: P) {
         let val = json!({
-            "level_flags": self.level_flags,
+            "gamemodemask": self.gamemodemask,
             "objs": zip(&self.obj_headers,& self.objs).map(|(o, fs)| {
                 let ts = &self.type_fields[*self.type_field_lookup.get(&o.key.key()).unwrap()];
                 let mut order: Vec<_> = (0..ts.len()).collect();
@@ -1349,10 +1500,10 @@ impl GameObjs {
             z7: 0
         };
         let size = header.obj_offset as usize + obj_headers.iter().map(|x| x.size as usize).sum::<usize>() + objs.len() * GameObjsObjHeader::size::<LE>() ;
-        let level_flags = val["level_flags"].as_u64().unwrap() as u32;
+        let gamemodemask = val["gamemodemask"].as_u64().unwrap() as u32;
         Self {
             size,
-            level_flags,
+            gamemodemask,
             header,
             types,
             type_fields,
@@ -1366,8 +1517,8 @@ impl GameObjs {
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 struct SprayObj1 {
     pub key: Crc,
-    pub unk_1: u32,
-    pub unk_2: u32,
+    pub key2: Crc,
+    pub key3: Crc,
     pub unk_3: u32,
     pub unk_4: u32,
     pub unk_5: u32,
@@ -1386,11 +1537,12 @@ struct SprayObj1 {
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 struct SprayObj2 {
-    pub unk_0: f32,
-    pub unk_1: f32,
-    pub unk_2: f32,
-    pub unk_3: f32,
-    pub unk_4: f32,
+    pub unk_0: u32,
+    pub unk_1: u32,
+    pub unk_2: u32,
+    pub unk_3: u32,
+    pub unk_4: u16,
+    pub unk_5: u16,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -1445,27 +1597,27 @@ impl Spray {
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
-struct CrowdHeader {
-    pub key_0: u32,
-    pub key_1: u32,
-    pub key_2: u32,
-    pub key_3: u32,
-    pub unk_4: u32,
+pub struct CrowdHeader {
+    pub key_0: Crc,
+    pub key_1: Crc,
+    pub key_2: Crc,
+    pub key_3: Crc,
+    pub unk_4: f32,
     pub keys_num: u32,
     pub num: u32,
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
-struct CrowdVal {
-    pub unk_0: u32,
-    pub unk_1: u32,
-    pub unk_2: u32,
-    pub unk_3: u32,
-    pub unk_4: u32,
+pub struct CrowdVal {
+    pub unk_0: f32,
+    pub unk_1: f32,
+    pub unk_2: f32,
+    pub unk_3: f32,
+    pub unk_4: f32,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
-struct Crowd {
+pub struct Crowd {
     pub size: usize,
     pub const_: u32,
     pub num: u32,
@@ -1490,7 +1642,7 @@ impl Crowd {
             offset += CrowdHeader::size::<O>();
             let keys: Vec<Crc> = OrderedDataVec::from_bytes::<O>(&data[offset..], header.keys_num as usize);
             offset += keys.size::<O>();
-            let vals = OrderedDataVec::from_bytes::<O>(&data[offset..], header.keys_num as usize);
+            let vals = OrderedDataVec::from_bytes::<O>(&data[offset..], header.num as usize);
             val.headers.push(header);
             val.keys.push(keys);
             val.vals.push(vals);
@@ -1550,10 +1702,6 @@ impl AtlasUV {
         let vals = OrderedDataVec::from_bytes::<O>(&data[offset..], num);
 
         Self { vals }
-    }
-
-    pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut [u8], offset: usize) {
-        self.vals.to_bytes::<O>(&mut data[offset..]);
     }
 
     pub fn dump<O: ByteOrder + 'static>(&self) -> Vec<u8> {

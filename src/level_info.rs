@@ -1,13 +1,8 @@
 
-use std::{collections::HashMap, fs::{self, File}, path::Path, any::TypeId};
-use serde_json::json;
+use std::{fs, path::Path};
 use zerocopy::{ByteOrder, LE, BE};
 use log::warn;
 use serde::{Serialize, Deserialize};
-// use rmp_serde::Serializer;
-// use serde_cbor::{Serializer, Deserializer, ser::IoWrite, de::IoRead};
-use std::time::Instant;
-use std::iter::zip;
 use lotrc_rs_proc::OrderedData;
 
 use super::{
@@ -16,7 +11,7 @@ use super::{
 };
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
-struct Name(Box<str>);
+pub struct Name(Box<str>);
 
 impl From<Name> for [u8; 32] {
     fn from(value: Name) -> Self {
@@ -77,6 +72,8 @@ pub struct GamemodeVal {
     pub key_description: Crc,
 }
 
+use serde_with::serde_as;
+#[serde_as]
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct LevelInfo {
     header: Header,
@@ -88,6 +85,7 @@ pub struct LevelInfo {
     locale_strings: types::SubBlocks,
     levels: Vec<LevelVal>,
     gamemodes: Vec<GamemodeVal>,
+    #[serde_as(as = "serde_with::hex::Hex")]
     extra: Vec<u8>
 }
 
@@ -163,11 +161,21 @@ impl LevelInfo {
 
     pub fn to_file<P: AsRef<Path>>(&self, path: P) {
         let path = path.as_ref();
-        fs::create_dir(path).ok();
+        fs::create_dir_all(path).ok();
         fs::write(path.join("index.json"), serde_json::to_string_pretty(self).unwrap()).unwrap();
         self.strings.to_file(path.join("debug_strings"));
         self.string_keys.to_file(path.join("string_keys"));
         self.locale_strings.to_file(path.join("locale_strings"), &self.string_keys);
     }
 
+    pub fn from_file<P: AsRef<Path>>(path: P) -> Self {
+        let lua = lua_stuff::LuaCompiler::new().unwrap();
+
+        let path = path.as_ref();
+        let mut val = serde_json::from_slice::<Self>(&fs::read(path.join("index.json")).unwrap()).unwrap();
+        val.strings = types::Strings::from_file(path.join("debug_strings"));
+        val.string_keys = types::StringKeys::from_file(path.join("string_keys"));
+        val.locale_strings = types::SubBlocks::from_file(path.join("locale_strings"), &lua);
+        val
+    }
 }

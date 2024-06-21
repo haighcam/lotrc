@@ -1,4 +1,4 @@
-use std::{any::TypeId, collections::HashMap, fmt::{write, Display}, iter::zip, num::ParseIntError, ops::Index, str::FromStr};
+use std::{any::TypeId, collections::HashMap, fmt::Display, iter::zip, num::ParseIntError, ops::Div, str::FromStr};
 use log::warn;
 use zerocopy::{ByteOrder, BE};
 use serde::{Serialize, Deserialize};
@@ -157,7 +157,7 @@ pub struct Obj0{
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct MeshInfo {
     pub key: Crc,
-    pub level_flag: u32,
+    pub gamemodemask: u32,
     pub mat_offset: u32,
     pub buffer_info_offset: u32, // pointer to obj2, uses mat_num of sequential objects
     pub unk_4: u32,
@@ -322,22 +322,22 @@ pub struct BufferInfo {
 pub struct MatBase {
     pub unk_0: u32,
     pub unk_1: u32,
-    pub tex_2: u32,
-    pub tex_3: u32,
-    pub tex_4: u32,
-    pub tex_5: u32,
-    pub tex_6: u32,
-    pub tex_7: u32,
-    pub tex_8: u32,
-    pub tex_9: u32,
-    pub tex_10: u32,
-    pub tex_11: u32,
-    pub tex_12: u32,
-    pub tex_13: u32,
-    pub tex_14: u32,
-    pub tex_15: u32,
-    pub tex_16: u32,
-    pub tex_17: u32,
+    pub tex_2: Crc,
+    pub tex_3: Crc,
+    pub tex_4: Crc,
+    pub tex_5: Crc,
+    pub tex_6: Crc,
+    pub tex_7: Crc,
+    pub tex_8: Crc,
+    pub tex_9: Crc,
+    pub tex_10: Crc,
+    pub tex_11: Crc,
+    pub tex_12: Crc,
+    pub tex_13: Crc,
+    pub tex_14: Crc,
+    pub tex_15: Crc,
+    pub tex_16: Crc,
+    pub tex_17: Crc,
     pub unk_18: u32,
     pub unk_19: u32,
     pub unk_20: u32,
@@ -375,7 +375,7 @@ pub struct MatBase {
     pub unk_53: u32,
     pub unk_54a: u8,
     pub unk_54b: u8,
-    pub side_flags: u16, //H',
+    pub side_flags: u16,
     pub unk_55: u32,
     pub unk_56: u32,
     pub unk_57: u32,
@@ -451,8 +451,10 @@ pub struct Mat2 {
     pub unk_117: u32,
     pub unk_118: u32,
     pub unk_119: u32,
-    pub unk_120: u16, //H',
-    pub unk_120_: u16, //H',
+    pub unk_120a: u8,
+    pub unk_120b: u8,
+    pub unk_120c: u8,
+    pub unk_120d: u8,
     pub unk_121: u32,
 }
 
@@ -749,7 +751,7 @@ pub struct IBuffInfo {
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct TextureInfo {
     pub key: Crc,
-    pub level_flag: u32,
+    pub gamemodemask: u32,
     pub asset_key: Crc,
     pub asset_type: u32,
     pub kind: u32,
@@ -760,38 +762,38 @@ pub struct TextureInfo {
     pub unk_9: u32,
     pub unk_10: u32,
     pub unk_11: u32,
-    pub width: u16, //H',
-    pub height: u16, //H',
-    pub depth: u16, //H',
-    pub levels: u16, //H',
-    pub unk_16_1: u8, //16S',
-    pub unk_16_2: u8, //16S',
-    pub unk_16_3: u8, //16S',
-    pub unk_16_4: u8, //16S',
-    pub unk_16_5: u8, //16S',
-    pub unk_16_6: u8, //16S',
-    pub unk_16_7: u8, //16S',
-    pub unk_16_8: u8, //16S',
-    pub unk_16_9: u8, //16S',
-    pub unk_16_10: u8, //16S',
-    pub unk_16_11: u8, //16S',
-    pub unk_16_12: u8, //16S',
-    pub unk_16_13: u8, //16S',
-    pub unk_16_14: u8, //16S',
-    pub unk_16_15: u8, //16S',
-    pub unk_16_16: u8, //16S',
+    pub width: u16,
+    pub height: u16,
+    pub depth: u16,
+    pub levels: u16,
+    pub unk_16_1: u8,
+    pub unk_16_2: u8,
+    pub unk_16_3: u8,
+    pub unk_16_4: u8,
+    pub unk_16_5: u8,
+    pub unk_16_6: u8,
+    pub unk_16_7: u8,
+    pub unk_16_8: u8,
+    pub unk_16_9: u8,
+    pub unk_16_10: u8,
+    pub unk_16_11: u8,
+    pub unk_16_12: u8,
+    pub unk_16_13: u8,
+    pub unk_16_14: u8,
+    pub unk_16_15: u8,
+    pub unk_16_16: u8,
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct AnimationInfo {
     pub key: Crc,
-    pub level_flag: u32,
+    pub gamemodemask: u32,
     pub offset: u32,
     pub size: u32,
     pub kind: u32,
     pub unk_5: u32,
     pub keys_num: u32,
-    pub something_num: u32,
+    pub keys2_num: u32,
     pub unk_8: u32,
     pub vala: u32,
     pub unk_10: u32,
@@ -802,12 +804,12 @@ pub struct AnimationInfo {
     pub unk_15: u32,
     pub block_starts_offset: u32,
     pub block_starts_num: u32,
-    pub block_ends_offset: u32,
-    pub block_ends_num: u32,
-    pub objC3_offset: u32,
-    pub objC3_num: u32,
-    pub objC4_offset: u32,
-    pub objC4_num: u32,
+    pub block_starts2_offset: u32,
+    pub block_starts2_num: u32,
+    pub obj_c3_offset: u32,
+    pub obj_c3_num: u32,
+    pub obj_c4_offset: u32,
+    pub obj_c4_num: u32,
     pub block_offset: u32,
     pub block_size: u32,
     pub obj3_num: u32,
@@ -836,8 +838,8 @@ pub struct HkConstraintInfo {
     pub unk_8: u32,
     pub unk_9: u32,
     pub keys_offset: u32,
-    pub keys_num: u16, //H',
-    pub keys2_num: u16, //H',
+    pub keys_num: u16,
+    pub keys2_num: u16,
     pub keys2_offset: u32,
     pub unk_13: u32,
     pub unk_14: f32, //f',
@@ -849,7 +851,7 @@ pub struct HkConstraintInfo {
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct EffectInfo {
     pub key: Crc,
-    pub level_flags: u32,
+    pub gamemodemask: u32,
     pub offset: u32,
     pub size: u32,
 }
@@ -919,7 +921,7 @@ pub struct IlluminationInfo {
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct BlockAVal {
     pub unk_0: u32,
-    pub level_flag: u32,
+    pub gamemodemask: u32,
     pub key: Crc,
     pub unk_3: u32,
     pub unk_4: u32,
@@ -1281,7 +1283,7 @@ pub mod animation {
     }
     
     impl HkaSplineSkeletalAnimationObj1 {
-        const ITEM_SIZES: [usize; 4] = [1,2,1,2];
+        // const ITEM_SIZES: [usize; 4] = [1,2,1,2];
         const COUNTS: [usize; 8] = [0,1,1,2,1,2,2,3];
     
         pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset_: usize, flags: u8, kind: u8) -> Self {
@@ -1482,63 +1484,80 @@ pub mod animation {
     #[derive(Debug, Default, Clone, Serialize, Deserialize)]
     pub struct HkaSplineSkeletalAnimation {
         pub block_starts: Vec<u32>,
-        pub block_ends: Vec<u32>,
-        pub objC3: Vec<u32>,
-        pub objC4: Vec<u32>,
+        pub block_starts2: Vec<u32>,
+        pub obj_c3: Vec<u32>,
+        pub obj_c4: Vec<u32>,
         pub flags: Vec<Vec<HkaSplineSkeletalAnimationFlags>>,
+        pub flags2: Vec<Vec<u8>>,
         pub vals_a: Vec<Vec<HkaSplineSkeletalAnimationObj1>>,
         pub vals_b: Vec<Vec<HkaSplineSkeletalAnimationObj2>>,
         pub vals_c: Vec<Vec<HkaSplineSkeletalAnimationObj1>>,
+        pub vals_d: Vec<Vec<HkaSplineSkeletalAnimationObj1>>,
     }
     
     impl HkaSplineSkeletalAnimation {
         pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize, info: &AnimationInfo) -> Self {
             let mut val = Self::default();
             val.block_starts = OrderedDataVec::from_bytes::<O>(&data[offset + info.block_starts_offset as usize..], info.block_starts_num as usize);
-            val.block_ends = OrderedDataVec::from_bytes::<O>(&data[offset + info.block_ends_offset as usize..], info.block_ends_num as usize);
-            val.objC3 = OrderedDataVec::from_bytes::<O>(&data[offset + info.objC3_offset as usize..], info.objC3_num as usize);
-            val.objC4 = OrderedDataVec::from_bytes::<O>(&data[offset + info.objC4_offset as usize..], info.objC4_num as usize);
-            for start in val.block_starts.iter() {
-                let flags: Vec<HkaSplineSkeletalAnimationFlags> = OrderedDataVec::from_bytes::<O>(&data[offset + (start + info.block_offset) as usize..], info.keys_num as usize);
-                let mut offset = offset + (info.block_offset + start + info.data_offset) as usize;
+            val.block_starts2 = OrderedDataVec::from_bytes::<O>(&data[offset + info.block_starts2_offset as usize..], info.block_starts2_num as usize);
+            val.obj_c3 = OrderedDataVec::from_bytes::<O>(&data[offset + info.obj_c3_offset as usize..], info.obj_c3_num as usize);
+            val.obj_c4 = OrderedDataVec::from_bytes::<O>(&data[offset + info.obj_c4_offset as usize..], info.obj_c4_num as usize);
+            for (start, start2) in zip(&val.block_starts,&val.block_starts2) {
+                let off = offset + (start + info.block_offset) as usize;
+                let flags: Vec<HkaSplineSkeletalAnimationFlags> = OrderedDataVec::from_bytes::<O>(&data[off..], info.keys_num as usize);
+                let flags2: Vec<u8> = OrderedDataVec::from_bytes::<O>(&data[off + flags.size::<O>()..], info.keys2_num as usize);
+                let mut off = offset + (info.block_offset + start + info.data_offset) as usize;
                 let mut vals_a = Vec::with_capacity(flags.len());
                 let mut vals_b = Vec::with_capacity(flags.len());
                 let mut vals_c = Vec::with_capacity(flags.len());
-                for flag in flags.iter() {
-                    let a = HkaSplineSkeletalAnimationObj1::from_data::<O>(data, offset, flag.a, flag.f & 3);
-                    offset += a.nbytes;
-                    let b = HkaSplineSkeletalAnimationObj2::from_data::<O>(data, offset, flag.b, (flag.f >> 2) & 0xf);
-                    offset += b.nbytes;
-                    let c = HkaSplineSkeletalAnimationObj1::from_data::<O>(data, offset, flag.c, (flag.f >> 6) & 3);
-                    offset += c.nbytes;
+                let mut vals_d= Vec::with_capacity(flags2.len());
+                for flag in &flags {
+                    let a = HkaSplineSkeletalAnimationObj1::from_data::<O>(data, off, flag.a, flag.f & 3);
+                    off += a.nbytes;
+                    let b = HkaSplineSkeletalAnimationObj2::from_data::<O>(data, off, flag.b, (flag.f >> 2) & 0xf);
+                    off += b.nbytes;
+                    let c = HkaSplineSkeletalAnimationObj1::from_data::<O>(data, off, flag.c, (flag.f >> 6) & 3);
+                    off += c.nbytes;
                     vals_a.push(a);
                     vals_b.push(b);
                     vals_c.push(c);
                 }
+                off = offset + (info.block_offset + start + start2) as usize;
+                for flag in &flags2 {
+                    let d: HkaSplineSkeletalAnimationObj1 = HkaSplineSkeletalAnimationObj1::from_data::<O>(data, off, flag & 0xf9, (flag >> 1) & 3);
+                    off += d.nbytes;
+                    vals_d.push(d);
+                }
                 val.flags.push(flags);
+                val.flags2.push(flags2);
                 val.vals_a.push(vals_a);
                 val.vals_b.push(vals_b);
                 val.vals_c.push(vals_c);
+                val.vals_d.push(vals_d);
             }
             val
         }
     
         pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut [u8], offset: usize, info: &AnimationInfo) {
             self.block_starts.to_bytes::<O>(&mut data[offset + info.block_starts_offset as usize..]);
-            self.block_ends.to_bytes::<O>(&mut data[offset + info.block_ends_offset as usize..]);
-            self.objC3.to_bytes::<O>(&mut data[offset + info.objC3_offset as usize..]);
-            self.objC4.to_bytes::<O>(&mut data[offset + info.objC4_offset as usize..]);
-            self.block_starts.to_bytes::<O>(&mut data[offset + info.block_starts_offset as usize..]);
-            for (start, ((flags, vals_a), (vals_b, vals_c))) in zip(self.block_starts.iter(), zip(zip(self.flags.iter(), self.vals_a.iter()), zip(self.vals_b.iter(), self.vals_c.iter()))) {
+            self.block_starts2.to_bytes::<O>(&mut data[offset + info.block_starts2_offset as usize..]);
+            self.obj_c3.to_bytes::<O>(&mut data[offset + info.obj_c3_offset as usize..]);
+            self.obj_c4.to_bytes::<O>(&mut data[offset + info.obj_c4_offset as usize..]);
+            for (((start, start2), (flags, flags2)), ((vals_a, vals_b), (vals_c, vals_d))) in zip(zip(zip(&self.block_starts, &self.block_starts2), zip(&self.flags, &self.flags2)), zip(zip(&self.vals_a, &self.vals_b), zip(&self.vals_c, &self.vals_d))) {
                 flags.to_bytes::<O>(&mut data[offset + (start + info.block_offset) as usize..]);
-                let mut offset = offset + (info.block_offset + start + info.data_offset) as usize;
+                let mut off = offset + (info.block_offset + start + info.data_offset) as usize;
                 for ((flag, a), (b, c)) in zip(zip(flags, vals_a), zip(vals_b, vals_c)) {
-                    a.into_data::<O>(data, offset, flag.a);
-                    offset += a.nbytes;
-                    b.into_data::<O>(data, offset, flag.b);
-                    offset += b.nbytes;
-                    c.into_data::<O>(data, offset, flag.c);
-                    offset += c.nbytes;
+                    a.into_data::<O>(data, off, flag.a);
+                    off += a.nbytes;
+                    b.into_data::<O>(data, off, flag.b);
+                    off += b.nbytes;
+                    c.into_data::<O>(data, off, flag.c);
+                    off += c.nbytes;
+                }
+                off = offset + (info.block_offset + start + start2) as usize;
+                for (flag, d) in zip(flags2, vals_d) {
+                    d.into_data::<O>(data, off, flag & 0xf9);
+                    off += d.nbytes;
                 }
             }
         }
@@ -1546,37 +1565,54 @@ pub mod animation {
     
     #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
     pub struct Obj5Header {
-        pub objA_num: u32,
-        pub objA_offset: u32,
-        pub objB_num: u32,
-        pub objB_offset: u32,
+        pub obj_a_num: u32,
+        pub obj_a_offset: u32,
+        pub obj_b_num: u32,
+        pub obj_b_offset: u32,
+    }
+
+    #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
+    pub struct Obj3 {
+        pub t: f32,
+        pub event: Crc,
+        pub dat_2: Crc,
+        pub dat_3: Crc,
+        pub dat_4: Crc,
+        pub dat_5: Crc,
+        pub dat_6: Crc,
+        pub dat_7: Crc,
+        pub dat_8: Crc,
+        pub dat_9: Crc,
+        pub dat_10: Crc,
     }
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Animation {
+    pub obj1: HashMap<usize, Vec<u32>>,
     pub obj2: HashMap<usize, Vec<u32>>,
-    pub obj3: HashMap<usize, Vec<u32>>,
+    pub obj3: HashMap<usize, Vec<animation::Obj3>>,
     pub keys: HashMap<usize, Vec<u32>>,
     pub obj5_header: HashMap<usize, animation::Obj5Header>,
-    pub obj5A: HashMap<usize, Vec<u32>>,
-    pub obj5B: HashMap<usize, Vec<u32>>,
-    pub objC: HashMap<usize, animation::HkaSplineSkeletalAnimation>,
+    pub obj5_a: HashMap<usize, Vec<u32>>,
+    pub obj5_b: HashMap<usize, Vec<u32>>,
+    pub obj_c: HashMap<usize, animation::HkaSplineSkeletalAnimation>,
 }
 
 impl Animation {
     pub fn unpack_from_block<O: ByteOrder + 'static>(&mut self, data: &[u8], offset: usize, index: usize, info: &AnimationInfo) {
+        self.obj1.insert(index, OrderedDataVec::from_bytes::<O>(&data[offset + info.obj1_offset as usize..], info.obj1_num as usize * 2));
         self.obj2.insert(index, OrderedDataVec::from_bytes::<O>(&data[offset + info.obj2_offset as usize..], info.obj2_num as usize * 4));
-        self.obj3.insert(index, OrderedDataVec::from_bytes::<O>(&data[offset + info.obj3_offset as usize..], info.obj3_num as usize * 11));
-        self.keys.insert(index, OrderedDataVec::from_bytes::<O>(&data[offset + info.keys_offset as usize..], info.keys_num as usize));
+        self.obj3.insert(index, OrderedDataVec::from_bytes::<O>(&data[offset + info.obj3_offset as usize..], info.obj3_num as usize));
+        self.keys.insert(index, OrderedDataVec::from_bytes::<O>(&data[offset + info.keys_offset as usize..], (info.keys_num + info.obj1_num) as usize));
         if info.obj5_offset != 0 {
             let obj5_header: animation::Obj5Header = OrderedData::from_bytes::<O>(&data[offset + info.obj5_offset as usize..]);
-            self.obj5A.insert(index, OrderedDataVec::from_bytes::<O>(&data[offset + obj5_header.objA_offset as usize..], obj5_header.objA_num as usize * 7));
-            self.obj5B.insert(index, OrderedDataVec::from_bytes::<O>(&data[offset + obj5_header.objB_offset as usize..], obj5_header.objB_num as usize * 7));
+            self.obj5_a.insert(index, OrderedDataVec::from_bytes::<O>(&data[offset + obj5_header.obj_a_offset as usize..], obj5_header.obj_a_num as usize * 7));
+            self.obj5_b.insert(index, OrderedDataVec::from_bytes::<O>(&data[offset + obj5_header.obj_b_offset as usize..], obj5_header.obj_b_num as usize * 7));
             self.obj5_header.insert(index, obj5_header);
         }
         if info.kind == 3 {
-            self.objC.insert(index, animation::HkaSplineSkeletalAnimation::from_data::<O>(data, offset, info));
+            self.obj_c.insert(index, animation::HkaSplineSkeletalAnimation::from_data::<O>(data, offset, info));
         } else if info.kind < 3 {
             warn!("Unhandled animation type {}", info.kind);
         } else {
@@ -1585,25 +1621,26 @@ impl Animation {
     }
 
     pub fn pack_into_block<O: ByteOrder + 'static>(&self, data: &mut [u8], offset: usize, index: usize, info: &AnimationInfo) {
+        self.obj1.get(&index).unwrap().to_bytes::<O>(&mut data[offset + info.obj1_offset as usize..]);
         self.obj2.get(&index).unwrap().to_bytes::<O>(&mut data[offset + info.obj2_offset as usize..]);
         self.obj3.get(&index).unwrap().to_bytes::<O>(&mut data[offset + info.obj3_offset as usize..]);
         self.keys.get(&index).unwrap().to_bytes::<O>(&mut data[offset + info.keys_offset as usize..]);
         if info.obj5_offset != 0 {
             let obj5_header = self.obj5_header.get(&index).unwrap();
             obj5_header.to_bytes::<O>(&mut data[offset + info.obj5_offset as usize..]);
-            self.obj5A.get(&index).unwrap().to_bytes::<O>(&mut data[offset + obj5_header.objA_offset as usize..]);
-            self.obj5B.get(&index).unwrap().to_bytes::<O>(&mut data[offset + obj5_header.objB_offset as usize..]);
+            self.obj5_a.get(&index).unwrap().to_bytes::<O>(&mut data[offset + obj5_header.obj_a_offset as usize..]);
+            self.obj5_b.get(&index).unwrap().to_bytes::<O>(&mut data[offset + obj5_header.obj_b_offset as usize..]);
         }
         if info.kind == 3 {
-            self.objC.get(&index).unwrap().into_data::<O>(data, offset, info);
+            self.obj_c.get(&index).unwrap().into_data::<O>(data, offset, info);
         }
     }
 
     pub fn unpack_block<O: ByteOrder + 'static>(anims: &mut [Self], infos: &[AnimationInfo], data: & [u8], offset: usize, index: usize) {
         let mut offset = offset;
         for (anim, info) in zip(anims, infos) {
-            let level_flag = 1u32 << index;
-            if level_flag & info.level_flag != 0 {
+            let gamemodemask = 1u32 << index;
+            if gamemodemask & info.gamemodemask != 0 {
                 anim.unpack_from_block::<O>(data, offset, index, info);
                 offset += info.size as usize;
             }
@@ -1613,8 +1650,8 @@ impl Animation {
     pub fn pack_block<O: ByteOrder + 'static>(anims: & [Self], infos: &[AnimationInfo], data: &mut [u8], offset: usize, index: usize) {
         let mut offset = offset;
         for (anim, info) in zip(anims, infos) {
-            let level_flag = 1u32 << index;
-            if level_flag & info.level_flag != 0 {
+            let gamemodemask = 1u32 << index;
+            if gamemodemask & info.gamemodemask != 0 {
                 anim.pack_into_block::<O>(data, offset, index, info);
                 offset += info.size as usize;
             }
@@ -1730,6 +1767,17 @@ impl VertexTypes {
             Self::Vector2(x, y) => x.len().min(y.len()),
             Self::Vector3(x, y, z) => x.len().min(y.len()).min(z.len()),
             Self::Vector4(x, y, z, w) => x.len().min(y.len()).min(z.len()).min(w.len()),
+            Self::None => 0
+        }
+    }
+
+    pub fn size(&self) -> usize {
+        match self {
+            Self::Pad(..) => 4,
+            Self::Unorm4x8(..) => 4,
+            Self::Vector2(..) => 8,
+            Self::Vector3(..) => 12,
+            Self::Vector4(..) => 16,
             Self::None => 0
         }
     }
@@ -1875,40 +1923,105 @@ pub struct VertexBuffer {
 }
 
 impl VertexBuffer {
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], info: &VBuffInfo, formats: &mut HashMap<(u32, u32), (Vec<(u32, VertexUsage)>, usize)>) -> Self {
+    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], info: &mut VBuffInfo, formats: &mut HashMap<(u32, u32), (Vec<(u32, VertexUsage)>, usize)>) -> Self {
         let (fmt, size) = formats.entry((info.fmt1, info.fmt2)).or_insert_with(|| {
             get_vertex_format::<O>(info.fmt1, info.fmt2)
         });
         assert!(info.size as usize % *size == 0);
         let n = info.size as usize / *size;
-        // let mut vals = Vec::with_capacity(n);
         let mut offset = info.offset as usize;
         let mut vals = fmt.iter().map(|(t, u)| (u.clone(), VertexTypes::new(*t))).collect::<Vec<_>>();
         for _ in 0..n {
             // let mut val = Vec::with_capacity(fmt.len());
-            for (kind, (usage, val)) in zip(fmt.iter().map(|(x, _)| x), &mut vals) {
-                let mut v = BaseTypes::from_data::<O>(&data[offset..], *kind);
-                if (TypeId::of::<O>() == TypeId::of::<BE>()) && (*usage == VertexUsage::BlendWeight) {
-                    match &mut v {
-                        BaseTypes::Vector4(val) => {
-                            val.x = val.x/2.0 + 0.5;
-                            val.y = val.y/2.0 + 0.5;
-                            val.z = val.z/2.0 + 0.5;
-                        },
-                        BaseTypes::Color(val) => {
-                            let z = *val & 0x3FF;
-                            let y = (*val >> 10) & 0x3FF;
-                            let x = (*val >> 20) & 0x3FF;
-                            let x = if x & 0x200 != 0 { (x as f32 - 512.0) / 512.0 * 127.0 } else { x as f32 / 511.0 * 128.0  + 127.0 } as u32;
-                            let y = if y & 0x200 != 0 { (y as f32 - 512.0) / 512.0 * 127.0 } else { y as f32 / 511.0 * 128.0  + 127.0 } as u32;
-                            let z = if z & 0x200 != 0 { (z as f32 - 512.0) / 512.0 * 127.0 } else { z as f32 / 511.0 * 128.0  + 127.0 } as u32;
-                            *val = (127 << 24) | (z << 16) | (y << 8) | x;
-                        },
-                        _ => ()
-                    }
-                }
+            for (kind, (_, val)) in zip(fmt.iter().map(|(x, _)| x), &mut vals) {
+                let v = BaseTypes::from_data::<O>(&data[offset..], *kind);
                 offset += v.size::<O>();
                 val.push(v);
+            }
+        }
+        if TypeId::of::<O>() == TypeId::of::<BE>() {
+            if (info.fmt1 & 0x80000 != 0) & (info.fmt1 & 0x400 == 0) {
+                info.fmt1 |= 0x400;
+                let (fmt, _) = formats.entry((info.fmt1, info.fmt2)).or_insert_with(|| {
+                    get_vertex_format::<O>(info.fmt1, info.fmt2)
+                });
+                let mut vals_new = fmt.iter().map(|(t, u)| (u.clone(), VertexTypes::new(*t))).collect::<Vec<_>>();
+                let mut binorm = Vec::with_capacity(n);
+                let mut tan = Vec::with_capacity(n);
+                for (usage, val) in &mut vals {
+                    if *usage == VertexUsage::BiNormal {
+                        match val {
+                            VertexTypes::Unorm4x8(val) => {
+                                for v in val {
+                                    let a = *v & 0xFF;
+                                    let b = (*v >> 8) & 0xFF;
+                                    let c = (*v >> 16) & 0xFF;
+                                    let d = (*v >> 24) & 0xFF;
+                                    // println!("{}, {:?}",*v, (a,b,c,d));
+                                    binorm.push((d << 24) | (d << 16) | (d << 8) | c);
+                                    tan.push((a << 16) | (b << 8));
+                                }
+                            },
+                            _ => ()
+                        }
+                    }
+                }
+                for (usage, val) in &mut vals_new {
+                    if *usage == VertexUsage::BiNormal {
+                        *val = VertexTypes::Unorm4x8(binorm.clone());
+                    } else if *usage == VertexUsage::Tangent {
+                        *val = VertexTypes::Unorm4x8(tan.clone());
+                    } else {
+                        for (usage2, val2) in &vals {
+                            if *usage == *usage2 {
+                                *val = val2.clone();
+                            }
+                        }
+                    }
+                }
+                vals = vals_new;
+            }
+            for (usage, val) in &mut vals {
+                if *usage == VertexUsage::BlendWeight {
+                    match val {
+                        VertexTypes::Vector4(x, y, z, ..) => {
+                            x.iter_mut().for_each(|x| *x = *x/2.0 + 0.5);
+                            y.iter_mut().for_each(|x| *x = *x/2.0 + 0.5);
+                            z.iter_mut().for_each(|x| *x = *x/2.0 + 0.5);
+                        },
+                        VertexTypes::Unorm4x8(v) => v.iter_mut().for_each(|val| {
+                            let z_ = ((*val) & 0x3FF) ^ 0x200;
+                            let y_ = (((*val) >> 10) & 0x3FF) ^ 0x200;
+                            let x_ = (((*val) >> 20) & 0x3FF) ^ 0x200;
+                            // let x: u32 = ((x as f32)/4.0).round().max(0.0).min(255.0) as u32;
+                            // let y: u32 = ((y as f32)/4.0).round().max(0.0).min(255.0) as u32;
+                            // let z: u32 = ((z as f32)/4.0).round().max(0.0).min(255.0) as u32;
+                            // let x: u32 = (x_ as f64 - 4.0).div(4.0).round_ties_even().clamp(0.0, 255.0) as u32;
+                            // let y: u32 = (y_ as f64 - 4.0).div(4.0).round_ties_even().clamp(0.0, 255.0) as u32;
+                            // let z: u32 = (z_ as f64 - 4.0).div(4.0).round_ties_even().clamp(0.0, 255.0) as u32;
+                            let x: u32 = (x_ as f32 - 4.0f32).div(4.0f32).round_ties_even().clamp(0.0, 255.0) as u32;
+                            let y: u32 = (y_ as f32 - 4.0f32).div(4.0f32).round_ties_even().clamp(0.0, 255.0) as u32;
+                            let z: u32 = (z_ as f32 - 4.0f32).div(4.0f32).round_ties_even().clamp(0.0, 255.0) as u32;
+                            // println!("{:?}, {:?}", (
+                            //     (x_ as f32 - 4.0).div(4.0),
+                            //     (y_ as f32 - 4.0).div(4.0),
+                            //     (z_ as f32 - 4.0).div(4.0)
+                            // ), (x,y,z));
+
+                            // let z = *val & 0x3FF;
+                            // let y = (*val >> 10) & 0x3FF;
+                            // let x = (*val >> 20) & 0x3FF;
+                            // let x = (((if x & 0x200 != 0 { x - 512 } else { x + 512 }) as f32 - 4.0)/4.0).round().max(0.1).min(255.0) as u32;
+                            // let y = (((if y & 0x200 != 0 { y - 512 } else { y + 512 }) as f32 - 4.0)/4.0).round().max(0.1).min(255.0) as u32;
+                            // let z = (((if z & 0x200 != 0 { z - 512 } else { z + 512 }) as f32 - 4.0)/4.0).round().max(0.1).min(255.0) as u32;
+                            // let x = if x & 0x200 != 0 { (x as f32 - 512.0) / 512.0 * 127.0 } else { x as f32 / 511.0 * 128.0  + 127.0 } as u32;
+                            // let y = if y & 0x200 != 0 { (y as f32 - 512.0) / 512.0 * 127.0 } else { y as f32 / 511.0 * 128.0  + 127.0 } as u32;
+                            // let z = if z & 0x200 != 0 { (z as f32 - 512.0) / 512.0 * 127.0 } else { z as f32 / 511.0 * 128.0  + 127.0 } as u32;
+                            *val = (127 << 24) | (z << 16) | (y << 8) | x;
+                        }),
+                        _ => panic!("Unexpected vertex type for weight")
+                    }
+                }
             }
             // vals.push(val);
         }
@@ -1919,6 +2032,9 @@ impl VertexBuffer {
         let mut offset = info.offset as usize;
         let mut off_ = 0;
         let i = self.vals.iter().map(|(_, x)| x.len()).min().unwrap();
+        for (_, val) in &self.vals {
+            assert!(val.len() == i);
+        }
         for i in 0..i {
             for (_, val) in &self.vals {
                 let v = val.get(i);

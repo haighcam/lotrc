@@ -8,22 +8,22 @@ edition = "2021"
 
 [dependencies]
 mlua = { version = "0.9.7", features = ["lua51", "vendored"] }
-# flate2 = { version = "1.0.28", features = ["zlib-ng"], default-features = false }
-flate2 = "1.0.28"
+flate2 = { version = "1.0.30", features = ["zlib-ng"], default-features = false }
+# flate2 = "1.0.30"
 log = "0.4.21"
+pretty_env_logger = "0.5.0"
+indicatif = "0.17.8"
+indicatif-log-bridge = "0.2.2"
+clap = { version = "4.5.7", features = ["derive"] }
+wild = "2.2.1"
 zerocopy = { version = "0.7.32", features = ["byteorder", "derive"] }
-lotrc_rs_proc = { path = "lotrc_rs_proc" }
 serde = { version = "1", features = ["derive"] }
-# ron = "0.8"
-# rmp-serde = "1.2.0"
+serde_json = { version = "1.0", features = ["preserve_order"] }
+serde_with = { version = "3.8.1", features = ["hex", "json"] }
 lazy_static = "1.4.0"
 tempfile = "3.10.1"
-serde_cbor = "0.11.2"
-pretty_env_logger = "0.5.0"
-crc32fast = "1.4.0"
 bcndecode = "0.2.0"
-serde_json = { version = "1.0", features = ["preserve_order"] }
 ddsfile = "0.5.2"
-indexmap = { verison = "2.2.6", features = ["serde"] }
+indexmap = { version = "2.2.6", features = ["serde"] }
 itertools = "0.13.0"
-serde_with = { version = "3.8.1", features = ["hex", "json"] }
+lotrc_rs_proc = { path = "lotrc_rs_proc" }

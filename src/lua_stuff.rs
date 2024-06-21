@@ -30,11 +30,11 @@ impl LuaCompiler {
         ))?.as_bytes().to_vec())
     }
 
-    pub fn decomp(&self, code: &[u8]) -> LuaResult<String> {
+    pub fn decomp(&self, code: &[u8], unluac: String) -> LuaResult<String> {
         let mut temp_file = tempfile::NamedTempFile::new().unwrap();
         temp_file.write_all(code).unwrap();
         let path = temp_file.path();
-        let output = std::process::Command::new("java").args(&["-jar", "unluac.jar", path.to_str().unwrap()]).output()?;
+        let output = std::process::Command::new("java").args(&["-jar", &unluac, path.to_str().unwrap()]).output()?;
         Ok(String::from_utf8(output.stdout).unwrap())
     }
 }
