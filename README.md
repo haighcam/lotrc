@@ -1,6 +1,10 @@
 
 # Lord of the Rings Conquest Level Parsing
 
+This is the python library version of the tool
+
+For a compiled version of the tool see https://github.com/haighcam/lotrc/tree/rust
+
 ## Requirements
 
 place _lua-bytecode.lua_ from [here](https://github.com/lua-bytecode/lua-bytecode.github.io) in this directory
