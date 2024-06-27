@@ -2,7 +2,7 @@
 
 This is the compiled version of the tool
 
-For the python library version of the tool see https://github.com/haighcam/lotrc/tree/rust
+For the python library version of the tool see https://github.com/haighcam/lotrc/tree/main
 
 Command line utility for converting some Lord of the Rings Conquest files to and from a more editable format.
 Currently supports:
