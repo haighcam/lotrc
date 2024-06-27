@@ -119,87 +119,39 @@ class LevelData:
         print(len(asset_data))
 
     def dump(self, f='<', compress=True):
-
-        ######### bin stuff
-        asset_data = OrderedDict()
-        bin_header = self.bin_header.copy()
-        bin_header['version'] = 1 if f == '<' else 2
-
-        mesh_datas = [self.radiosity]
-        for mesh in self.meshes.values():
-            if mesh.vertex_data is not None:
-                mesh_datas.append(((mesh.info['asset_key'], mesh.info['asset_type']), mesh.vertex_data))
-                # asset_data[(mesh.info['asset_key'], mesh.info['asset_type'])] = mesh.vertex_data
-        bin_header['vdata_num'] = len(mesh_datas)
-        bin_header['vdata_num_'] = len(mesh_datas)
-        asset_data.update(sorted(mesh_datas, key=lambda x: x[0][0]))
-
-        texture_infos = []
-        texture_datas = []
-        for info, data0, data1 in self.textures.values():
-            if data0 is not None:
-                texture_datas.append(((info['asset_key'], info['asset_type']), data0))
-            if data1 is not None:
-                texture_datas.append(((hash_string('*', info['asset_key']), info['asset_type']), data1))
-            texture_infos.append(info.copy())
-        bin_header['texdata_num'] = len(texture_datas)
-        asset_data.update(sorted(texture_datas, key=lambda x: x[0][0]))
-        def sort_textures(x):
-            if x['key'] == 3804089404:
-                return 0
-            elif x['key'] == 4026460901:
-                return 1
-            return x['key']
-        texture_infos = np.stack(sorted(texture_infos, key=sort_textures))
-
-        offset = bin_header.nbytes
-        bin_data = bytearray()
-        off =  (offset + 2047) & 0xfffff800
-        bin_data += bytes(off - offset)
-        offset = off
-
-        asset_handles = []
-        for (key, ty), data in asset_data.items():
-            data = CompressedBlock(data)
-            data_comp = data.pack(compress)
-            asset_handles.append((key, offset, data.size, data.size_comp, ty))
-            if len(data_comp) != 0:
-                bin_data += data_comp
-                offset += len(data_comp)
-                off =  (offset + 2047) & 0xfffff800
-                bin_data += bytes(off - offset)
-                offset = off
-        asset_handles = new(bin_.AssetHandle[f], asset_handles)
-        off =  (offset + 2047) & 0xfffff800
-        bin_data += bytes(off - offset)
-        offset = off
-
-        bin_header['asset_handle_offset']  = offset
-        bin_header['asset_handle_num'] = len(asset_handles)
-        data = pack(asset_handles, f)
-        offset += len(data)
-        bin_data += data
-
-        bin_header['strings_offset'] = offset
-        data = pack_strings(self.bin_strings, f)
-        bin_header['strings_num'] = len(self.bin_strings)
-        bin_header['strings_size'] = len(data)
-        bin_data += data
-        offset += len(data)
-
-        off = (offset + 2047) & 0xfffff800
-        bin_data += bytes(off - offset)
-        offset = off
-
-        bin_data = pack(bin_header, f) + bytes(bin_data)
-
         #### pak stuff
         pak_header = self.pak_header.copy()
         pak_header['version'] = 1 if f == '<' else 2
 
         pak_offset = pak_header.nbytes
         pak_data = bytes()
-        
+
+        def sort_textures(x):
+            if x[0] == 3804089404:
+                return 0
+            elif x[0] == 4026460901:
+                return 1
+            return x[0]
+        # def sort_textures(x):
+        #     if x['key'] == 3804089404:
+        #         return 0
+        #     elif x['key'] == 4026460901:
+        #         return 1
+        #     return x['key']
+        texture_infos = []
+        texture_datas = []
+        for _, (info, data0, data1) in sorted(self.textures.items(), key=lambda x: sort_textures(x)):
+        # for _, (info, data0, data1) in self.textures.items():
+            if data1 is not None and len(data1) == 0:
+                texture_datas.append(((hash_string('*', info['asset_key']), info['asset_type']), data1))
+            if data0 is not None:
+                texture_datas.append(((info['asset_key'], info['asset_type']), data0))
+            if data1 is not None and len(data1) != 0:
+                texture_datas.append(((hash_string('*', info['asset_key']), info['asset_type']), data1))
+            texture_infos.append(info.copy())
+        # texture_infos = np.stack(sorted(texture_infos, key=sort_textures))
+        texture_infos = np.stack(texture_infos)
+
         #### block1 stuff
         
         (
@@ -357,6 +309,7 @@ class LevelData:
         infos['effects'] = effects
         print("effects done", len(block1))
 
+        mesh_datas = []
         key_occluder = hash_string('occluder')
         normal = []
         collisions_roads = []
@@ -375,12 +328,16 @@ class LevelData:
             vals = self.meshes[key].dump(len(block1), infos, f)
             block1 += vals
             block1 += bytes(((len(block1) + 15) & 0xFFFFFFF0) - len(block1))
+            if self.meshes[key].vertex_data is not None:
+                mesh_datas.append(((self.meshes[key].info['asset_key'], self.meshes[key].info['asset_type']), self.meshes[key].vertex_data))
 
         terrain_start_offset = len(block1)
         block1 += b'\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'
         for key in sorted(terrain, key=lambda x: int(self.keys[x].split('_')[-1])):
             vals = self.meshes[key].dump(len(block1), terrain_start_offset, infos, f)
             block1 += vals
+            if self.meshes[key].vertex_data is not None:
+                mesh_datas.append(((self.meshes[key].info['asset_key'], self.meshes[key].info['asset_type']), self.meshes[key].vertex_data))
 
         block1 += bytes(((len(block1) + 15) & 0xFFFFFFF0) - len(block1))
         foliages = []
@@ -396,6 +353,8 @@ class LevelData:
             vals = self.meshes[key].dump(len(block1), infos, f)
             block1 += vals
             block1 += bytes(((len(block1) + 15) & 0xFFFFFFF0) - len(block1))
+            if self.meshes[key].vertex_data is not None:
+                mesh_datas.append(((self.meshes[key].info['asset_key'], self.meshes[key].info['asset_type']), self.meshes[key].vertex_data))
         
         assert(len(infos['mesh']) == pak_header['mesh_info_num'])
         assert(len(infos['shape']) == pak_header['shape_info_num'])
@@ -615,5 +574,79 @@ class LevelData:
         pak_data = pack(pak_header, f) + bytes(pak_data)
         infos['block1'] = block1
         infos['block2'] = block2
+
+        ######### bin stuff
+        bin_header = self.bin_header.copy()
+        bin_header['version'] = 1 if f == '<' else 2
+
+        offset = bin_header.nbytes
+        bin_data = bytearray()
+        off =  (offset + 2047) & 0xfffff800
+        bin_data += bytes(off - offset)
+        offset = off
+
+        mesh_asset_handles = []
+        for (key, ty), data in mesh_datas:
+            data = CompressedBlock(data)
+            data_comp = data.pack(compress)
+            mesh_asset_handles.append((key, offset, data.size, data.size_comp, ty))
+            if len(data_comp) != 0:
+                bin_data += data_comp
+                offset += len(data_comp)
+                off =  (offset + 2047) & 0xfffff800
+                bin_data += bytes(off - offset)
+                offset = off
+
+        texture_asset_handles = []
+        for (key, ty), data in texture_datas:
+            data = CompressedBlock(data)
+            data_comp = data.pack(compress)
+            texture_asset_handles.append((key, offset, data.size, data.size_comp, ty))
+            if len(data_comp) != 0:
+                bin_data += data_comp
+                offset += len(data_comp)
+                off =  (offset + 2047) & 0xfffff800
+                bin_data += bytes(off - offset)
+                offset = off
+
+        for (key, ty), data in [self.radiosity]:
+            data = CompressedBlock(data)
+            data_comp = data.pack(compress)
+            mesh_asset_handles.append((key, offset, data.size, data.size_comp, ty))
+            if len(data_comp) != 0:
+                bin_data += data_comp
+                offset += len(data_comp)
+                off =  (offset + 2047) & 0xfffff800
+                bin_data += bytes(off - offset)
+                offset = off
+
+        bin_header['vdata_num'] = len(mesh_asset_handles)
+        bin_header['vdata_num_'] = len(mesh_asset_handles)
+        bin_header['texdata_num'] = len(texture_asset_handles)
+
+        asset_handles = sorted(mesh_asset_handles, key=lambda x: x[0]) + sorted(texture_asset_handles, key=lambda x: x[0])
+        asset_handles = new(bin_.AssetHandle[f], asset_handles)
+        off =  (offset + 2047) & 0xfffff800
+        bin_data += bytes(off - offset)
+        offset = off
+
+        bin_header['asset_handle_offset']  = offset
+        bin_header['asset_handle_num'] = len(asset_handles)
+        data = pack(asset_handles, f)
+        offset += len(data)
+        bin_data += data
+
+        bin_header['strings_offset'] = offset
+        data = pack_strings(self.bin_strings, f)
+        bin_header['strings_num'] = len(self.bin_strings)
+        bin_header['strings_size'] = len(data)
+        bin_data += data
+        offset += len(data)
+
+        off = (offset + 2047) & 0xfffff800
+        bin_data += bytes(off - offset)
+        offset = off
+
+        bin_data = pack(bin_header, f) + bytes(bin_data)
 
         return infos, pak_data, bin_data

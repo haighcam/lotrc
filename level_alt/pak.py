@@ -5,7 +5,7 @@ from ..types import *
 class Mesh:
     Info = structtuple("MeshInfo",
         'key', 'I',
-        'level_flag', 'I',
+        'level_flag', 'i',
         'mat_offset', 'I',
         'buffer_info_offset', 'I', # pointer to buffer_info, uses mat_num of sequential objects
         'unk_4', 'I',
