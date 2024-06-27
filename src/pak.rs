@@ -54,8 +54,8 @@ pub struct Header {
     pub unk_41: u32, 
     pub obja_num: u32, 
     pub obj0_num: u32, 
-    pub mesh_info_num: u32,  // 1
-    pub buffer_info_num: u32,  // 2
+    pub mesh_info_num: u32,
+    pub buffer_info_num: u32,
     pub mat1_num: u32, 
     pub mat2_num: u32, 
     pub mat3_num: u32, 
@@ -63,23 +63,23 @@ pub struct Header {
     pub mat_extra_num: u32, 
     pub unk_51: u32, 
     pub shape_info_num: u32, 
-    pub hk_shape_info_num: u32,  // d
-    pub hk_constraint_data_num: u32,  // e
-    pub vbuff_info_num: u32,  // f
-    pub ibuff_info_num: u32,  // g
-    pub texture_info_num: u32,  // 7
-    pub animation_info_num: u32,  // 8
-    pub hk_constraint_info_num: u32,  // 9
-    pub effect_info_num: u32,  // 10
-    pub pfield_info_num: u32,  // 12
+    pub hk_shape_info_num: u32,
+    pub hk_constraint_data_num: u32,
+    pub vbuff_info_num: u32,
+    pub ibuff_info_num: u32,
+    pub texture_info_num: u32,
+    pub animation_info_num: u32,
+    pub hk_constraint_info_num: u32,
+    pub effect_info_num: u32,
+    pub pfield_info_num: u32,
     pub gfx_block_info_num: u32, 
     pub animation_block_info_num: u32, 
     pub foliage_info_num: u32, 
     pub illumination_info_num: u32, 
     pub unk_66: u32, 
-    pub obja_offset: u32,  // 24 bytes
+    pub obja_offset: u32,
     pub obj0_offset: u32, 
-    pub mesh_info_offset: u32,  //256 bytes, max loaded is 0x400
+    pub mesh_info_offset: u32,  // max loaded is 0x400
     pub buffer_info_offset: u32, 
     pub mat1_offset: u32, 
     pub mat2_offset: u32, 
@@ -92,13 +92,13 @@ pub struct Header {
     pub hk_constraint_data_offset: u32, 
     pub vbuff_info_offset: u32, 
     pub ibuff_info_offset: u32, 
-    pub texture_info_offset: u32,  //0x12 bytes, max loaded is 0x800, related to MgSurfaceWin32
+    pub texture_info_offset: u32,  // max loaded is 0x800
     pub animation_info_offset: u32, 
     pub hk_constraint_info_offset: u32, 
     pub effect_info_offset: u32, 
     pub pfield_info_offset: u32, 
-    pub gfx_block_info_offset: u32,  // 0xc bytes, max loaded is 0x40
-    pub animation_block_info_offset: u32,  // 36 bytes
+    pub gfx_block_info_offset: u32,  // max loaded is 0x40
+    pub animation_block_info_offset: u32,
     pub foliage_info_offset: u32, 
     pub illumination_info_offset: u32, 
     pub unk_91: u32, 
@@ -133,31 +133,31 @@ pub struct Header {
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct ObjA {
     #[ordered_data(LE)]
-    pub key: Crc, //<I',
+    pub key: Crc,
     #[ordered_data(LE)]
-    pub unk_1: u32, //<I',
+    pub unk_1: u32,
     #[ordered_data(LE)]
-    pub size: u32, //<I',
+    pub size: u32,
     #[ordered_data(LE)]
-    pub size_comp: u32, //<I',
+    pub size_comp: u32,
     #[ordered_data(LE)]
-    pub unk_4: u32, //<I',
+    pub unk_4: u32,
     #[ordered_data(LE)]
-    pub kind: u32, //<I',
+    pub kind: u32,
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct Obj0{
     #[ordered_data(LE)]
-    pub unk_0: u32, //<I',
+    pub unk_0: u32,
     #[ordered_data(LE)]
-    pub key: Crc, //<I',
+    pub key: Crc,
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct MeshInfo {
     pub key: Crc,
-    pub gamemodemask: u32,
+    pub gamemodemask: i32,
     pub mat_offset: u32,
     pub buffer_info_offset: u32, // pointer to obj2, uses mat_num of sequential objects
     pub unk_4: u32,
@@ -751,7 +751,7 @@ pub struct IBuffInfo {
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct TextureInfo {
     pub key: Crc,
-    pub gamemodemask: u32,
+    pub gamemodemask: i32,
     pub asset_key: Crc,
     pub asset_type: u32,
     pub kind: u32,
@@ -787,7 +787,7 @@ pub struct TextureInfo {
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct AnimationInfo {
     pub key: Crc,
-    pub gamemodemask: u32,
+    pub gamemodemask: i32,
     pub offset: u32,
     pub size: u32,
     pub kind: u32,
@@ -851,7 +851,7 @@ pub struct HkConstraintInfo {
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct EffectInfo {
     pub key: Crc,
-    pub gamemodemask: u32,
+    pub gamemodemask: i32,
     pub offset: u32,
     pub size: u32,
 }
@@ -921,7 +921,7 @@ pub struct IlluminationInfo {
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct BlockAVal {
     pub unk_0: u32,
-    pub gamemodemask: u32,
+    pub gamemodemask: i32,
     pub key: Crc,
     pub unk_3: u32,
     pub unk_4: u32,
@@ -1639,7 +1639,7 @@ impl Animation {
     pub fn unpack_block<O: ByteOrder + 'static>(anims: &mut [Self], infos: &[AnimationInfo], data: & [u8], offset: usize, index: usize) {
         let mut offset = offset;
         for (anim, info) in zip(anims, infos) {
-            let gamemodemask = 1u32 << index;
+            let gamemodemask = 1i32 << index;
             if gamemodemask & info.gamemodemask != 0 {
                 anim.unpack_from_block::<O>(data, offset, index, info);
                 offset += info.size as usize;
@@ -1650,7 +1650,7 @@ impl Animation {
     pub fn pack_block<O: ByteOrder + 'static>(anims: & [Self], infos: &[AnimationInfo], data: &mut [u8], offset: usize, index: usize) {
         let mut offset = offset;
         for (anim, info) in zip(anims, infos) {
-            let gamemodemask = 1u32 << index;
+            let gamemodemask = 1i32 << index;
             if gamemodemask & info.gamemodemask != 0 {
                 anim.pack_into_block::<O>(data, offset, index, info);
                 offset += info.size as usize;
@@ -1751,7 +1751,7 @@ impl VertexTypes {
 
     pub fn get(&self, i: usize) -> BaseTypes {
         match self {
-            Self::Pad(vals) => BaseTypes::Int(vals[i]),
+            Self::Pad(vals) => BaseTypes::Color(vals[i]),
             Self::Unorm4x8(vals) => BaseTypes::Color(vals[i]),
             Self::Vector2(x, y) => BaseTypes::Vector2(Vector2 {x: x[i], y: y[i]}),
             Self::Vector3(x, y, z) => BaseTypes::Vector3(Vector3 {x: x[i], y: y[i], z: z[i]}),
@@ -1784,7 +1784,7 @@ impl VertexTypes {
 
     pub fn push(&mut self, val: BaseTypes) {
         match self {
-            Self::Pad(vals) => if let BaseTypes::Int(val) = val {
+            Self::Pad(vals) => if let BaseTypes::Color(val) = val {
                 vals.push(val);
             },
             Self::Unorm4x8(vals) => if let BaseTypes::Color(val) = val {
@@ -1824,7 +1824,7 @@ fn get_vertex_format<O: ByteOrder + 'static>(fmt1: u32, fmt2: u32) -> (Vec<(u32,
         if (fmt1 & 2) != 0 {
             if b1 {
                 for _ in (0..(((s + 15) & 0xFFFF0) - s)).step_by(4) {
-                    fmt.push((BaseTypes::INT_KEY, VertexUsage::Pad));
+                    fmt.push((BaseTypes::COLOR_KEY, VertexUsage::Pad));
                     s += 4;
                 }
                 fmt.push((BaseTypes::VECTOR4_KEY, VertexUsage::BlendWeight));
@@ -1849,7 +1849,7 @@ fn get_vertex_format<O: ByteOrder + 'static>(fmt1: u32, fmt2: u32) -> (Vec<(u32,
         if fmt1 & 0x40 != 0 {
             if b1 {
                 for _ in (0..(((s + 15) & 0xFFFF0) - s)).step_by(4) {
-                    fmt.push((BaseTypes::INT_KEY, VertexUsage::Pad));
+                    fmt.push((BaseTypes::COLOR_KEY, VertexUsage::Pad));
                     s += 4;
                 }
                 fmt.push((BaseTypes::VECTOR4_KEY, VertexUsage::Normal));
@@ -1865,7 +1865,7 @@ fn get_vertex_format<O: ByteOrder + 'static>(fmt1: u32, fmt2: u32) -> (Vec<(u32,
         }
         if b1 {
             for _ in (0..(((s + 15) & 0xFFFF0) - s)).step_by(4) {
-                fmt.push((BaseTypes::INT_KEY, VertexUsage::Pad));
+                fmt.push((BaseTypes::COLOR_KEY, VertexUsage::Pad));
                 s += 4;
             }
         }

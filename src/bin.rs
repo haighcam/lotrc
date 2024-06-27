@@ -1,4 +1,4 @@
-use std::{any::TypeId, fs};
+use std::any::TypeId;
 use log::warn;
 use zerocopy::{ByteOrder, LE};
 use serde::{Serialize, Deserialize};
@@ -7,6 +7,7 @@ use crate::types::Crc;
 use super::pak::TextureInfo;
 use lotrc_rs_proc::OrderedData;
 use super::types::{OrderedData, OrderedDataVec};
+use super::read_write::{Reader, Writer, PathStuff};
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct Header {
@@ -176,31 +177,29 @@ impl Tex {
     //     }
     // }
 
-    pub fn to_file<P: AsRef<std::path::Path>>(&self, path: P) {
+    pub fn to_file(&self, writer: Writer) {
         match self {
-            Self::Texture(val) => val.to_file(path),
-            Self::CubeTexture(val) => val.to_file(path),
+            Self::Texture(val) => val.to_file(writer),
+            Self::CubeTexture(val) => val.to_file(writer),
             Self::Unknown(vals, info, ) => {
-                let path = path.as_ref();
-                let name = path.file_stem().unwrap().to_str().unwrap();
-                std::fs::write(path.with_extension("json"), serde_json::to_string_pretty(info).unwrap()).unwrap();
+                let name = writer.name();
+                writer.with_extension("json").write(&serde_json::to_vec_pretty(info).unwrap());
                 for (i, val) in vals.iter().enumerate() {
-                    std::fs::write(path.parent().unwrap().join(format!("{}-{}.bin", name, i)), val).unwrap();
+                    writer.with_file_name(format!("{}-{}.bin", name, i)).write(val);
                 }
             }
         }
     }
 
-    pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> Self {
-        let path = path.as_ref();
-        let info: TextureInfo = serde_json::from_slice(&fs::read(path.with_extension("json")).unwrap()).unwrap();
+    pub fn from_file(reader: Reader) -> Self {
+        let info: TextureInfo = serde_json::from_slice(&&reader.with_extension("json").read()).unwrap();
         match info.kind {
-            0 | 7 | 8 => Self::Texture(Texture::from_file(path, info)),
-            1 | 9 => Self::CubeTexture(CubeTexture::from_file(path, info)),
+            0 | 7 | 8 => Self::Texture(Texture::from_file(reader, info)),
+            1 | 9 => Self::CubeTexture(CubeTexture::from_file(reader, info)),
             _ => {
-                let name = path.file_stem().unwrap().to_str().unwrap();
-                let data0 = std::fs::read(path.parent().unwrap().join(format!("{}-0.bin", name))).unwrap();
-                let data1 = std::fs::read(path.parent().unwrap().join(format!("{}-1.bin", name))).unwrap();
+                let name = reader.name();
+                let data0 = reader.with_file_name(&format!("{}-0.bin", name)).read();
+                let data1 = reader.with_file_name(&format!("{}-1.bin", name)).read();
                 Self::Unknown(vec![data0, data1], info)
             }
         }
@@ -432,9 +431,8 @@ impl Texture {
         }
     }
 
-    pub fn to_file<P: AsRef<std::path::Path>>(&self, path: P) {
-        let path = path.as_ref();
-        std::fs::write(path.with_extension("json"), serde_json::to_string_pretty(&self.info).unwrap()).unwrap();
+    pub fn to_file(&self, writer: Writer) {
+        writer.with_extension("json").write(&serde_json::to_vec_pretty(&self.info).unwrap());
         let mut dds = ddsfile::Dds::new_d3d(ddsfile::NewD3dParams {
             height: self.info.height as u32,
             width: self.info.width as u32,
@@ -445,12 +443,13 @@ impl Texture {
         }).unwrap();
         dds.data.clear();
         dds.data.extend(self.levels.iter().flatten());
-        dds.write(&mut fs::File::create(path.with_extension("dds")).unwrap()).unwrap();
+        let mut out = Vec::new();
+        dds.write(&mut out).unwrap();
+        writer.with_extension("dds").write(&out);
     }
 
-    pub fn from_file<P: AsRef<std::path::Path>>(path: P, mut info: TextureInfo) -> Self {
-        let path = path.as_ref();
-        let dds = ddsfile::Dds::read(fs::File::open(path.with_extension("dds")).unwrap()).unwrap();
+    pub fn from_file(reader: Reader, mut info: TextureInfo) -> Self {
+        let dds = ddsfile::Dds::read(reader.with_extension("dds").read().as_slice()).unwrap();
         let size = dds.get_main_texture_size().unwrap() as usize;
         let data = &dds.data;
         if info.levels == 1 {
@@ -524,9 +523,8 @@ impl CubeTexture {
         }
     }    
     
-    pub fn to_file<P: AsRef<std::path::Path>>(&self, path: P) {
-        let path = path.as_ref();
-        std::fs::write(path.with_extension("json"), serde_json::to_string_pretty(&self.info).unwrap()).unwrap();
+    pub fn to_file(&self, writer: Writer) {
+        writer.with_extension("json").write(&serde_json::to_vec_pretty(&self.info).unwrap());
         let mut dds = ddsfile::Dds::new_d3d(ddsfile::NewD3dParams { 
             height: self.info.height as u32,
             width: self.info.width as u32,
@@ -537,13 +535,13 @@ impl CubeTexture {
         }).unwrap();
         dds.data.clear();
         dds.data.extend(self.faces.iter().flatten());
-
-        dds.write(&mut fs::File::create(path.with_extension("dds")).unwrap()).unwrap();
+        let mut out = Vec::new();
+        dds.write(&mut out).unwrap();
+        writer.with_extension("dds").write(&out);
     }
 
-    pub fn from_file<P: AsRef<std::path::Path>>(path: P, info: TextureInfo) -> Self {
-        let path = path.as_ref();
-        let dds = ddsfile::Dds::read(fs::File::open(path.with_extension("dds")).unwrap()).unwrap();
+    pub fn from_file(reader: Reader, info: TextureInfo) -> Self {
+        let dds = ddsfile::Dds::read(reader.with_extension("dds").read().as_slice()).unwrap();
         Self::from_data::<LE>(&[], &dds.data, &info)
     }
 }

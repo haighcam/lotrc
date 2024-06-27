@@ -10,7 +10,7 @@ Uses [_lua-bytecode_](https://github.com/lua-bytecode/lua-bytecode.github.io) (i
 
 Can use [_unluac.jar_](https://sourceforge.net/projects/unluac/) for decompiling lua files.
 
-level_info, WWiseIDTable and the sub_blocks inside of levels should be fully editable. Other aspects can be modified but may break the resulting level if modified incorrectly. Python scripts to help with swapping some objects between levels are provided in the examples folder (Some of them require lupa to be installed, which it will already be if the python version of the tool was previously installed).
+level_info, WWiseIDTable and the sub_blocks inside of levels should be fully editable. Other aspects can be modified but may break the resulting level if modified incorrectly. Python scripts to help with swapping some objects between levels are provided in the examples folder. The provided scripts assume that levels were dumped to zip files (which is the default for the tool)
 
 # Command line usage
 ```
@@ -27,6 +27,8 @@ Options:
       --lua-recomp                 Compile lua files when loading a level, also converts endianess for xbox lua files
       --compression <COMPRESSION>  Zlib compression level to use when compiling levels, lower numbers are faster
       --unluac <UNLUAC>            Path to unluac.jar if decompiling lua files
+  -a, --no-anim-table              Don't dump animation tables
+  -z, --no-zip                     Don't dump to zip files
   -h, --help                       Print help
   -V, --version                    Print version
 ```

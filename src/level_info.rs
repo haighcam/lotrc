@@ -7,7 +7,8 @@ use lotrc_rs_proc::OrderedData;
 
 use super::{
     lua_stuff,
-    types::{self, Crc, OrderedData, OrderedDataVec}
+    types::{self, Crc, OrderedData, OrderedDataVec},
+    read_write::{Reader, Writer, PathStuff},
 };
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -159,23 +160,20 @@ impl LevelInfo {
         data
     }
 
-    pub fn to_file<P: AsRef<Path>>(&self, path: P) {
-        let path = path.as_ref();
-        fs::create_dir_all(path).ok();
-        fs::write(path.join("index.json"), serde_json::to_string_pretty(self).unwrap()).unwrap();
-        self.strings.to_file(path.join("debug_strings"));
-        self.string_keys.to_file(path.join("string_keys"));
-        self.locale_strings.to_file(path.join("locale_strings"), &self.string_keys);
+    pub fn to_file(&self, writer: Writer) {
+        writer.join("index.json").write(&serde_json::to_vec_pretty(self).unwrap());
+        self.strings.to_file(writer.join("debug_strings"));
+        self.string_keys.to_file(writer.join("string_keys"));
+        self.locale_strings.to_file(writer.join("locale_strings"), &self.string_keys);
     }
 
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Self {
+    pub fn from_file(reader: Reader) -> Self {
         let lua = lua_stuff::LuaCompiler::new().unwrap();
 
-        let path = path.as_ref();
-        let mut val = serde_json::from_slice::<Self>(&fs::read(path.join("index.json")).unwrap()).unwrap();
-        val.strings = types::Strings::from_file(path.join("debug_strings"));
-        val.string_keys = types::StringKeys::from_file(path.join("string_keys"));
-        val.locale_strings = types::SubBlocks::from_file(path.join("locale_strings"), &lua);
+        let mut val = serde_json::from_slice::<Self>(&reader.join("index.json").read()).unwrap();
+        val.strings = types::Strings::from_file(reader.join("debug_strings"));
+        val.string_keys = types::StringKeys::from_file(reader.join("string_keys"));
+        val.locale_strings = types::SubBlocks::from_file(reader.join("locale_strings"), &lua);
         val
     }
 }

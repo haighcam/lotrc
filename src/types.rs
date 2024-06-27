@@ -1,15 +1,15 @@
-use std::{any::TypeId, collections::HashMap, fs, iter::zip, mem::size_of};
+use std::{any::TypeId, collections::HashMap, iter::zip, mem::size_of};
 use log::warn;
 use serde_json::{Value, json, to_vec_pretty, Map};
 use zerocopy::{AsBytes, ByteOrder, FromBytes, BE, F32, LE, U16, U32, U64, I32};
 use flate2::read::ZlibDecoder;
 use flate2::write::ZlibEncoder;
 use serde::{Serialize, Deserialize};
-use std::path::Path;
 use std::sync::Mutex;
 use std::io::prelude::*;
 
 use super::lua_stuff::LuaCompiler;
+use super::read_write::{Reader, Writer, PathStuff};
 
 use lotrc_rs_proc::OrderedData;
 pub trait OrderedData where Self: Sized + Clone + Default {
@@ -175,6 +175,11 @@ lazy_static::lazy_static! {
     pub static ref UNLUAC: Mutex<String> = Mutex::new("unluac.jar".to_string());
 
     pub static ref COMPRESSION: Mutex<flate2::Compression> = Mutex::new(flate2::Compression::default());
+
+    pub static ref ANIM_TABLES: Mutex<bool> = Mutex::new(true);
+
+    pub static ref ZIP: Mutex<bool> = Mutex::new(true);
+
 }
 
 pub fn update_strings(vals: &[String]) {
@@ -328,12 +333,12 @@ impl Strings {
         self.strings.len()
     }
 
-    pub fn to_file<P: AsRef<Path>>(&self, path: P) {
-        fs::write(path.as_ref().with_extension("json"), serde_json::to_string_pretty(&json!(self.strings)).unwrap()).unwrap();
+    pub fn to_file(&self, writer: Writer) {
+        writer.with_extension("json").write(&to_vec_pretty(&json!(self.strings)).unwrap());
     }
 
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Self {
-        let vals = serde_json::from_slice::<Value>(&fs::read(path.as_ref().with_extension("json")).unwrap()).unwrap();
+    pub fn from_file(reader: Reader) -> Self {
+        let vals = serde_json::from_slice::<Value>(&reader.with_extension("json").read()).unwrap();
         let strings = vals.as_array().unwrap().iter().map(|x| x.as_str().unwrap().to_string()).collect::<Vec<_>>();
         Self { strings }
     }
@@ -436,13 +441,13 @@ pub enum BaseTypes {
     Vector4(Vector4),
     Matrix4x4(Matrix4x4),
     Float(f32),
-    Int(u32),
+    Int(i32),
     Bool(Bool),
     String(String),
     StringList(Vec<String>),
     ObjectList(Vec<u32>),
     NodeList(Vec<Node>),
-    IntList(Vec<u32>),
+    IntList(Vec<i32>),
     CRCList(Vec<Crc>),
     WeightList(Vec<Weight>),
     MatrixList(Vec<Matrix4x4>),
@@ -789,7 +794,7 @@ impl BaseTypes {
                 }
             }),
             Self::FLOAT_KEY => Self::Float(val.as_f64().unwrap() as f32),
-            Self::INT_KEY  => Self::Int(val.as_u64().unwrap() as u32),
+            Self::INT_KEY  => Self::Int(val.as_i64().unwrap() as i32),
             Self::BOOL_KEY => Self::Bool(Bool { val: val.as_bool().unwrap() as u8, _pad1: 0, _pad2: 0, _pad3: 0 }),
             Self::BYTE_KEY => Self::Byte(val.as_u64().unwrap() as u8),
             Self::STRING_KEY => Self::String(val.as_str().unwrap().into()),
@@ -799,7 +804,7 @@ impl BaseTypes {
                 let vals = x.as_array().unwrap().into_iter().map(|x| x.as_u64().unwrap() as u32).collect::<Vec<_>>();
                 Node { x: vals[0], y: vals[1], z: vals[2], w: vals[3] }
             }).collect()),
-            Self::INTLISTS_KEY => Self::IntList(val.as_array().unwrap().into_iter().map(|x| x.as_u64().unwrap() as u32).collect()),
+            Self::INTLISTS_KEY => Self::IntList(val.as_array().unwrap().into_iter().map(|x| x.as_i64().unwrap() as i32).collect()),
             Self::CRCLIST_KEY => Self::CRCList(val.as_array().unwrap().into_iter().map(|x| Crc::from_string(x.as_str().unwrap())).collect()),
             Self::WEIGHTLIST_KEY => Self::WeightList(val.as_array().unwrap().into_iter().map(|x| {
                 let vals = x.as_array().unwrap().into_iter().map(|x| x.as_u64().unwrap() as u32).collect::<Vec<_>>();
@@ -840,7 +845,7 @@ impl SubBlock {
             Data::KEY_PFIELDS => SubBlock::Data(Data::from_data(data, info.offset as usize, info.size as usize)),
             Spray::KEY => SubBlock::Spray(Spray::from_data::<O>(data, info.offset as usize, info.size as usize)),
             Crowd::KEY => SubBlock::Crowd(Crowd::from_data::<O>(data, info.offset as usize, info.size as usize)),
-            GameObjs::KEY => SubBlock::GameObjs(GameObjs::from_data::<O>(data, info.offset as usize, info.size as usize, 0xFFFFFFFF)),
+            GameObjs::KEY => SubBlock::GameObjs(GameObjs::from_data::<O>(data, info.offset as usize, info.size as usize, -1)),
             AtlasUV::KEY1 | AtlasUV::KEY2 => SubBlock::AtlasUV(AtlasUV::from_data::<O>(data, info.offset as usize, info.size as usize)),
             _ => match info.key.str() {
                 Some(x) if x.ends_with(".lua") => SubBlock::Lua(Lua::from_data(data, info.offset as usize, info.size as usize, lua, x.to_string())),
@@ -882,36 +887,36 @@ impl SubBlock {
     }
 
 
-    pub fn to_file<P: AsRef<Path>>(&self, path: P, keys: &StringKeys) {
+    pub fn to_file(&self, writer: Writer, keys: &StringKeys) {
         match self {
-            SubBlock::LangStrings(val) => val.to_file(path, keys),
-            SubBlock::Data(val) => val.to_file(path),
-            SubBlock::Spray(val) => val.to_file(path),
-            SubBlock::Crowd(val) => val.to_file(path),
-            SubBlock::GameObjs(val) => val.to_file(path),
-            SubBlock::AtlasUV(val) => val.to_file(path),
-            SubBlock::Lua(val) => val.to_file(path),
-            SubBlock::SSA(val) => val.to_file(path),
+            SubBlock::LangStrings(val) => val.to_file(writer, keys),
+            SubBlock::Data(val) => val.to_file(writer),
+            SubBlock::Spray(val) => val.to_file(writer),
+            SubBlock::Crowd(val) => val.to_file(writer),
+            SubBlock::GameObjs(val) => val.to_file(writer),
+            SubBlock::AtlasUV(val) => val.to_file(writer),
+            SubBlock::Lua(val) => val.to_file(writer),
+            SubBlock::SSA(val) => val.to_file(writer),
         }
     }
 
-    pub fn from_file<P: AsRef<Path>>(path: P, info: &SubBlocksBlockHeader, lua: &LuaCompiler) -> Self {
+    pub fn from_file(reader: Reader, info: &SubBlocksBlockHeader, lua: &LuaCompiler) -> Self {
         match info.key.key() {
             LangStrings::KEY_POLISH | LangStrings::KEY_GERMAN | LangStrings::KEY_FRENCH | LangStrings::KEY_SPANISH | LangStrings::KEY_RUSSIAN | LangStrings::KEY_SWEDISH | LangStrings::KEY_ENGLISH | LangStrings::KEY_ITALIAN | LangStrings::KEY_NORWEGIAN => 
-                SubBlock::LangStrings(LangStrings::from_file(path)),
-            Data::KEY_PFIELDS => SubBlock::Data(Data::from_file(path)),
-            Spray::KEY => SubBlock::Spray(Spray::from_file(path)),
-            Crowd::KEY => SubBlock::Crowd(Crowd::from_file(path)),
-            GameObjs::KEY => SubBlock::GameObjs(GameObjs::from_file(path)),
-            AtlasUV::KEY1 | AtlasUV::KEY2 => SubBlock::AtlasUV(AtlasUV::from_file(path)),
+                SubBlock::LangStrings(LangStrings::from_file(reader)),
+            Data::KEY_PFIELDS => SubBlock::Data(Data::from_file(reader)),
+            Spray::KEY => SubBlock::Spray(Spray::from_file(reader)),
+            Crowd::KEY => SubBlock::Crowd(Crowd::from_file(reader)),
+            GameObjs::KEY => SubBlock::GameObjs(GameObjs::from_file(reader)),
+            AtlasUV::KEY1 | AtlasUV::KEY2 => SubBlock::AtlasUV(AtlasUV::from_file(reader)),
             _ => match info.key.str() {
-                Some(x) if x.ends_with(".lua") => SubBlock::Lua(Lua::from_file(path, lua)),
-                Some(x) if x.ends_with(".ssa") => SubBlock::SSA(SSA::from_file(path)),
+                Some(x) if x.ends_with(".lua") => SubBlock::Lua(Lua::from_file(reader, lua)),
+                Some(x) if x.ends_with(".ssa") => SubBlock::SSA(SSA::from_file(reader)),
                 Some(x) if x.ends_with(".csv") || x.ends_with(".txt") || x.ends_with(".dat") => 
-                    SubBlock::Data(Data::from_file(path)),
+                    SubBlock::Data(Data::from_file(reader)),
                 _ =>  {
                     warn!("Unknown block type {:?}", info.key);
-                    SubBlock::Data(Data::from_file(path))
+                    SubBlock::Data(Data::from_file(reader))
                 }    
             }
         }
@@ -983,19 +988,16 @@ impl SubBlocks {
         self.header.dump_bytes::<O>().into_iter().chain(block_headers.dump_bytes::<O>().into_iter()).chain(data.into_iter()).collect()
     }
 
-    pub fn to_file<P: AsRef<Path>>(&self, path: P, keys: &StringKeys) {
-        let path = path.as_ref();
-        std::fs::create_dir_all(path).ok();
-        fs::write(path.join("index.json"), serde_json::to_string_pretty(self).unwrap()).unwrap();
+    pub fn to_file(&self, writer: Writer, keys: &StringKeys) {
+        writer.join("index.json").write(&to_vec_pretty(self).unwrap());
         for (block, info) in zip(&self.blocks, &self.block_headers) {
-            block.to_file(path.join(info.key.str().unwrap()), keys)
+            block.to_file(writer.join(info.key.str().unwrap()), keys)
         }
     }
 
-    pub fn from_file<P: AsRef<Path>>(path: P, lua: &LuaCompiler) -> Self {
-        let path = path.as_ref();
-        let mut val = serde_json::from_slice::<Self>(&fs::read(path.join("index.json")).unwrap()).unwrap();
-        val.blocks = val.block_headers.iter().map(|info| SubBlock::from_file(path.join(info.key.str().unwrap()), info, lua)).collect();
+    pub fn from_file(reader: Reader, lua: &LuaCompiler) -> Self {
+        let mut val = serde_json::from_slice::<Self>(&reader.join("index.json").read()).unwrap();
+        val.blocks = val.block_headers.iter().map(|info| SubBlock::from_file(reader.join(info.key.str().unwrap()), info, lua)).collect();
         val.header.block_num = val.blocks.len() as u32;
         val
     }
@@ -1053,14 +1055,12 @@ impl StringKeys {
         self.header.dump_bytes::<O>().into_iter().chain(self.vals.dump_bytes::<O>().into_iter()).chain(self.pad.dump_bytes::<O>().into_iter()).collect()
     }
 
-    pub fn to_file<P: AsRef<Path>>(&self, path: P) {
-        fs::write(path.as_ref().with_extension("json"), serde_json::to_string_pretty(&json!(self.vals.iter().map(|x| x.key.to_string()).collect::<Vec<_>>())).unwrap()).unwrap();
-
-        // fs::write(path.as_ref().with_extension("json"), serde_json::to_string_pretty(self).unwrap()).unwrap();
+    pub fn to_file(&self, writer: Writer) {
+        writer.with_extension("json").write(&to_vec_pretty(&json!(self.vals.iter().map(|x| x.key.to_string()).collect::<Vec<_>>())).unwrap());
     }
 
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Self {
-        let vals = serde_json::from_slice::<Value>(&fs::read(path.as_ref().with_extension("json")).unwrap()).unwrap();
+    pub fn from_file(reader: Reader) -> Self {
+        let vals = serde_json::from_slice::<Value>(&reader.with_extension("json").read()).unwrap();
         let keys = vals.as_array().unwrap().iter().map(|val| Crc::from_string(val.as_str().unwrap())).collect::<Vec<_>>();
         let header = StringKeysHeader {
             num_a: keys.len() as u16,
@@ -1121,13 +1121,13 @@ impl LangStrings {
         self.strings.iter().map(|x| x.encode_utf16().map(|_| 2).sum::<usize>() + 2).sum::<usize>()
     }
 
-    pub fn to_file<P: AsRef<Path>>(&self, path: P, keys: &StringKeys) {
+    pub fn to_file(&self, writer: Writer, keys: &StringKeys) {
         let vals = zip(&keys.vals, &self.strings).map(|(key, string)| (key.key.to_string(), json!(string))).collect::<Map<_,_>>();
-        fs::write(path.as_ref().with_extension("json"), serde_json::to_string_pretty(&vals).unwrap()).unwrap();
+        writer.with_extension("json").write(&to_vec_pretty(&vals).unwrap());
     }
 
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Self {
-        let vals = serde_json::from_slice::<Value>(&fs::read(path.as_ref().with_extension("json")).unwrap()).unwrap();
+    pub fn from_file(reader: Reader) -> Self {
+        let vals = serde_json::from_slice::<Value>(&reader.with_extension("json").read()).unwrap();
         let strings = vals.as_object().unwrap().iter().map(|(_, s)| s.as_str().unwrap().to_string()).collect::<Vec<_>>();
         Self { strings }
     }
@@ -1176,12 +1176,12 @@ impl SSA {
         self.strings.iter().map(|x| x.encode_utf16().map(|_| 2).sum::<usize>()).sum::<usize>() + 4 + (SSAVal::size::<LE>() * self.vals.len())
     }
 
-    pub fn to_file<P: AsRef<Path>>(&self, path: P) {
-        fs::write(path.as_ref().with_extension("json"), serde_json::to_string_pretty(self).unwrap()).unwrap();
+    pub fn to_file(&self, writer: Writer) {
+        writer.with_extension("json").write(&to_vec_pretty(self).unwrap());
     }
 
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Self {
-        serde_json::from_slice(&fs::read(path.as_ref().with_extension("json")).unwrap()).unwrap()
+    pub fn from_file(reader: Reader) -> Self {
+        serde_json::from_slice(&reader.with_extension("json").read()).unwrap()
     }
 }
 
@@ -1220,18 +1220,17 @@ impl Lua {
         }
     }
 
-    pub fn to_file<P: AsRef<Path>>(&self, path: P) {
+    pub fn to_file(&self, writer: Writer) {
         if *DECOMP_LUA.lock().unwrap() {
-            std::fs::write(path, self.code.as_bytes()).unwrap();
+            writer.write(self.code.as_bytes());
         } else {
-            std::fs::write(path, &self.data).unwrap();
+            writer.write(&self.data);
         }
     }
 
-    pub fn from_file<P: AsRef<Path>>(path: P, lua: &LuaCompiler) -> Self {
-        let path = path.as_ref();
-        let name: String = path.file_name().unwrap().to_str().unwrap().into();
-        let mut val = std::fs::read(path).unwrap();
+    pub fn from_file(reader: Reader, lua: &LuaCompiler) -> Self {
+        let name: String = reader.path().file_name().unwrap().to_str().unwrap().into();
+        let mut val = reader.read();
         let (data, code) = if (val[0] == 0x1bu8) && (val[1] == 76) && (val[2] == 117) && (val[3] == 97) {
             let code = if *DECOMP_LUA.lock().unwrap() {
                 lua.decomp(&val, UNLUAC.lock().unwrap().clone()).unwrap()
@@ -1293,7 +1292,7 @@ pub struct GameObjsObjHeader {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct GameObjs {
     pub size: usize,
-    pub gamemodemask: u32,
+    pub gamemodemask: i32,
     pub header: GameObjsHeader,
     pub types: Vec<GameObjsTypeHeader>,
     pub type_fields: Vec<Vec<GameObjsTypeField>>,
@@ -1304,7 +1303,7 @@ pub struct GameObjs {
 
 impl GameObjs {
     pub const KEY: u32 = hash_string("Level".as_bytes(), None);
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize, size: usize, gamemodemask: u32) -> Self {
+    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize, size: usize, gamemodemask: i32) -> Self {
         let mut val = Self::default();
         val.gamemodemask = gamemodemask;
         val.size = size;
@@ -1412,7 +1411,7 @@ impl GameObjs {
         // data
     }
 
-    pub fn to_file<P: AsRef<Path>>(&self, path: P) {
+    pub fn to_file(&self, writer: Writer) {
         let val = json!({
             "gamemodemask": self.gamemodemask,
             "objs": zip(&self.obj_headers,& self.objs).map(|(o, fs)| {
@@ -1440,11 +1439,11 @@ impl GameObjs {
             }).collect::<Vec<_>>(),
 
         });
-        fs::write(path.as_ref().with_extension("json"), to_vec_pretty(&val).unwrap()).unwrap();
+        writer.with_extension("json").write(&to_vec_pretty(&val).unwrap());
     }
 
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Self {
-        let val = serde_json::from_slice::<Value>(&fs::read(path.as_ref().with_extension("json")).unwrap()).unwrap();
+    pub fn from_file(reader: Reader) -> Self {
+        let val = serde_json::from_slice::<Value>(&reader.with_extension("json").read()).unwrap();
         let ts = val["types"].as_array().unwrap();
         let mut types = Vec::with_capacity(ts.len());
         let mut type_fields = Vec::with_capacity(ts.len());
@@ -1500,7 +1499,7 @@ impl GameObjs {
             z7: 0
         };
         let size = header.obj_offset as usize + obj_headers.iter().map(|x| x.size as usize).sum::<usize>() + objs.len() * GameObjsObjHeader::size::<LE>() ;
-        let gamemodemask = val["gamemodemask"].as_u64().unwrap() as u32;
+        let gamemodemask = val["gamemodemask"].as_i64().unwrap() as i32;
         Self {
             size,
             gamemodemask,
@@ -1587,12 +1586,12 @@ impl Spray {
         data
     }
 
-    pub fn to_file<P: AsRef<Path>>(&self, path: P) {
-        fs::write(path.as_ref().with_extension("json"), serde_json::to_string_pretty(self).unwrap()).unwrap();
+    pub fn to_file(&self, writer: Writer) {
+        writer.with_extension("json").write(&to_vec_pretty(self).unwrap());
     }
 
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Self {
-        serde_json::from_slice(&fs::read(path.as_ref().with_extension("json")).unwrap()).unwrap()
+    pub fn from_file(reader: Reader) -> Self {
+        serde_json::from_slice(&reader.with_extension("json").read()).unwrap()
     }
 }
 
@@ -1670,12 +1669,12 @@ impl Crowd {
         data
     }
 
-    pub fn to_file<P: AsRef<Path>>(&self, path: P) {
-        fs::write(path.as_ref().with_extension("json"), serde_json::to_string_pretty(self).unwrap()).unwrap();
+    pub fn to_file(&self, writer: Writer) {
+        writer.with_extension("json").write(&to_vec_pretty(self).unwrap());
     }
 
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Self {
-        serde_json::from_slice(&fs::read(path.as_ref().with_extension("json")).unwrap()).unwrap()
+    pub fn from_file(reader: Reader) -> Self {
+        serde_json::from_slice(&reader.with_extension("json").read()).unwrap()
     }
 }
 
@@ -1708,12 +1707,12 @@ impl AtlasUV {
         self.vals.dump_bytes::<O>()
     }
 
-    pub fn to_file<P: AsRef<Path>>(&self, path: P) {
-        fs::write(path.as_ref().with_extension("json"), serde_json::to_string_pretty(self).unwrap()).unwrap();
+    pub fn to_file(&self, writer: Writer) {
+        writer.with_extension("json").write(&to_vec_pretty(self).unwrap());
     }
 
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Self {
-        serde_json::from_slice(&fs::read(path.as_ref().with_extension("json")).unwrap()).unwrap()
+    pub fn from_file(reader: Reader) -> Self {
+        serde_json::from_slice(&reader.with_extension("json").read()).unwrap()
     }
 }
 
@@ -1740,12 +1739,11 @@ impl Data {
         self.data.clone()
     }
 
-    pub fn to_file<P: AsRef<Path>>(&self, path: P) {
-        std::fs::write(path, &self.data).unwrap();
+    pub fn to_file(&self, writer: Writer) {
+        writer.write(&self.data);
     }
 
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Self {
-        let data = std::fs::read(path).unwrap();
-        Self { data }
+    pub fn from_file(reader: Reader) -> Self {
+        Self { data: reader.read() }
     }
 }

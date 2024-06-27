@@ -1,15 +1,16 @@
-use std::{any::TypeId, collections::HashMap, ffi::OsStr, fs, path::Path};
+use std::{any::TypeId, collections::HashMap, ffi::OsStr, fs, path::Path, sync::Arc};
 use itertools::Itertools;
 use zerocopy::{ByteOrder, LE, BE};
 use log::{warn, info};
 use serde::{Serialize, Deserialize};
-use serde_json::to_string_pretty;
+use serde_json::to_vec_pretty;
 use std::time::Instant;
 use std::iter::zip;
 
 use super::{
     pak, bin, lua_stuff, pak_alt::*,
     types::{self, hash_string, GameObjs, OrderedData, OrderedDataVec, CompressedBlock, Crc},
+    read_write::{Reader, Writer, PathStuff},
 };
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -188,131 +189,86 @@ impl Level {
     }
     
     pub fn to_data<O: ByteOrder + 'static>(&self) -> (Vec<u8>, Vec<u8>, DumpInfos) {
+        fn dump_vertex_data<O: ByteOrder + 'static>(mesh: &mut Mesh) -> Option<((Crc, u32), Vec<u8>)> {
+            if mesh.vertex_data.len() != 0 || mesh.index_data.len() != 0 {
+                let size = mesh.vbuffs.iter().map(|x| x.size + x.offset).chain(mesh.ibuffs.iter().map(|x| x.size + x.offset)).max().unwrap();
+                let mut data = vec![0u8; size as usize];
+                for (vbuff, buff) in zip(&mesh.vbuffs, &mesh.vertex_data) {
+                    buff.into_data::<O>(&mut data, vbuff);
+                }
+                for (ibuff, buff) in zip(&mesh.ibuffs, &mesh.index_data) {
+                    buff.into_data::<O>(&mut data[ibuff.offset as usize..]);
+                }
+                let mut data = Vec::with_capacity(size as usize);
+                for i in 0..(mesh.vbuff_order.len().max(mesh.ibuff_order.len())) {
+                    if i < mesh.vbuff_order.len() {
+                        let info = &mut mesh.vbuffs[i];
+                        let vals = mesh.vertex_data[i].dump::<O>();
+                        info.offset = data.len() as u32;
+                        info.size = vals.len() as u32;
+                        data.extend(vals);
+                        for buffer_info in &mut mesh.buffer_infos {
+                            if buffer_info.vbuff_info_offset == mesh.vbuff_order[i] {
+                                buffer_info.v_size = mesh.vertex_data[i].vals.iter().map(|(_, x)| x.size()).sum::<usize>() as u32;
+                                buffer_info.vbuff_size = info.size;
+                            }
+                            if buffer_info.vbuff_info_offset_2 == mesh.vbuff_order[i] {
+                                buffer_info.v_size_2 = mesh.vertex_data[i].vals.iter().map(|(_, x)| x.size()).sum::<usize>() as u32;
+                                buffer_info.vbuff_size_2 = info.size;
+                            }
+                            if buffer_info.vbuff_info_offset_3 == mesh.vbuff_order[i] {
+                                buffer_info.v_size_3 = mesh.vertex_data[i].vals.iter().map(|(_, x)| x.size()).sum::<usize>() as u32;
+                                buffer_info.vbuff_size_3 = info.size;
+                            }
+                        }
+                    }
+                    if i < mesh.ibuff_order.len() {
+                        let info = &mut mesh.ibuffs[i];
+                        let vals = mesh.index_data[i].dump::<O>();
+                        info.offset = data.len() as u32;
+                        info.size = vals.len() as u32;
+                        data.extend(vals);
+                    }
+                }        
+                Some(((mesh.info.asset_key.clone(), mesh.info.asset_type), data))
+            } else {
+                None
+            }
+        }
         let time = Instant::now();
         info!("compressing level");
         let lua: lua_stuff::LuaCompiler = lua_stuff::LuaCompiler::new().unwrap();
         
-        // bin_data
-        let mut asset_data = indexmap::IndexMap::new();
-        let mut bin_header = self.bin_header.clone();
-        let mut bin_data = vec![0u8; bin::Header::size::<O>()];
-        bin_header.version = if TypeId::of::<O>() == TypeId::of::<LE>() { 2 } else { 1 };
-
-        let mut meshes = self.meshes.clone();
-        asset_data.extend(
-            self.radiosity.iter().map(|(a, b)| ((a.clone(), b.usage), b.dump::<O>())).chain(
-                meshes.values_mut().filter_map(|mesh| {
-                    if mesh.vertex_data.len() != 0 || mesh.index_data.len() != 0 {
-                        let size = mesh.vbuffs.iter().map(|x| x.size + x.offset).chain(mesh.ibuffs.iter().map(|x| x.size + x.offset)).max().unwrap();
-                        let mut data = vec![0u8; size as usize];
-                        for (vbuff, buff) in zip(&mesh.vbuffs, &mesh.vertex_data) {
-                            buff.into_data::<O>(&mut data, vbuff);
-                        }
-                        for (ibuff, buff) in zip(&mesh.ibuffs, &mesh.index_data) {
-                            buff.into_data::<O>(&mut data[ibuff.offset as usize..]);
-                        }
-                        // let vbuffs = mesh.vbuffs.iter_mut().map(|x| (&mut x.offset, x.size)).collect::<Vec<_>>();
-                        // let ibuffs = mesh.ibuffs.iter_mut().map(|x| (&mut x.offset, x.size)).collect::<Vec<_>>();
-                        // let vertex_data = mesh.vertex_data.iter().map(|x| x.dump::<O>()).collect::<Vec<_>>();
-                        // let index_data = mesh.index_data.iter().map(|x| x.dump::<O>()).collect::<Vec<_>>();
-                        // for ((off, size), dat) in zip(vbuffs, vertex_data).interleave(zip(ibuffs, index_data)) {
-                        //     *off = data.len() as u32;
-                        //     assert!(size == dat.len() as u32);
-                        //     data.extend(dat);
-                        //     data.extend(vec![0u8; ((data.len() + 32) & 0xFFFFFFE0)-data.len()]);
-                        // }
-                        let mut data = Vec::with_capacity(size as usize);
-                        for i in 0..(mesh.vbuff_order.len().max(mesh.ibuff_order.len())) {
-                            if i < mesh.vbuff_order.len() {
-                                let info = &mut mesh.vbuffs[i];
-                                let vals = mesh.vertex_data[i].dump::<O>();
-                                info.offset = data.len() as u32;
-                                info.size = vals.len() as u32;
-                                data.extend(vals);
-                                for buffer_info in &mut mesh.buffer_infos {
-                                    if buffer_info.vbuff_info_offset == mesh.vbuff_order[i] {
-                                        buffer_info.v_size = mesh.vertex_data[i].vals.iter().map(|(_, x)| x.size()).sum::<usize>() as u32;
-                                        buffer_info.vbuff_size = info.size;
-                                    }
-                                    if buffer_info.vbuff_info_offset_2 == mesh.vbuff_order[i] {
-                                        buffer_info.v_size_2 = mesh.vertex_data[i].vals.iter().map(|(_, x)| x.size()).sum::<usize>() as u32;
-                                        buffer_info.vbuff_size_2 = info.size;
-                                    }
-                                    if buffer_info.vbuff_info_offset_3 == mesh.vbuff_order[i] {
-                                        buffer_info.v_size_3 = mesh.vertex_data[i].vals.iter().map(|(_, x)| x.size()).sum::<usize>() as u32;
-                                        buffer_info.vbuff_size_3 = info.size;
-                                    }
-                                }
-                            }
-                            if i < mesh.ibuff_order.len() {
-                                let info = &mut mesh.ibuffs[i];
-                                let vals = mesh.index_data[i].dump::<O>();
-                                info.offset = data.len() as u32;
-                                info.size = vals.len() as u32;
-                                data.extend(vals);
-                            }
-                        }        
-                        Some(((mesh.info.asset_key.clone(), mesh.info.asset_type), data))
-                    } else {
-                        None
-                    }
-                })
-            ).sorted_by(|a,b| a.0.0.key().cmp(&b.0.0.key()))
-        );
-        bin_header.vdata_num = asset_data.len() as u32;
-        bin_header.vdata_num_ = asset_data.len() as u32;
-
-        let mut texture_infos_map = HashMap::new();
-        asset_data.extend(
-            self.textures.values().flat_map(|tex| {
-                let (data0, data1) = tex.dump::<O>();
-                texture_infos_map.insert(tex.info().key.clone(), tex.info().clone());
-                [
-                    ((tex.info().asset_key.clone(), tex.info().asset_type), data0),
-                    ((Crc::Key(hash_string("*".as_bytes(), Some(tex.info().asset_key.key()))), tex.info().asset_type), data1)
-                ]
-            }).sorted_by(|a,b| a.0.0.key().cmp(&b.0.0.key()))
-        );
-        bin_header.texdata_num = asset_data.len() as u32 - bin_header.vdata_num;
-        let mut texture_infos = Vec::with_capacity(texture_infos_map.len());
-        if let Some(texture_info) = texture_infos_map.remove(&Crc::Key(3804089404)) {
-            texture_infos.push(texture_info);
+        let mut texture_data = vec![];
+        fn sort_texture(tex: &&bin::Tex) -> u32 {
+            let k = tex.info().asset_key.key();
+            if k == 3804089404 {
+                0
+            } else if k == 4026460901 {
+                1
+            } else {
+                k
+            }
         }
-        if let Some(texture_info) = texture_infos_map.remove(&Crc::Key(4026460901)) {
-            texture_infos.push(texture_info);
-        }
-        texture_infos.extend(texture_infos_map.into_iter().sorted_by(|a,b| a.0.key().cmp(&b.0.key())).map(|x| x.1));
-
-        bin_data.extend(vec![0u8; ((bin_data.len() + 2047) & 0xfffff800)-bin_data.len()]);
-        let asset_handles = asset_data.into_iter().map(|((key, kind), data)| {
-            let size = data.len() as u32;
-            let offset = bin_data.len() as u32;
-            let size_comp = if size != 0 {
-                let data = CompressedBlock { data }.dump();
-                let size_comp = data.len() as u32;
-                bin_data.extend(data);
-                bin_data.extend(vec![0u8; ((bin_data.len() + 2047) & 0xfffff800)-bin_data.len()]);
-                size_comp
-            } else { 0 };
-            bin::AssetHandle { key, offset, size, size_comp, kind }
+        let texture_infos = self.textures.values().sorted_by_key(sort_texture).map(|tex| {
+            let (data0, data1) = tex.dump::<O>();
+            if data1.len() == 0 {
+                texture_data.push((
+                    (Crc::Key(hash_string("*".as_bytes(), Some(tex.info().asset_key.key()))), tex.info().asset_type),
+                    data1
+                ));
+                texture_data.push(((tex.info().asset_key.clone(), tex.info().asset_type), data0));
+            } else {
+                texture_data.push(((tex.info().asset_key.clone(), tex.info().asset_type), data0));
+                texture_data.push((
+                    (Crc::Key(hash_string("*".as_bytes(), Some(tex.info().asset_key.key()))), tex.info().asset_type),
+                    data1
+                ));
+            }
+            tex.info().clone()
         }).collect::<Vec<_>>();
 
-        bin_data.extend(vec![0u8; ((bin_data.len() + 2047) & 0xfffff800)-bin_data.len()]);
-        bin_header.asset_handle_offset = bin_data.len() as u32;
-        bin_header.asset_handle_num = asset_handles.len() as u32;
-        bin_data.extend(asset_handles.dump_bytes::<O>());
-
-        let data = self.bin_strings.dump::<O>();
-        bin_header.strings_offset = bin_data.len() as u32;
-        bin_header.strings_size = data.len() as u32;
-        bin_header.strings_size = self.bin_strings.strings.len() as u32;
-        bin_data.extend(data);
-        
-        bin_data.extend(vec![0u8; ((bin_data.len() + 2047) & 0xfffff800)-bin_data.len()]);
-        bin_header.to_bytes::<O>(&mut bin_data);
-        info!("bin in {:?}", time.elapsed());
-
-        // bin done
+        info!("textures in {:?}", time.elapsed());
 
         // pak stuff
         let mut pak_header = self.pak_header.clone();
@@ -331,14 +287,14 @@ impl Level {
             pak_header.buffer_info_num,
             pak_header.vbuff_info_num, pak_header.ibuff_info_num
 
-        ) = meshes.values().map(|mesh| mesh.infos_count()).fold(
+        ) = self.meshes.values().map(|mesh| mesh.infos_count()).fold(
             (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), 
             |mut a,b| {
                 a.0 += b.0; a.1 += b.1; a.2 += b.2; a.3 += b.3; a.4 += b.4; a.5 += b.5; a.6 += b.6; a.7 += b.7; a.8 += b.8; a.9 += b.9; a.10 += b.10; a.11 += b.11;
                 a
             }
         );
-        pak_header.mesh_info_num = meshes.len() as u32;
+        pak_header.mesh_info_num = self.meshes.len() as u32;
         pak_header.texture_info_num = self.textures.len() as u32;
         pak_header.effect_info_num = self.effects.len() as u32;
         pak_header.gfx_block_info_num = self.gfx_blocks.len() as u32;
@@ -430,7 +386,7 @@ impl Level {
             (vals, anim.info.gamemodemask)
         }).collect();
         let animations_blocks = (0..self.animation_block_infos.len() as u32).map(|i| {
-            let gamemodemask = 1u32 << i;
+            let gamemodemask = 1i32 << i;
             animation_vals.iter().filter(|(_, k)| k & gamemodemask != 0).flat_map(|(x, _)| x).cloned().collect::<Vec<_>>()
         }).collect::<Vec<_>>();
         
@@ -458,7 +414,8 @@ impl Level {
         let mut normal = vec![];
         let mut collision_road = vec![];
         let mut terrain = vec![];
-        for k in meshes.keys() {
+        let mut mesh_data = vec![];
+        for k in self.meshes.keys() {
             if k.key() == key_occluder {
                 continue
             } else if let Some(s) = k.str() {
@@ -481,13 +438,21 @@ impl Level {
             x.str().and_then(|x| x.split('_').last().and_then(|x| x.parse::<usize>().ok())).unwrap_or_default()
         );
         for key in normal.into_iter().chain(collision_road) {
-            block1.extend(meshes.get(key).unwrap().dump::<O>(block1.len(), &mut infos));
+            let mut mesh = self.meshes.get(key).unwrap().clone();
+            if let Some(val) = dump_vertex_data::<O>(&mut mesh) {
+                mesh_data.push(val);
+            }
+            block1.extend(mesh.dump::<O>(block1.len(), &mut infos));
             block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         }
         let terrain_start_offset = block1.len() as u32;
         block1.extend(vec![0xFFu8; 16]);
         for key in terrain {
-            block1.extend(meshes.get(key).unwrap().dump_terrain::<O>(block1.len(), terrain_start_offset, &mut infos));
+            let mut mesh = self.meshes.get(key).unwrap().clone();
+            if let Some(val) = dump_vertex_data::<O>(&mut mesh) {
+                mesh_data.push(val);
+            }
+            block1.extend(mesh.dump_terrain::<O>(block1.len(), terrain_start_offset, &mut infos));
         }
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
 
@@ -499,7 +464,11 @@ impl Level {
             info
         }).collect::<Vec<_>>();
 
-        if let Some(mesh) = meshes.get(&Crc::Key(key_occluder)) {
+        if let Some(mesh) = self.meshes.get(&Crc::Key(key_occluder)) {
+            let mut mesh = mesh.clone();
+            if let Some(val) = dump_vertex_data::<O>(&mut mesh) {
+                mesh_data.push(val);
+            }
             block1.extend(mesh.dump::<O>(block1.len(), &mut infos));
             block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         }
@@ -714,130 +683,215 @@ impl Level {
         pak_header.to_bytes::<O>(&mut pak_data);
         info!("pak in {:?}", time.elapsed());
 
+        // bin_data
+        let mut bin_header = self.bin_header.clone();
+        let mut bin_data = vec![0u8; bin::Header::size::<O>()];
+        bin_header.version = if TypeId::of::<O>() == TypeId::of::<LE>() { 2 } else { 1 };
+
+        bin_data.extend(vec![0u8; ((bin_data.len() + 2047) & 0xfffff800)-bin_data.len()]);
+        let mut mesh_asset_handles = mesh_data.into_iter().map(|((key, kind), data)| {
+            let size = data.len() as u32;
+            let offset = bin_data.len() as u32;
+            let size_comp = if size != 0 {
+                let data = CompressedBlock { data }.dump();
+                let size_comp = data.len() as u32;
+                bin_data.extend(data);
+                bin_data.extend(vec![0u8; ((bin_data.len() + 2047) & 0xfffff800)-bin_data.len()]);
+                size_comp
+            } else { 0 };
+            bin::AssetHandle { key, offset, size, size_comp, kind }
+        }).collect::<Vec<_>>();
+
+        let mut texture_asset_handles = texture_data.into_iter().map(|((key, kind), data)| {
+            let size = data.len() as u32;
+            let offset = bin_data.len() as u32;
+            let size_comp = if size != 0 {
+                let data = CompressedBlock { data }.dump();
+                let size_comp = data.len() as u32;
+                bin_data.extend(data);
+                bin_data.extend(vec![0u8; ((bin_data.len() + 2047) & 0xfffff800)-bin_data.len()]);
+                size_comp
+            } else { 0 };
+            bin::AssetHandle { key, offset, size, size_comp, kind }
+        }).collect::<Vec<_>>();
+
+        mesh_asset_handles.extend(self.radiosity.iter().map(|(key, data)| {
+            let kind = data.usage;
+            let data = data.data.dump_bytes::<O>();
+            let size = data.len() as u32;
+            let offset = bin_data.len() as u32;
+            let size_comp = if size != 0 {
+                let data = CompressedBlock { data }.dump();
+                let size_comp = data.len() as u32;
+                bin_data.extend(data);
+                bin_data.extend(vec![0u8; ((bin_data.len() + 2047) & 0xfffff800)-bin_data.len()]);
+                size_comp
+            } else { 0 };
+            bin::AssetHandle { key: key.clone(), offset, size, size_comp, kind }
+        }));
+
+        mesh_asset_handles.sort_by_key(|x| x.key.key());
+        texture_asset_handles.sort_by_key(|x| x.key.key());
+
+        bin_header.vdata_num = mesh_asset_handles.len() as u32;
+        bin_header.vdata_num_ = mesh_asset_handles.len() as u32;
+        bin_header.texdata_num = texture_asset_handles.len() as u32;
+
+        let mut asset_handles = mesh_asset_handles;
+        asset_handles.extend(texture_asset_handles);
+        
+        bin_data.extend(vec![0u8; ((bin_data.len() + 2047) & 0xfffff800)-bin_data.len()]);
+        bin_header.asset_handle_offset = bin_data.len() as u32;
+        bin_header.asset_handle_num = asset_handles.len() as u32;
+        bin_data.extend(asset_handles.dump_bytes::<O>());
+
+        let data = self.bin_strings.dump::<O>();
+        bin_header.strings_offset = bin_data.len() as u32;
+        bin_header.strings_size = data.len() as u32;
+        bin_header.strings_num = self.bin_strings.strings.len() as u32;
+        bin_data.extend(data);
+        
+        bin_data.extend(vec![0u8; ((bin_data.len() + 2047) & 0xfffff800)-bin_data.len()]);
+        bin_header.to_bytes::<O>(&mut bin_data);
+        info!("bin in {:?}", time.elapsed());
+
+        // bin done
+            
         (pak_data, bin_data, infos)
     }
 
-    pub fn to_file<P: AsRef<Path>>(&self, path: P) {
+    pub fn to_file(&self, writer: Writer) {
         let time: Instant = Instant::now();
         info!("storing level");
 
-        let path = path.as_ref();
-        std::fs::create_dir_all(path).ok();
         // std::fs::create_dir_all(path.join("assets").join("raw")).ok();
-        std::fs::write(path.join("bin_header.json"), to_string_pretty(&self.bin_header).unwrap()).unwrap();
-        self.bin_strings.to_file(path.join("bin_strings"));
+    
+        writer.join("bin_header.json").write(&to_vec_pretty(&self.bin_header).unwrap());
+        self.bin_strings.to_file(writer.join("bin_strings"));
 
-        std::fs::write(path.join("pak_header.json"), to_string_pretty(&self.pak_header).unwrap()).unwrap();
-        self.pak_strings.to_file(path.join("pak_strings"));
+        writer.join("pak_header.json").write(&to_vec_pretty(&self.pak_header).unwrap());
+        self.pak_strings.to_file(writer.join("pak_strings"));
         info!("headers in {:?}", time.elapsed());
 
-        std::fs::write(path.join("objas.json"), to_string_pretty(&self.objas).unwrap()).unwrap();
-        std::fs::write(path.join("obj0s.json"), to_string_pretty(&self.obj0s).unwrap()).unwrap();
-        std::fs::write(path.join("pak_vals_a.json"), to_string_pretty(&self.pak_vals_a).unwrap()).unwrap();
+        writer.join("objas.json").write(&to_vec_pretty(&self.objas).unwrap());
+        writer.join("obj0s.json").write(&to_vec_pretty(&self.obj0s).unwrap());
+        writer.join("pak_vals_a.json").write(&to_vec_pretty(&self.pak_vals_a).unwrap());
         info!("unused objs in {:?}", time.elapsed());
 
-        std::fs::create_dir_all(path.join("meshes")).ok();
         for (key, data) in &self.meshes {
-            std::fs::write(path.join("meshes").join(key.to_string()).with_extension("json"), to_string_pretty(&data).unwrap()).unwrap();
+            writer.join("meshes").join(key.to_string()).with_extension("json").write(&to_vec_pretty(&data).unwrap());
         }
         info!("meshes in {:?}", time.elapsed());
-        std::fs::create_dir_all(path.join("effects")).ok();
         for (key, data) in &self.effects {
-            data.to_file(path.join("effects").join(key.to_string()));
+            data.to_file(writer.join("effects").join(key.to_string()));
         }
         info!("effects in {:?}", time.elapsed());
-        std::fs::create_dir_all(path.join("foliage")).ok();
         for (key, data) in &self.foliages {
             let (info, data): (Vec<_>, Vec<_>) = Iterator::unzip(data.iter().map(|(a,b)| (a,b)));
-            std::fs::write(path.join("foliage").join(key.to_string()).with_extension("json"), to_string_pretty(&info).unwrap()).unwrap();
+            writer.join("foliage").join(key.to_string()).with_extension("json").write(&to_vec_pretty(&info).unwrap());
             for (i, data) in data.iter().enumerate() {
-                std::fs::write(path.join("foliage").join(format!("{}-{}", key.to_string(), i)).with_extension("bin"), data.dump_bytes::<LE>()).unwrap();
+                writer.join("foliage").join(format!("{}-{}", key.to_string(), i)).with_extension("bin").write(&data.dump_bytes::<LE>());
             }
         }
         info!("foliage objs in {:?}", time.elapsed());
-        std::fs::create_dir_all(path.join("illumination")).ok();
         for (key, data) in &self.light_blocks {
-            std::fs::write(path.join("illumination").join(format!("{}", key)).with_extension("bin"), data.dump_bytes::<LE>()).unwrap();
+            writer.join("illumination").join(format!("{}", key)).with_extension("bin").write(&data.dump_bytes::<LE>());
         }
         info!("illumination objs in {:?}", time.elapsed());
-        std::fs::create_dir_all(path.join("gfxs")).ok();
         for (key, data) in &self.gfx_blocks {
-            std::fs::write(path.join("gfxs").join(key.to_string()).with_extension("gfx"), data).unwrap();
+            writer.join("gfxs").join(key.to_string()).with_extension("gfx").write(data);
         }
         info!("gfxs in {:?}", time.elapsed());
 
-        std::fs::write(path.join("animation_block_infos.json"), to_string_pretty(&self.animation_block_infos).unwrap()).unwrap();
-        std::fs::create_dir_all(path.join("animations")).ok();
+        writer.join("animation_block_infos.json").write(&to_vec_pretty(&self.animation_block_infos).unwrap());
         for (key, data) in &self.animations {
-            std::fs::write(path.join("animations").join(key.to_string()).with_extension("json"), to_string_pretty(&data).unwrap()).unwrap();
+            writer.join("animations").join(key.to_string()).with_extension("json").write(&to_vec_pretty(&data).unwrap());
         }
         info!("animations in {:?}", time.elapsed());
 
-        std::fs::create_dir_all(path.join("textures")).ok();
         for (key, tex) in &self.textures {
-            tex.to_file(path.join("textures").join(key.to_string()));
+            tex.to_file(writer.join("textures").join(key.to_string()));
         }
         info!("textures in {:?}", time.elapsed());
 
-        std::fs::create_dir_all(path.join("radiosity")).ok();
         for (key, data) in &self.radiosity {
-            std::fs::write(path.join("radiosity").join(key.to_string()).with_extension("gfx"), to_string_pretty(&data).unwrap()).unwrap();
+            writer.join("radiosity").join(key.to_string()).with_extension("gfx").write(&to_vec_pretty(&data).unwrap());
         }
         info!("radiosity in {:?}", time.elapsed());
 
-        std::fs::write(path.join("pfield_infos.json"), to_string_pretty(&self.pfield_infos).unwrap()).unwrap();
+        writer.join("pfield_infos.json").write(&to_vec_pretty(&self.pfield_infos).unwrap());
 
         info!("packed items in {:?}", time.elapsed());
 
-        self.string_keys.to_file(path.join("string_keys"));
-        self.sub_blocks1.to_file(path.join("sub_blocks1"), &self.string_keys);
-        self.sub_blocks2.to_file(path.join("sub_blocks2"), &self.string_keys);
+        self.string_keys.to_file(writer.join("string_keys"));
+        self.sub_blocks1.to_file(writer.join("sub_blocks1"), &self.string_keys);
+        self.sub_blocks2.to_file(writer.join("sub_blocks2"), &self.string_keys);
         info!("sub blocks in {:?}", time.elapsed());
 
+        if *types::ANIM_TABLES.lock().unwrap() {
+            let mut script_manager = HashMap::new();
+            {
+                let lua = lua_stuff::LuaCompiler::new().unwrap();
+                for block in &self.sub_blocks1.blocks {
+                    if let types::SubBlock::Lua(val) = block {
+                        let mut name = val.name.clone();
+                        name.truncate(name.len()-4);
+                        script_manager.insert(Crc::from_string(&name), lua.convert(&val.data, "L4808").unwrap());
+                    }
+                }
+            }
+            
+            let anim_scripts = script_manager.keys().filter_map(|x| x.str().and_then(|x| x.starts_with("ANM_").then_some(x.to_string()))).collect::<Vec<_>>();
+            let script_manager = Arc::new(script_manager);
+            for anim in anim_scripts {
+                let val = lua_stuff::load_anim(script_manager.clone(), anim.clone());
+                writer.join("animation_tables").join(anim).with_extension("json").write(&to_vec_pretty(&val).unwrap());
+            }
+            info!("animation tables in {:?}", time.elapsed());
+        }
     }
 
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Self {
+    pub fn from_file(reader: Reader) -> Self {
         let time: Instant = Instant::now();
         info!("reading level");        
         
         let lua: lua_stuff::LuaCompiler = lua_stuff::LuaCompiler::new().unwrap();
-        let path = path.as_ref();
 
-        let bin_header = serde_json::from_slice::<bin::Header>(&fs::read(path.join("bin_header.json")).unwrap()).unwrap();
-        let bin_strings = types::Strings::from_file(path.join("bin_strings"));
+        let bin_header = serde_json::from_slice::<bin::Header>(&reader.join("bin_header.json").read()).unwrap();
+        let bin_strings = types::Strings::from_file(reader.join("bin_strings"));
 
-        let pak_header = serde_json::from_slice::<pak::Header>(&fs::read(path.join("pak_header.json")).unwrap()).unwrap();
-        let pak_strings = types::Strings::from_file(path.join("pak_strings"));
+        let pak_header = serde_json::from_slice::<pak::Header>(&reader.join("pak_header.json").read()).unwrap();
+        let pak_strings = types::Strings::from_file(reader.join("pak_strings"));
         info!("headers in {:?}", time.elapsed());
 
-        let objas = serde_json::from_slice::<Vec<pak::ObjA>>(&fs::read(path.join("objas.json")).unwrap()).unwrap();
-        let obj0s = serde_json::from_slice::<Vec<pak::Obj0>>(&fs::read(path.join("obj0s.json")).unwrap()).unwrap();
-        let pak_vals_a = serde_json::from_slice::<Vec<pak::BlockAVal>>(&fs::read(path.join("pak_vals_a.json")).unwrap()).unwrap();
+        let objas = serde_json::from_slice::<Vec<pak::ObjA>>(&reader.join("objas.json").read()).unwrap();
+        let obj0s = serde_json::from_slice::<Vec<pak::Obj0>>(&reader.join("obj0s.json").read()).unwrap();
+        let pak_vals_a = serde_json::from_slice::<Vec<pak::BlockAVal>>(&reader.join("pak_vals_a.json").read()).unwrap();
         info!("unused objs in {:?}", time.elapsed());
 
         let mut meshes = HashMap::new();
-        for path in fs::read_dir(path.join("meshes")).unwrap().filter_map(|x| x.ok().map(|x| x.path())) {
-            let key = Crc::from_string(path.file_stem().unwrap().to_str().unwrap());
-            let data = serde_json::from_slice::<Mesh>(&fs::read(path).unwrap()).unwrap();
+        for path in reader.join("meshes") {
+            let key = Crc::from_string(path.name());
+            let data = serde_json::from_slice::<Mesh>(&path.read()).unwrap();
             meshes.insert(key, data);
         }
         info!("meshes in {:?}", time.elapsed());
 
         let mut effects = HashMap::new();
-        for path in fs::read_dir(path.join("effects")).unwrap().filter_map(|x| x.ok().map(|x| x.path())) {
-            let key = Crc::from_string(path.file_stem().unwrap().to_str().unwrap());
+        for path in reader.join("effects") {
+            let key = Crc::from_string(path.name());
             let data = GameObjs::from_file(path);
             effects.insert(key, data);
         }
         info!("effects in {:?}", time.elapsed());
 
         let mut foliages = HashMap::new();
-        for path in fs::read_dir(path.join("foliage")).unwrap().filter_map(|x| x.ok().map(|x| x.path()).filter(|x| x.extension().unwrap_or(OsStr::new("")).to_str() == Some("json"))) {
-            let key = Crc::from_string(path.file_stem().unwrap().to_str().unwrap());
-            let info = serde_json::from_slice::<Vec<pak::FoliageInfo>>(&fs::read(&path).unwrap()).unwrap();
+        for path in reader.join("foliage").into_iter().filter(|x| x.path().extension().unwrap_or(OsStr::new("")).to_str() == Some("json")) {
+            let key = Crc::from_string(path.name());
+            let info = serde_json::from_slice::<Vec<pak::FoliageInfo>>(&path.read()).unwrap();
             let mut data = Vec::with_capacity(info.len());
             for i in 0..info.len() {
-                let dat = fs::read(path.parent().unwrap().join(format!("{}-{}", key.to_string(), i)).with_extension("bin")).unwrap();
+                let dat = path.with_file_name(&format!("{}-{}.bin", key.to_string(), i)).read();
                 data.push(<Vec<u32> as OrderedDataVec>::from_bytes::<LE>(&dat, dat.len()/4));
             }
             foliages.insert(key, zip(info, data).collect::<Vec<_>>());
@@ -845,55 +899,54 @@ impl Level {
         info!("foliage objs in {:?}", time.elapsed());
 
         let mut light_blocks = HashMap::new();
-        for path in fs::read_dir(path.join("illumination")).unwrap().filter_map(|x| x.ok().map(|x| x.path())) {
-            let key: u32 = path.file_stem().unwrap().to_str().unwrap().parse().unwrap();
-            let dat = fs::read(path).unwrap();
+        for path in reader.join("illumination") {
+            let key: u32 = path.name().parse().unwrap();
+            let dat = path.read();
             let data = <Vec<u32> as OrderedDataVec>::from_bytes::<LE>(&dat, dat.len()/4);
             light_blocks.insert(key, data);
         }
         info!("illumination objs in {:?}", time.elapsed());
 
         let mut gfx_blocks = HashMap::new();
-        for path in fs::read_dir(path.join("gfxs")).unwrap().filter_map(|x| x.ok().map(|x| x.path())) {
-            let key = Crc::from_string(path.file_stem().unwrap().to_str().unwrap());
-            let data = fs::read(path).unwrap();
+        for path in reader.join("gfxs") {
+            let key = Crc::from_string(path.name());
+            let data = path.read();
             gfx_blocks.insert(key, data);
         }
         info!("gfxs in {:?}", time.elapsed());
 
-        let animation_block_infos = serde_json::from_slice::<Vec<pak::AnimationBlockInfo>>(&fs::read(path.join("animation_block_infos.json")).unwrap()).unwrap();
+        let animation_block_infos = serde_json::from_slice::<Vec<pak::AnimationBlockInfo>>(&reader.join("animation_block_infos.json").read()).unwrap();
         let mut animations = HashMap::new();
-        for path in fs::read_dir(path.join("animations")).unwrap().filter_map(|x| x.ok().map(|x| x.path())) {
-            let key = Crc::from_string(path.file_stem().unwrap().to_str().unwrap());
-            let data = serde_json::from_slice::<Animation>(&fs::read(path).unwrap()).unwrap();
+        for path in reader.join("animations") {
+            let key = Crc::from_string(path.name());
+            let data = serde_json::from_slice::<Animation>(&path.read()).unwrap();
             animations.insert(key, data);
         }
         info!("animations in {:?}", time.elapsed());
 
         let mut textures = HashMap::new();
-        for path in fs::read_dir(path.join("textures")).unwrap().filter_map(|x| x.ok().map(|x| x.path()).filter(|x| x.extension().unwrap_or(OsStr::new("")).to_str() == Some("json"))) {
-            let key = Crc::from_string(path.file_stem().unwrap().to_str().unwrap());
+        for path in reader.join("textures").into_iter().filter(|x| x.path().extension().unwrap_or(OsStr::new("")).to_str() == Some("json")) {
+            let key = Crc::from_string(path.name());
             let data = bin::Tex::from_file(path);
             textures.insert(key, data);
         }
         info!("textures in {:?}", time.elapsed());
 
         let mut radiosity = HashMap::new();
-        for path in fs::read_dir(path.join("radiosity")).unwrap().filter_map(|x| x.ok().map(|x| x.path())) {
-            let key = Crc::from_string(path.file_stem().unwrap().to_str().unwrap());
-            let data = serde_json::from_slice::<bin::Radiosity>(&fs::read(path).unwrap()).unwrap();
+        for path in reader.join("radiosity") {
+            let key = Crc::from_string(path.name());
+            let data = serde_json::from_slice::<bin::Radiosity>(&path.read()).unwrap();
             radiosity.insert(key, data);
         }
-        info!("meshes in {:?}", time.elapsed());
+        info!("radiosity in {:?}", time.elapsed());
 
-
-        let pfield_infos = serde_json::from_slice::<Vec<pak::PFieldInfo>>(&fs::read(path.join("pfield_infos.json")).unwrap()).unwrap();
+        let pfield_infos = serde_json::from_slice::<Vec<pak::PFieldInfo>>(&reader.join("pfield_infos.json").read()).unwrap();
 
         info!("packed items in {:?}", time.elapsed());
 
-        let string_keys = types::StringKeys::from_file(path.join("string_keys"));
-        let sub_blocks1 = types::SubBlocks::from_file(path.join("sub_blocks1"), &lua);
-        let sub_blocks2 = types::SubBlocks::from_file(path.join("sub_blocks2"), &lua);
+        let string_keys = types::StringKeys::from_file(reader.join("string_keys"));
+        let sub_blocks1 = types::SubBlocks::from_file(reader.join("sub_blocks1"), &lua);
+        let sub_blocks2 = types::SubBlocks::from_file(reader.join("sub_blocks2"), &lua);
         info!("sub blocks in {:?}", time.elapsed());
 
         let vertex_formats = HashMap::new();

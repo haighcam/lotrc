@@ -1,11 +1,16 @@
 use std::io::Write;
 use mlua::prelude::*;
+use serde_json::{json, Map, Value};
+use std::collections::{HashMap, HashSet};
+use std::sync::{Mutex, Arc};
+
+use super::types::Crc;
 
 const LUA_BYTECODE: &str = include_str!("../res/lua-bytecode.github.io/lua-bytecode.lua");
 
 #[derive(Debug, Default)]
 pub struct LuaCompiler {
-    lua: Lua,
+    pub lua: Lua,
 }
 
 impl LuaCompiler {
@@ -37,4 +42,56 @@ impl LuaCompiler {
         let output = std::process::Command::new("java").args(&["-jar", &unluac, path.to_str().unwrap()]).output()?;
         Ok(String::from_utf8(output.stdout).unwrap())
     }
+}
+
+struct ScriptManager {
+    script_fns: Arc<HashMap<Crc, Vec<u8>>>,
+    loaded_scripts: Mutex<HashSet<Crc>>
+}
+
+impl LuaUserData for ScriptManager {
+    fn add_fields<'lua, F: LuaUserDataFields<'lua, Self>>(_fields: &mut F) {}
+
+    fn add_methods<'lua, M: LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method("import", |lua, this, val: String| {
+            let val = Crc::from_string(&val);
+            if this.loaded_scripts.lock().unwrap().insert(val.clone()) {
+                if let Some(val) = this.script_fns.get(&val) {
+                    lua.load(val).exec().unwrap();
+                }
+            }
+            Ok(())
+        });
+    }
+}
+
+pub fn load_anim(script_fns: Arc<HashMap<Crc, Vec<u8>>>, anim: String) -> Map<String, Value> {
+    let lua: Lua = Lua::new();
+    let script_manager = ScriptManager { script_fns, loaded_scripts: Mutex::new(HashSet::new()) };
+
+    lua.globals().set("importer", script_manager).unwrap();
+    lua.globals().set("import", lua.load("function (a) importer:import(a) end").eval::<LuaFunction>().unwrap()).unwrap();
+    lua.globals().set("inherit", lua.load("function (a) importer:import(a) end").eval::<LuaFunction>().unwrap()).unwrap();
+    let table = lua.create_table().unwrap();
+    table.set("Assert", lua.load("function (a,b) end").eval::<LuaFunction>().unwrap()).unwrap();
+    table.set("GetRandomNumber", lua.load("function () return 1 end").eval::<LuaFunction>().unwrap()).unwrap();
+    lua.globals().set("MgScript", table).unwrap();
+    lua.globals().set("DeepCopy", lua.load("function (a) return a end").eval::<LuaFunction>().unwrap()).unwrap();
+    lua.globals().set("AppendTableIndex", lua.load("function (t1, t2) for key, val in pairs(t2) do t1[key] = val end end").eval::<LuaFunction>().unwrap()).unwrap();
+    lua.globals().set("AppendTable", lua.load("function (t1, t2) table.insert(t1, t2) end").eval::<LuaFunction>().unwrap()).unwrap();
+    let table = lua.create_table().unwrap();
+    table.set("GetRootSpeed", lua.load("function (a) end").eval::<LuaFunction>().unwrap()).unwrap();
+    lua.globals().set("MgAnim", table).unwrap();
+
+    lua.load(format!("import(\"{}\")", anim)).exec().unwrap();
+    let tables = if lua.globals().contains_key("AnimTableUsed").unwrap() {
+        lua.globals().get::<_, LuaTable>("AnimTableUsed").unwrap().pairs::<LuaValue, String>().filter_map(|x| x.ok()).map(|(_, x)| x).collect()
+    } else {
+        vec!["AnimTable".to_string()]
+    };
+    tables.into_iter().flat_map(|k| lua.globals().get::<_, LuaTable>(k).unwrap().pairs::<String, LuaValue>().filter_map(|x| x.ok())).filter_map(|(k, v)| match v {
+        LuaValue::String(val) => Some((k, json!(val.to_str().unwrap()))),
+        LuaValue::Table(t) => Some((k, json!(t.pairs::<LuaValue, String>().filter_map(|x| x.ok()).map(|(_, x)| x).collect::<Vec<_>>()))),
+        _ => None,
+    }).collect::<Map<_,_>>()
 }
