@@ -876,7 +876,8 @@ pub struct GFXBlockInfo {
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct AnimationBlockInfo {
     pub key: Crc,
-    pub unk_1: u32,
+    #[serde(alias="unk_1")]
+    pub guid: u32,
     pub key_name: u32,
     pub offset: u32,
     pub size: u32,

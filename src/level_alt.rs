@@ -815,7 +815,7 @@ impl Level {
         info!("textures in {:?}", time.elapsed());
 
         for (key, data) in &self.radiosity {
-            writer.join("radiosity").join(key.to_string()).with_extension("gfx").write(&to_vec_pretty(&data).unwrap());
+            writer.join("radiosity").join(key.to_string()).with_extension("json").write(&to_vec_pretty(&data).unwrap());
         }
         info!("radiosity in {:?}", time.elapsed());
 

@@ -99,9 +99,14 @@ impl IntoIterator for Reader {
     type IntoIter = std::vec::IntoIter<Self>;
     fn into_iter(self) -> Self::IntoIter {
         let out: Vec<_> = match self {
-            Self::File(path) => fs::read_dir(path).unwrap()
-                .filter_map(|x| x.ok().map(|x| Self::File(x.path())))
-                .collect(),
+            Self::File(path) => if path.is_dir() {
+                fs::read_dir(path)
+                    .unwrap()
+                    .filter_map(|x| x.ok().map(|x| Self::File(x.path())))
+                    .collect()
+            } else {
+                vec![]
+            },
             Self::Zip(zip, path) => zip.lock().unwrap().file_names().filter_map(|x| {
                 let child = PathBuf::from(x);
                 child.starts_with(&path).then_some(Self::Zip(zip.clone(), child))

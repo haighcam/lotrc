@@ -10,3 +10,4 @@
 **/*.lua
 **/.ipynb_checkpoints
 Cargo.lock
+**/*.exe
