@@ -859,9 +859,11 @@ impl Level {
 
         let bin_header = serde_json::from_slice::<bin::Header>(&reader.join("bin_header.json").read()).unwrap();
         let bin_strings = types::Strings::from_file(reader.join("bin_strings"));
+        types::update_strings(&bin_strings.strings);
 
         let pak_header = serde_json::from_slice::<pak::Header>(&reader.join("pak_header.json").read()).unwrap();
         let pak_strings = types::Strings::from_file(reader.join("pak_strings"));
+        types::update_strings(&pak_strings.strings);
         info!("headers in {:?}", time.elapsed());
 
         let objas = serde_json::from_slice::<Vec<pak::ObjA>>(&reader.join("objas.json").read()).unwrap();

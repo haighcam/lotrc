@@ -187,7 +187,7 @@ pub fn update_strings(vals: &[String]) {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(from = "&str", into = "String")]
+#[serde(from = "U32String", into = "String")]
 pub enum Crc {
     Str(Box<str>),
     Key(u32)
@@ -215,14 +215,20 @@ impl Crc {
         }
     }
 
+    pub fn from_key(val: u32) -> Self {
+        match STRING_LOOKUP.lock().ok().and_then(|m| m.get(&val).map(|x| x.clone().into_boxed_str())) {
+            Some(str) => Self::Str(str),
+            None => Self::Key(val)
+        }
+    }
+
     pub fn from_string(val: &str) -> Self {
         if val.starts_with("0x") {
-            Self::Key(u32::from_str_radix(&val[2..], 16).unwrap())
+            Self::from_key(u32::from_str_radix(&val[2..], 16).unwrap())
         } else {
             Self::Str(val.into())
         }
     }
-
 }
 
 impl PartialEq for Crc {
@@ -259,11 +265,7 @@ impl Default for Crc {
 
 impl<O: ByteOrder> From<U32<O>> for Crc {
     fn from(value: U32<O>) -> Self {
-        let val: u32 = value.into();
-        match STRING_LOOKUP.lock().ok().and_then(|m| m.get(&val).map(|x| x.clone().into_boxed_str())) {
-            Some(str) => Self::Str(str),
-            None => Self::Key(val)
-        }
+        Self::from_key(value.into())
     }
 }
 
@@ -288,7 +290,23 @@ impl From<Crc> for String {
     }
 }
 
+impl From<U32String> for Crc {
+    fn from(value: U32String) -> Self {
+        match value {
+            U32String::U32(x) => Crc::from_key(x),
+            U32String::String(x) => Crc::from_string(&x),
+        }
+    }
+}
+
 impl OrderedData for Crc { type LE = U32<LE>; type BE = U32<BE>; }
+
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+enum U32String {
+    U32(u32),
+    String(String),
+}
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 #[serde(transparent)]

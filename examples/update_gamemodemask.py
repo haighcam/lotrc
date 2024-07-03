@@ -1,11 +1,6 @@
 import json
-import shutil
-import os
-import string
-import struct
 import zipfile
 from operator import attrgetter
-from pathlib import Path
 
 # try to add required objects to a gamemode by setting the corresponding gamemodemask
 
@@ -115,88 +110,44 @@ def find_type(vals, name):
 # grabs an object and all sub objects from a dumped level file
 # parts can be uncommented to print some stuff about 
 #    meshes, effects and scripts that are needed for the objects to work propoerly (or you can try to find everything in a dumped json file
-def copy_tree(vals, guid, processed=None, gamemodemask=None, scripts=None, meshes=None, effects=None):
+def copy_tree(vals, guid, gamemodemask=None, processed=None, infos=None):
     if processed is None:
         processed = set()
-    if scripts is None:
-        scripts = set()
-    if meshes is None:
-        meshes = set()
-    if effects is None:
-        effects = set()
+    if infos is None:
+        infos = set()
     elif guid in processed:
         return []
     processed.add(guid)
     obj = find_obj(vals, guid)
     ty = find_type(vals, obj['type'])
     objs = [obj]
-    if (val:=obj['fields'].get('AnimationScript')) is not None and val != '':
-        scripts.add(val)
-    if (val:=obj['fields'].get('InputEventScript')) is not None and val != '':
-        scripts.add(val)
-    if (val:=obj['fields'].get('EffectLookupTable')) is not None and val != '':
-        scripts.add(val)
-    if (val:=obj['fields'].get('CameraScript')) is not None and val != '':
-        scripts.add(val)
-    if (val:=obj['fields'].get('BehaviorScriptList')) is not None:
-        scripts.update(val)
-    if (val:=obj['fields'].get('mesh')) is not None and val != '':
-        meshes.add(val)
-    if (val:=obj['fields'].get('PhysMesh')) is not None and val != '':
-        meshes.add(val)
-    if (val:=obj['fields'].get('meshes')) is not None:
-        meshes.update(val)
     if gamemodemask is not None and 'GameModeMask' in obj['fields']:
         obj['fields']['GameModeMask'] |= gamemodemask
     for t in ty['fields']:
         if t['type'] == 'guid':
             val = obj['fields'][t['name']]
             if val != 0:
-                objs.extend(copy_tree(vals, val, processed, gamemodemask, scripts, meshes, effects))
+                objs.extend(copy_tree(vals, val, processed=processed, gamemodemask=gamemodemask, infos=infos))
         elif t['type'] == 'objectlist':
             for val in obj['fields'][t['name']]:
-                objs.extend(copy_tree(vals, val, processed, gamemodemask, scripts, meshes, effects))
-        elif 'Effect' in t['name']:
-            if t['type'] == 'crc' and (val:=obj['fields'][t['name']]) != '':
-                effects.add(val)
-            elif t['type'] == 'crclist':
-                effects.update(obj['fields'][t['name']])
+                objs.extend(copy_tree(vals, val, processed=processed, gamemodemask=gamemodemask, infos=infos))
+        elif (t['type'] == 'crc' or t['type'] == 'string') and (val:=obj['fields'][t['name']]) != '':
+            infos.add(val.casefold())
+        elif t['type'] == 'crclist' or t['type'] == 'stringlist':
+            infos.update([i.casefold() for i in obj['fields'][t['name']]])
     return objs
 
-def scan(vals, guid, gamemodemask=None, scripts=None, meshes=None, effects=None):
-    if scripts is None:
-        scripts = set()
-    if meshes is None:
-        meshes = set()
-    if effects is None:
-        effects = set()
+def scan(vals, guid, infos=None):
+    if infos is None:
+        infos = set()
     obj = find_obj(vals, guid)
     ty = find_type(vals, obj['type'])
     objs = [obj]
-    if (val:=obj['fields'].get('AnimationScript')) is not None and val != '':
-        scripts.add(val)
-    if (val:=obj['fields'].get('InputEventScript')) is not None and val != '':
-        scripts.add(val)
-    if (val:=obj['fields'].get('EffectLookupTable')) is not None and val != '':
-        scripts.add(val)
-    if (val:=obj['fields'].get('CameraScript')) is not None and val != '':
-        scripts.add(val)
-    if (val:=obj['fields'].get('BehaviorScriptList')) is not None:
-        scripts.update(val)
-    if (val:=obj['fields'].get('mesh')) is not None and val != '':
-        meshes.add(val)
-    if (val:=obj['fields'].get('PhysMesh')) is not None and val != '':
-        meshes.add(val)
-    if (val:=obj['fields'].get('meshes')) is not None:
-        meshes.update(val)
-    if gamemodemask is not None and 'GameModeMask' in obj['fields']:
-        obj['fields']['GameModeMask'] |= gamemodemask
     for t in ty['fields']:
-        if 'Effect' in t['name']:
-            if t['type'] == 'crc' and (val:=obj['fields'][t['name']]) != '':
-                effects.add(val)
-            elif t['type'] == 'crclist':
-                effects.update(obj['fields'][t['name']])
+        if (t['type'] == 'crc' or t['type'] == 'string') and (val:=obj['fields'][t['name']]) != '':
+            infos.add(val.casefold())
+        elif t['type'] == 'crclist' or t['type'] == 'stringlist':
+            infos.update([i.casefold() for i in obj['fields'][t['name']]])
                 
 to_remove = set()
 to_add = {}
@@ -213,7 +164,6 @@ with ZipFile(src_path, "a", compression=zipfile.ZIP_DEFLATED) as src:
             gamemodemask = 1 << i
             print(f'found gamemode at index {i}, {gamemodemask}')
             break
-            
 
     with src.open('sub_blocks1/level.json', "r") as f:
         vals = json.load(f)
@@ -222,12 +172,13 @@ with ZipFile(src_path, "a", compression=zipfile.ZIP_DEFLATED) as src:
     print("updating GameModeMask in level data")
     gmd = find_obj(vals, gamemodeguid)
     # gmd['fields']['GameModeMask'] = -1
-    objs = copy_tree(vals, gamemodeguid)
+    processed = set()
+    objs = copy_tree(vals, gamemodeguid, processed=processed)
     guids = set(i['fields']['guid'] for i in objs)
     for layer in gmd['fields']['layers']:
         for i in get_layer(vals, layer):
             if i['fields']['guid'] not in guids:
-                for j in copy_tree(vals, i['fields']['guid']):
+                for j in copy_tree(vals, i['fields']['guid'], processed=processed):
                     if j['fields']['guid'] not in guids:
                         guids.add(j['fields']['guid'])
                         objs.append(j)
@@ -237,85 +188,67 @@ with ZipFile(src_path, "a", compression=zipfile.ZIP_DEFLATED) as src:
     to_remove.add('sub_blocks1/level.json')
     to_add['sub_blocks1/level.json'] = json.dumps(vals, indent=1)
 
-    # uncomment this to just add everything to the gamemeode
-    for f_name in files.values():
-        if f_name.startswith('animations') or f_name.startswith('effects') or f_name.startswith('meshes') or f_name.startswith('textures'):
-            if not f_name.endswith('json'):
-                continue
-            obj = src.read(f_name)
+    # get all used scripts, meshes, effects and animations 
+    # if the gamemode is brand new then this is the same objects as above
+    print("finding objects used in gamemode")
+    infos = set()
+    for i in vals['objs']:
+        if 'GameModeMask' in i['fields'] and (i['fields']['GameModeMask'] & gamemodemask) == 0: continue
+        scan(vals, i['fields']['guid'], infos=infos)
+
+    scripts = set([i for i in infos if f'sub_blocks1/{i}.lua' in files])
+
+    for i in scripts:
+        if not i.startswith("anm_"): continue
+        with src.open(files[f'animation_tables/{i}.json'], "r") as f:
+            anim_table = json.load(f)
+        for anim in anim_table.values():
+            if isinstance(anim, list):
+                infos.update([i.casefold() for i in anim])
+            else:
+                infos.add(anim.casefold())
+
+    print("mesh / effects / anims")
+    textures = set()
+    for k in infos:
+        f_name = f"meshes/{k}.json"
+        if f_name in files:
+            obj = src.read(files[f_name])
             a = obj.find(b'"gamemodemask": ') + len(b'"gamemodemask": ')
             b = obj.find(b',', a)
             obj = obj[:a] + str(gamemodemask | int(obj[a:b])).encode() + obj[b:]
             to_remove.add(f_name)
             to_add[f_name] = obj
-
-    # get all used scripts, meshes, effects and animations 
-    # if the gamemode is brand new then this is the same objects as above, however this will also
-    # does not seem to get all animations / meshes so the using the above 'add everything approach'
-    # print("finding objects used in gamemode")
-    # scripts = set()
-    # meshes = set()
-    # effects = set()
-    # for i in vals['objs']:
-    #     if 'GameModeMask' in i['fields'] and (i['fields']['GameModeMask'] & gamemodemask) == 0: continue
-    #     scan(vals, i['fields']['guid'], scripts=scripts, meshes=meshes, effects=effects)
-
-    # animations = set()
-    # for i in scripts:
-    #     if not i.startswith("ANM_"): continue
-    #     with src.open(f'animation_tables/{i}.json', "r") as f:
-    #         anim_table = json.load(f)
-    #     for anim in anim_table.values():
-    #         if isinstance(anim, list):
-    #             animations.update(anim)
-    #         else:
-    #             animations.add(anim)
-
-    # print("updating meshes")
-    # textures = set()
-    # for k in meshes:
-    #     f_name = f"meshes/{k}.json"
-    #     if (f_name := files.get(f_name.casefold())) is None: continue
-    #     with src.open(f_name, "r") as f:
-    #         mesh = json.load(f)
-    #     mesh['info']['gamemodemask'] |= gamemodemask
-    #     to_remove.add(f_name)
-    #     to_add[f_name] = json.dumps(mesh, indent=1)
+            textures.update([val.decode().casefold() for i in obj.split(b'tex_')[1:] if i[:4] != b'data' and (val:=i.split(b'"')[2]) != b''])
+        f_name = f"effects/{k}.json"
+        if f_name in files:
+            obj = src.read(files[f_name])
+            a = obj.find(b'"gamemodemask": ') + len(b'"gamemodemask": ')
+            b = obj.find(b',', a)
+            obj = obj[:a] + str(gamemodemask | int(obj[a:b])).encode() + obj[b:]
+            to_remove.add(f_name)
+            to_add[f_name] = obj
+        f_name = f"animations/{k}.json"
+        if f_name in files:
+            obj = src.read(files[f_name])
+            a = obj.find(b'"gamemodemask": ') + len(b'"gamemodemask": ')
+            b = obj.find(b',', a)
+            obj = obj[:a] + str(gamemodemask | int(obj[a:b])).encode() + obj[b:]
+            to_remove.add(f_name)
+            to_add[f_name] = obj
     
-    # print("updating textures")
-    # for k in textures:
-    #     f_name = f"textures/{k}.json"
-    #     if (f_name := files.get(f_name.casefold())) is None: continue
-    #     tex = src.read(f_name)
-    #     a = tex.find(b'"gamemodemask": ') + len(b'"gamemodemask": ')
-    #     b = tex.find(b',', a)
-    #     tex = tex[:a] + str(gamemodemask | int(tex[a:b])).encode() + tex[b:]
-    #     to_remove.add(f_name)
-    #     to_add[f_name] = tex
-    
-    # print("updating animations")
-    # for k in animations:
-    #     f_name = f"animations/{k}.json"
-    #     if (f_name := files.get(f_name.casefold())) is None: continue
-    #     anim = src.read(f_name)
-    #     a = anim.find(b'"gamemodemask": ') + len(b'"gamemodemask": ')
-    #     b = anim.find(b',', a)
-    #     anim = anim[:a] + str(gamemodemask | int(anim[a:b])).encode() + anim[b:]
-    #     to_remove.add(f_name)
-    #     to_add[f_name] = anim
-
-    # print("updating effects")
-    # for k in effects:
-    #     f_name = f"effects/{k}.json"
-    #     if (f_name := files.get(f_name.casefold())) is None: continue
-    #     effect = src.read(f_name)
-    #     a = effect.find(b'"gamemodemask": ') + len(b'"gamemodemask": ')
-    #     b = effect.find(b',', a)
-    #     effect = effect[:a] + str(gamemodemask | int(effect[a:b])).encode() + effect[b:]
-    #     to_remove.add(f_name)
-    #     to_add[f_name] = effect
-
+    print("textures")
+    for k in textures:
+        f_name = f"textures/{k}.json"
+        if f_name in files:
+            obj = src.read(files[f_name])
+            a = obj.find(b'"gamemodemask": ') + len(b'"gamemodemask": ')
+            b = obj.find(b',', a)
+            obj = obj[:a] + str(gamemodemask | int(obj[a:b])).encode() + obj[b:]
+            to_remove.add(f_name)
+            to_add[f_name] = obj
+        
     print("applying changes")
-    src.remove(*to_remove)
+    src.remove(*[files[i] for i in to_remove])
     for f_name, data in to_add.items():
-        src.writestr(f_name, data)
+        src.writestr(files[f_name], data)

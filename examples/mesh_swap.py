@@ -97,15 +97,15 @@ class ZipFile(zipfile.ZipFile):
         # seek to the start of the central dir
         fp.seek(self.start_dir)
 
-to_remove = []
-to_add = []
+to_remove = set()
+to_add = {}
 
 with ZipFile(src_path, "r") as src, ZipFile(dst_path, "a", compression=zipfile.ZIP_DEFLATED) as dst:
-    src_items = set(i.filename for i in src.filelist)
-    dst_items = set(i.filename for i in dst.filelist)
+    src_files = {i.filename.casefold(): i.filename for i in src.filelist}
+    dst_files = {i.filename.casefold(): i.filename for i in dst.filelist}
 
     # dump the level block to move relevant infomation
-    with dst.open('sub_blocks1/level.json', "r") as f:
+    with dst.open(dst_files['sub_blocks1/level.json'], "r") as f:
         vals = json.load(f)
 
     for i, obj in enumerate(vals['objs']):
@@ -121,64 +121,68 @@ with ZipFile(src_path, "r") as src, ZipFile(dst_path, "a", compression=zipfile.Z
         old_mesh = vals['objs'][i]['fields']['mesh']
         vals['objs'][i]['fields']['mesh'] = new_mesh
         
-    to_remove.append('sub_blocks1/level.json')
-    to_add.append(('sub_blocks1/level.json', json.dumps(vals, indent=1)))
+    to_remove.add('sub_blocks1/level.json')
+    to_add[dst_files['sub_blocks1/level.json']] = json.dumps(vals, indent=1)
     with dst.open(f"meshes/{old_mesh}.json", "r") as f:
         old_mesh = json.load(f)
     gamemodemask = old_mesh['info']['gamemodemask']
 
     textures = set()
-    for k in [new_mesh]:
+    for k in [new_mesh.casefold()]:
         f_name = f"meshes/{k}.json"
-        if f_name in dst_items:
-            with dst.open(f_name, "r") as f:
-                mesh = json.load(f)
-            mesh['info']['gamemodemask'] |= gamemodemask
-            to_remove.append(f_name)
-            to_add.append((f_name, json.dumps(mesh, indent=1)))
-        else:
-            with src.open(f_name, "r") as f:
-                mesh = json.load(f)
-            mesh['info']['gamemodemask'] = gamemodemask
-            to_add.append((f_name, json.dumps(mesh, indent=1)))
-        for mat in [j['base'] if 'base' in j else j for i in mesh['mats'] for j in i.values()]:
-            textures.update([mat[f'tex_{i}'] for i in range(2,18) if mat[f'tex_{i}'] != ''])
+        if f_name in dst_files:
+            obj = dst.read(dst_files[f_name])
+            a = obj.find(b'"gamemodemask": ') + len(b'"gamemodemask": ')
+            b = obj.find(b',', a)
+            obj = obj[:a] + str(gamemodemask | int(obj[a:b])).encode() + obj[b:]
+            to_remove.add(f_name)
+            to_add[dst_files[f_name]] = obj
+            textures.update([val.decode().casefold() for i in obj.split(b'tex_')[1:] if i[:4] != b'data' and (val:=i.split(b'"')[2]) != b''])
+        elif f_name in src_files:
+            obj = src.read(src_files[f_name])
+            a = obj.find(b'"gamemodemask": ') + len(b'"gamemodemask": ')
+            b = obj.find(b',', a)
+            obj = obj[:a] + str(gamemodemask).encode() + obj[b:]
+            to_add[src_files[f_name]] = obj
+            textures.update([val.decode().casefold() for i in obj.split(b'tex_')[1:] if i[:4] != b'data' and (val:=i.split(b'"')[2]) != b''])
     
     for k in textures:
         f_name = f"textures/{k}.json"
         f_name_alt = f"textures/{k}.dds"
-        if f_name in dst_items:
-            with dst.open(f_name, "r") as f:
-                tex = json.load(f)
-            tex['gamemodemask'] |= gamemodemask
-            to_remove.append(f_name)
-            to_add.append((f_name, json.dumps(tex, indent=1)))
-        else:
-            with src.open(f_name, "r") as f:
-                tex = json.load(f)
-            tex['gamemodemask'] = gamemodemask
-            to_add.append((f_name, json.dumps(tex, indent=1)))
-            to_add.append((f_name_alt, src.read(f_name_alt)))
+        if f_name in dst_files:
+            obj = dst.read(dst_files[f_name])
+            a = obj.find(b'"gamemodemask": ') + len(b'"gamemodemask": ')
+            b = obj.find(b',', a)
+            obj = obj[:a] + str(gamemodemask | int(obj[a:b])).encode() + obj[b:]
+            to_remove.add(f_name)
+            to_add[dst_files[f_name]] = obj
+        elif f_name in src_files:
+            obj = src.read(src_files[f_name])
+            a = obj.find(b'"gamemodemask": ') + len(b'"gamemodemask": ')
+            b = obj.find(b',', a)
+            obj = obj[:a] + str(gamemodemask).encode() + obj[b:]
+            to_add[src_files[f_name]] = obj
+            to_add[src_files[f_name_alt]] = src.read(src_files[f_name_alt])
 
-    with src.open('bin_strings.json', "r") as f:
+    with src.open(src_files['bin_strings.json'], "r") as f:
         bin_strings_src = json.load(f)
-    with src.open('pak_strings.json', "r") as f:
+    with src.open(src_files['pak_strings.json'], "r") as f:
         pak_strings_src = json.load(f)
-    with dst.open('bin_strings.json', "r") as f:
+    with dst.open(dst_files['bin_strings.json'], "r") as f:
         bin_strings_dst = json.load(f)
-    with dst.open('pak_strings.json', "r") as f:
+    with dst.open(dst_files['pak_strings.json'], "r") as f:
         pak_strings_dst = json.load(f)
         
     pak_strings = set(pak_strings_dst)
     bin_strings = set(bin_strings_dst)
     pak_strings_dst.extend([i for i in pak_strings_src if i not in pak_strings])
     bin_strings_dst.extend([i for i in bin_strings_src if i not in bin_strings])
-    
-    to_remove.append('pak_strings.json')
-    to_remove.append('bin_strings.json')
-    to_add.append(('pak_strings.json', json.dumps(pak_strings_dst, indent=1)))
-    to_add.append(('bin_strings.json', json.dumps(bin_strings_dst, indent=1)))
 
-    dst.remove(*to_remove)
-    for f_name, data in to_add:
+    to_remove.add('pak_strings.json')
+    to_remove.add('bin_strings.json')
+    to_add[dst_files['pak_strings.json']] = json.dumps(pak_strings_dst, indent=1)
+    to_add[dst_files['bin_strings.json']] = json.dumps(bin_strings_dst, indent=1)
+
+    dst.remove(*[dst_files[i] for i in to_remove])
+    for f_name, data in to_add.items():
         dst.writestr(f_name, data)

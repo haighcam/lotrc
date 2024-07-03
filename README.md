@@ -29,6 +29,7 @@ Options:
   -o, --output <OUTPUT>            Output folder
   -c, --compile                    Compile the inputs to new levels / level_infos
   -d, --dump                       Dump the inputs to an editable form
+  -k, --hash                       Convert input strings into CRCs
       --lua-decomp                 Decompile lua files when loading a level
       --lua-recomp                 Compile lua files when loading a level, also converts endianess for xbox lua files
       --compression <COMPRESSION>  Zlib compression level to use when compiling levels, lower numbers are faster

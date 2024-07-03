@@ -408,7 +408,7 @@ pub struct MatBase {
     pub unk_84: u32,
     pub unk_85: u32,
     pub mat_extra_offset: u32,
-    pub key: u32,
+    pub key: Crc,
     pub unk_88: u32,
     pub z_89: u32,
 }
@@ -878,7 +878,7 @@ pub struct AnimationBlockInfo {
     pub key: Crc,
     #[serde(alias="unk_1")]
     pub guid: u32,
-    pub key_name: u32,
+    pub key_name: Crc,
     pub offset: u32,
     pub size: u32,
     pub size_comp: u32,

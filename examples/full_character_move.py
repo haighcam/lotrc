@@ -125,52 +125,31 @@ def find_type(vals, name):
 # grabs an object and all sub objects from a dumped level file
 # parts can be uncommented to print some stuff about 
 #    meshes, effects and scripts that are needed for the objects to work propoerly (or you can try to find everything in a dumped json file
-def copy_tree(vals, guid, processed=None, gamemodemask=None, scripts=None, meshes=None, effects=None):
+def copy_tree(vals, guid, gamemodemask=None, processed=None, infos=None):
     if processed is None:
         processed = set()
-    if scripts is None:
-        scripts = set()
-    if meshes is None:
-        meshes = set()
-    if effects is None:
-        effects = set()
+    if infos is None:
+        infos = set()
     elif guid in processed:
         return []
     processed.add(guid)
     obj = find_obj(vals, guid)
     ty = find_type(vals, obj['type'])
     objs = [obj]
-    if (val:=obj['fields'].get('AnimationScript')) is not None and val != '':
-        scripts.add(val)
-    if (val:=obj['fields'].get('InputEventScript')) is not None and val != '':
-        scripts.add(val)
-    if (val:=obj['fields'].get('EffectLookupTable')) is not None and val != '':
-        scripts.add(val)
-    if (val:=obj['fields'].get('CameraScript')) is not None and val != '':
-        scripts.add(val)
-    if (val:=obj['fields'].get('BehaviorScriptList')) is not None:
-        scripts.update(val)
-    if (val:=obj['fields'].get('mesh')) is not None and val != '':
-        meshes.add(val)
-    if (val:=obj['fields'].get('PhysMesh')) is not None and val != '':
-        meshes.add(val)
-    if (val:=obj['fields'].get('meshes')) is not None:
-        meshes.update(val)
     if gamemodemask is not None and 'GameModeMask' in obj['fields']:
         obj['fields']['GameModeMask'] |= gamemodemask
     for t in ty['fields']:
         if t['type'] == 'guid':
             val = obj['fields'][t['name']]
             if val != 0:
-                objs.extend(copy_tree(vals, val, processed, gamemodemask, scripts, meshes, effects))
+                objs.extend(copy_tree(vals, val, processed=processed, gamemodemask=gamemodemask, infos=infos))
         elif t['type'] == 'objectlist':
             for val in obj['fields'][t['name']]:
-                objs.extend(copy_tree(vals, val, processed, gamemodemask, scripts, meshes, effects))
-        elif 'Effect' in t['name']:
-            if t['type'] == 'crc' and (val:=obj['fields'][t['name']]) != '':
-                effects.add(val)
-            elif t['type'] == 'crclist':
-                effects.update(obj['fields'][t['name']])
+                objs.extend(copy_tree(vals, val, processed=processed, gamemodemask=gamemodemask, infos=infos))
+        elif (t['type'] == 'crc' or t['type'] == 'string') and (val:=obj['fields'][t['name']]) != '':
+            infos.add(val.casefold())
+        elif t['type'] == 'crclist' or t['type'] == 'stringlist':
+            infos.update([i.casefold() for i in obj['fields'][t['name']]])
     return objs
     
 def get_lua_strings(data):
@@ -190,54 +169,49 @@ def get_lua_strings(data):
                         valid = False
                         break
             if valid:
-                strings.append(data[off:off+l].decode())
+                strings.append(data[off:off+l].decode().casefold())
                 off += l
         off += 1
     return strings
 
-to_remove = []
-to_add = []
+to_remove = set()
+to_add = {}
 
 with ZipFile(src_path, "r") as src, ZipFile(dst_path, "a", compression=zipfile.ZIP_DEFLATED) as dst:
-    src_items = set(i.filename for i in src.filelist)
-    dst_items = set(i.filename for i in dst.filelist)
+    src_files = {i.filename.casefold(): i.filename for i in src.filelist}
+    dst_files = {i.filename.casefold(): i.filename for i in dst.filelist}
 
     # dump the level block to move relevant infomation
-    with dst.open('sub_blocks1/level.json', "r") as f:
+    with dst.open(dst_files['sub_blocks1/level.json'], "r") as f:
         vals_dest = json.load(f)
-    with src.open('sub_blocks1/level.json', "r") as f:
+    with src.open(src_files['sub_blocks1/level.json'], "r") as f:
         vals = json.load(f)
 
     # get the needed objects and items associated with them
-    scripts = set()
-    meshes = set()
-    effects = set()
-    class_items = copy_tree(vals, class_guid, gamemodemask=gamemodemask, scripts=scripts, meshes=meshes, effects=effects)
-
-    # effects = effects.intersection(levelSrc.keys[i] for i in levelSrc.effects.keys())
+    infos = set()
+    class_items = copy_tree(vals, class_guid, infos=infos)
+    scripts = set([i for i in infos if f'sub_blocks1/{i}.lua' in src_files])
     
     script_strings = {}
-    script_data = {}
-    for path in src_items:
+    for path in src_files.values():
         if path.endswith('.lua'):
-            name = Path(path).stem
+            name = Path(path).stem.casefold()
             data = src.read(path)
             strings = set(get_lua_strings(data))
             script_strings[name] = strings
-            script_data[name] = data
     
-    animations = set()
     for i in scripts:
-        if not i.startswith("ANM_"): continue
-        with src.open(f'animation_tables/{i}.json', "r") as f:
+        if not i.startswith("anm_"): continue
+        f_name = src_files[f'animation_tables/{i}.json']
+        with src.open(f_name, "r") as f:
             anim_table = json.load(f)
         for anim in anim_table.values():
             if isinstance(anim, list):
-                animations.update(anim)
+                infos.update([i.casefold() for i in anim])
             else:
-                animations.add(anim)
+                infos.add(anim.casefold())
     
-    old_scripts = set(Path(i).stem for i in dst_items if i.endswith('.lua'))
+    old_scripts = set(Path(i).stem for i in dst_files.keys() if i.endswith('.lua'))
     scripts.difference_update(old_scripts)
     new_scripts = set()
     common_scripts = set()
@@ -251,77 +225,80 @@ with ZipFile(src_path, "r") as src, ZipFile(dst_path, "a", compression=zipfile.Z
             scripts.add(k)
 
     textures = set()
-    for k in meshes:
+    for k in infos:
         f_name = f"meshes/{k}.json"
-        if f_name in dst_items:
-            with dst.open(f_name, "r") as f:
-                mesh = json.load(f)
-            mesh['info']['gamemodemask'] |= gamemodemask
-            to_remove.append(f_name)
-            to_add.append((f_name, json.dumps(mesh, indent=1)))
-        else:
-            with src.open(f_name, "r") as f:
-                mesh = json.load(f)
-            mesh['info']['gamemodemask'] = gamemodemask
-            to_add.append((f_name, json.dumps(mesh, indent=1)))
-        for mat in [j['base'] if 'base' in j else j for i in mesh['mats'] for j in i.values()]:
-            textures.update([mat[f'tex_{i}'] for i in range(2,18) if mat[f'tex_{i}'] != ''])
-    
+        if f_name in dst_files:
+            obj = dst.read(dst_files[f_name])
+            a = obj.find(b'"gamemodemask": ') + len(b'"gamemodemask": ')
+            b = obj.find(b',', a)
+            obj = obj[:a] + str(gamemodemask | int(obj[a:b])).encode() + obj[b:]
+            to_remove.add(f_name)
+            to_add[dst_files[f_name]] = obj
+            textures.update([val.decode().casefold() for i in obj.split(b'tex_')[1:] if i[:4] != b'data' and (val:=i.split(b'"')[2]) != b''])
+        elif f_name in src_files:
+            obj = src.read(src_files[f_name])
+            a = obj.find(b'"gamemodemask": ') + len(b'"gamemodemask": ')
+            b = obj.find(b',', a)
+            obj = obj[:a] + str(gamemodemask).encode() + obj[b:]
+            to_add[src_files[f_name]] = obj
+            textures.update([val.decode().casefold() for i in obj.split(b'tex_')[1:] if i[:4] != b'data' and (val:=i.split(b'"')[2]) != b''])
+
+        f_name = f"effects/{k}.json"
+        if f_name in dst_files:
+            obj = dst.read(dst_files[f_name])
+            a = obj.find(b'"gamemodemask": ') + len(b'"gamemodemask": ')
+            b = obj.find(b',', a)
+            obj = obj[:a] + str(gamemodemask | int(obj[a:b])).encode() + obj[b:]
+            to_remove.add(f_name)
+            to_add[dst_files[f_name]] = obj
+        elif f_name in src_files:
+            obj = src.read(src_files[f_name])
+            a = obj.find(b'"gamemodemask": ') + len(b'"gamemodemask": ')
+            b = obj.find(b',', a)
+            obj = obj[:a] + str(gamemodemask).encode() + obj[b:]
+            to_add[src_files[f_name]] = obj
+        
+        f_name = f"animations/{k}.json"
+        if f_name in dst_files:
+            obj = dst.read(dst_files[f_name])
+            a = obj.find(b'"gamemodemask": ') + len(b'"gamemodemask": ')
+            b = obj.find(b',', a)
+            obj = obj[:a] + str(gamemodemask | int(obj[a:b])).encode() + obj[b:]
+            to_remove.add(f_name)
+            to_add[dst_files[f_name]] = obj
+        elif f_name in src_files:
+            obj = src.read(src_files[f_name])
+            a = obj.find(b'"gamemodemask": ') + len(b'"gamemodemask": ')
+            b = obj.find(b',', a)
+            obj = obj[:a] + str(gamemodemask).encode() + obj[b:]
+            to_add[src_files[f_name]] = obj
+
     for k in textures:
         f_name = f"textures/{k}.json"
         f_name_alt = f"textures/{k}.dds"
-        if f_name in dst_items:
-            with dst.open(f_name, "r") as f:
-                tex = json.load(f)
-            tex['gamemodemask'] |= gamemodemask
-            to_remove.append(f_name)
-            to_add.append((f_name, json.dumps(tex, indent=1)))
-        else:
-            with src.open(f_name, "r") as f:
-                tex = json.load(f)
-            tex['gamemodemask'] = gamemodemask
-            to_add.append((f_name, json.dumps(tex, indent=1)))
-            to_add.append((f_name_alt, src.read(f_name_alt)))
-    
-    anims = []
-    for k in animations:
-        f_name = f"animations/{k}.json"
-        if f_name in dst_items:
-            anim = dst.read(f_name)
-            a = anim.find(b'"gamemodemask": ') + len(b'"gamemodemask": ')
-            b = anim.find(b',', a)
-            anim = anim[:a] + str(gamemodemask | int(anim[a:b])).encode() + anim[b:]
-            to_remove.append(f_name)
-            to_add.append((f_name, anim))
-        else:
-            anim = src.read(f_name)
-            a = anim.find(b'"gamemodemask": ') + len(b'"gamemodemask": ')
-            b = anim.find(b',', a)
-            anim = anim[:a] + str(gamemodemask).encode() + anim[b:]
-            to_add.append((f_name, anim))
-    
-    for k in effects:
-        f_name = f"effects/{k}.json"
-        if f_name in dst_items:
-            with dst.open(f_name, "r") as f:
-                effect = json.load(f)
-            effect['gamemodemask'] |= gamemodemask
-            to_remove.append(f_name)
-            to_add.append((f_name, json.dumps(effect, indent=1)))
-        elif f_name in src_items:
-            with src.open(f_name, "r") as f:
-                effect = json.load(f)
-            effect['gamemodemask'] = gamemodemask
-            to_add.append((f_name, json.dumps(effect, indent=1)))
+        if f_name in dst_files:
+            obj = dst.read(dst_files[f_name])
+            a = obj.find(b'"gamemodemask": ') + len(b'"gamemodemask": ')
+            b = obj.find(b',', a)
+            obj = obj[:a] + str(gamemodemask | int(obj[a:b])).encode() + obj[b:]
+            to_remove.add(f_name)
+            to_add[dst_files[f_name]] = obj
+        elif f_name in src_files:
+            obj = src.read(src_files[f_name])
+            a = obj.find(b'"gamemodemask": ') + len(b'"gamemodemask": ')
+            b = obj.find(b',', a)
+            obj = obj[:a] + str(gamemodemask).encode() + obj[b:]
+            to_add[src_files[f_name]] = obj
+            to_add[src_files[f_name_alt]] = src.read(src_files[f_name_alt])
 
-    with dst.open('sub_blocks1/index.json', "r") as f:
+    with dst.open(dst_files['sub_blocks1/index.json'], "r") as f:
         index = json.load(f)
     for script in new_scripts:
-        index['block_headers'].insert(-3, {'key': script+'.lua', 'offset': 0, 'size': 0})
-        f_name = f"sub_blocks1/{script}.lua"
-        to_add.append((f_name, src.read(f_name)))
-    to_remove.append('sub_blocks1/index.json')
-    to_add.append(('sub_blocks1/index.json', json.dumps(index, indent=1)))
+        f_name = src_files[f"sub_blocks1/{script}.lua"]
+        index['block_headers'].insert(-3, {'key': f_name[len("sub_blocks1/"):], 'offset': 0, 'size': 0})
+        to_add[f_name] = src.read(f_name)
+    to_remove.add('sub_blocks1/index.json')
+    to_add[dst_files['sub_blocks1/index.json']] = json.dumps(index, indent=1)
     
     # add the soundbanks for the balrog to the team death match gamemode. You'll need to check the source level.json to which banks (if any) are needed
     o = find_obj(vals_dest, gamemode_guid)
@@ -351,16 +328,16 @@ with ZipFile(src_path, "r") as src, ZipFile(dst_path, "a", compression=zipfile.Z
         if 'GameModeMask' in i['fields']:
             i['fields']['GameModeMask'] |= gamemodemask
     
-    to_remove.append('sub_blocks1/level.json')
-    to_add.append(('sub_blocks1/level.json', json.dumps(vals_dest, indent=1)))
+    to_remove.add('sub_blocks1/level.json')
+    to_add[dst_files['sub_blocks1/level.json']] = json.dumps(vals_dest, indent=1)
 
-    with src.open('bin_strings.json', "r") as f:
+    with src.open(src_files['bin_strings.json'], "r") as f:
         bin_strings_src = json.load(f)
-    with src.open('pak_strings.json', "r") as f:
+    with src.open(src_files['pak_strings.json'], "r") as f:
         pak_strings_src = json.load(f)
-    with dst.open('bin_strings.json', "r") as f:
+    with dst.open(dst_files['bin_strings.json'], "r") as f:
         bin_strings_dst = json.load(f)
-    with dst.open('pak_strings.json', "r") as f:
+    with dst.open(dst_files['pak_strings.json'], "r") as f:
         pak_strings_dst = json.load(f)
         
     pak_strings = set(pak_strings_dst)
@@ -368,11 +345,11 @@ with ZipFile(src_path, "r") as src, ZipFile(dst_path, "a", compression=zipfile.Z
     pak_strings_dst.extend([i for i in pak_strings_src if i not in pak_strings])
     bin_strings_dst.extend([i for i in bin_strings_src if i not in bin_strings])
 
-    to_remove.append('pak_strings.json')
-    to_remove.append('bin_strings.json')
-    to_add.append(('pak_strings.json', json.dumps(pak_strings_dst, indent=1)))
-    to_add.append(('bin_strings.json', json.dumps(bin_strings_dst, indent=1)))
+    to_remove.add('pak_strings.json')
+    to_remove.add('bin_strings.json')
+    to_add[dst_files['pak_strings.json']] = json.dumps(pak_strings_dst, indent=1)
+    to_add[dst_files['bin_strings.json']] = json.dumps(bin_strings_dst, indent=1)
 
-    dst.remove(*to_remove)
-    for f_name, data in to_add:
+    dst.remove(*[dst_files[i] for i in to_remove])
+    for f_name, data in to_add.items():
         dst.writestr(f_name, data)

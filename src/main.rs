@@ -81,6 +81,10 @@ struct Commands {
     #[arg(short, long)]
     dump: bool,
 
+    /// Convert input strings into CRCs
+    #[arg(short='k', long)]
+    hash: bool,
+
     #[arg(long, hide=true)]
     alt_comp: bool
 }
@@ -200,10 +204,17 @@ fn main() {
         *types::UNLUAC.lock().unwrap() = unluac;
     }
 
-    let exe_dir = std::env::current_exe().unwrap().parent().unwrap().to_owned();
-    let output: PathBuf = args.output.map(|x| x.into()).unwrap_or(exe_dir);
-    let mut parsed = HashSet::new();
-    for input in args.input {
-        parse(input, output.clone(), &args.command, &mut parsed);
+    if args.command.hash {
+        for input in args.input {
+            let val =  types::Crc::from_string(&input).key();
+            println!("{}: {}, 0X{:0X}", input, val, val);
+        }
+    } else {
+        let exe_dir = std::env::current_exe().unwrap().parent().unwrap().to_owned();
+        let output: PathBuf = args.output.map(|x| x.into()).unwrap_or(exe_dir);
+        let mut parsed = HashSet::new();
+        for input in args.input {
+            parse(input, output.clone(), &args.command, &mut parsed);
+        }
     }
 }
