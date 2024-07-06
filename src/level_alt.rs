@@ -6,6 +6,7 @@ use serde::{Serialize, Deserialize};
 use serde_json::to_vec_pretty;
 use std::time::Instant;
 use std::iter::zip;
+use anyhow::Result;
 
 use super::{
     pak, bin, lua_stuff, pak_alt::*,
@@ -756,76 +757,106 @@ impl Level {
         info!("bin in {:?}", time.elapsed());
 
         // bin done
-            
+        let mut max_vert = 0;
+        let mut max_tex = 0;
+        for (i, animation_block_info) in animation_block_infos.iter().enumerate() {
+            let gamemodemask = 1 << i;
+            let mut tex_size = 0;
+            let mut vert_size = 0;
+            for tex in self.textures.values() {
+                if (tex.info().gamemodemask & gamemodemask) != 0 {
+                    tex_size += tex.size();
+                }
+            }
+            for mesh in self.meshes.values() {
+                if (mesh.info.gamemodemask & gamemodemask) != 0 {
+                    for asset_handle in &asset_handles {
+                        if asset_handle.key == mesh.info.asset_key && asset_handle.kind == mesh.info.asset_type {
+                            vert_size += asset_handle.size;
+                            break;
+                        }
+                    }
+                }
+            }
+            max_vert = max_vert.max(vert_size);
+            max_tex = max_tex.max(tex_size);
+            info!("Gamemode {} min buffer sizes: texture {}, vertex {}", animation_block_info.key.to_string(), tex_size, vert_size);
+        }
+        if max_vert > 106954752 {
+            warn!("An unmodified conquest executable will not be able to load some gamemodes with min vertex buffer size larger than 106954752")
+        }
+        if max_tex > 178257920 {
+            warn!("An unmodified conquest executable will not be able to load some gamemodes with min texture buffer size larger than 178257920")
+        }
         (pak_data, bin_data, infos)
     }
 
-    pub fn to_file(&self, writer: Writer) {
+    pub fn to_file(&self, writer: Writer) -> Result<()> {
         let time: Instant = Instant::now();
         info!("storing level");
 
         // std::fs::create_dir_all(path.join("assets").join("raw")).ok();
     
-        writer.join("bin_header.json").write(&to_vec_pretty(&self.bin_header).unwrap());
-        self.bin_strings.to_file(writer.join("bin_strings"));
+        writer.join("bin_header.json").write(&to_vec_pretty(&self.bin_header)?)?;
+        self.bin_strings.to_file(writer.join("bin_strings"))?;
 
-        writer.join("pak_header.json").write(&to_vec_pretty(&self.pak_header).unwrap());
-        self.pak_strings.to_file(writer.join("pak_strings"));
+        writer.join("pak_header.json").write(&to_vec_pretty(&self.pak_header)?)?;
+        self.pak_strings.to_file(writer.join("pak_strings"))?;
         info!("headers in {:?}", time.elapsed());
 
-        writer.join("objas.json").write(&to_vec_pretty(&self.objas).unwrap());
-        writer.join("obj0s.json").write(&to_vec_pretty(&self.obj0s).unwrap());
-        writer.join("pak_vals_a.json").write(&to_vec_pretty(&self.pak_vals_a).unwrap());
+        writer.join("objas.json").write(&to_vec_pretty(&self.objas)?)?;
+        writer.join("obj0s.json").write(&to_vec_pretty(&self.obj0s)?)?;
+        writer.join("pak_vals_a.json").write(&to_vec_pretty(&self.pak_vals_a)?)?;
         info!("unused objs in {:?}", time.elapsed());
 
         for (key, data) in &self.meshes {
-            writer.join("meshes").join(key.to_string()).with_extension("json").write(&to_vec_pretty(&data).unwrap());
+            writer.join("meshes").join(key.to_string()).with_extension("json").write(&to_vec_pretty(&data)?)?;
         }
         info!("meshes in {:?}", time.elapsed());
         for (key, data) in &self.effects {
-            data.to_file(writer.join("effects").join(key.to_string()));
+            data.to_file(writer.join("effects").join(key.to_string()))?;
         }
         info!("effects in {:?}", time.elapsed());
         for (key, data) in &self.foliages {
             let (info, data): (Vec<_>, Vec<_>) = Iterator::unzip(data.iter().map(|(a,b)| (a,b)));
-            writer.join("foliage").join(key.to_string()).with_extension("json").write(&to_vec_pretty(&info).unwrap());
+            writer.join("foliage").join(key.to_string()).with_extension("json").write(&to_vec_pretty(&info)?)?;
             for (i, data) in data.iter().enumerate() {
-                writer.join("foliage").join(format!("{}-{}", key.to_string(), i)).with_extension("bin").write(&data.dump_bytes::<LE>());
+                writer.join("foliage").join(format!("{}-{}", key.to_string(), i)).with_extension("bin").write(&data.dump_bytes::<LE>())?;
             }
         }
         info!("foliage objs in {:?}", time.elapsed());
         for (key, data) in &self.light_blocks {
-            writer.join("illumination").join(format!("{}", key)).with_extension("bin").write(&data.dump_bytes::<LE>());
+            writer.join("illumination").join(format!("{}", key)).with_extension("bin").write(&data.dump_bytes::<LE>())?;
         }
         info!("illumination objs in {:?}", time.elapsed());
         for (key, data) in &self.gfx_blocks {
-            writer.join("gfxs").join(key.to_string()).with_extension("gfx").write(data);
+            writer.join("gfxs").join(key.to_string()).with_extension("gfx").write(data)?;
         }
         info!("gfxs in {:?}", time.elapsed());
 
-        writer.join("animation_block_infos.json").write(&to_vec_pretty(&self.animation_block_infos).unwrap());
+        writer.join("animation_block_infos.json").write(&to_vec_pretty(&self.animation_block_infos)?)?;
         for (key, data) in &self.animations {
-            writer.join("animations").join(key.to_string()).with_extension("json").write(&to_vec_pretty(&data).unwrap());
+            writer.join("animations").join(key.to_string()).with_extension("json").write(&to_vec_pretty(&data)?)?;
         }
         info!("animations in {:?}", time.elapsed());
 
         for (key, tex) in &self.textures {
-            tex.to_file(writer.join("textures").join(key.to_string()));
+            tex.to_file(writer.join("textures").join(key.to_string()))?;
         }
         info!("textures in {:?}", time.elapsed());
 
         for (key, data) in &self.radiosity {
-            writer.join("radiosity").join(key.to_string()).with_extension("json").write(&to_vec_pretty(&data).unwrap());
+            writer.join("radiosity").join(key.to_string()).with_extension("json").write(&to_vec_pretty(&data)?)?;
         }
         info!("radiosity in {:?}", time.elapsed());
 
-        writer.join("pfield_infos.json").write(&to_vec_pretty(&self.pfield_infos).unwrap());
+        writer.join("pfield_infos.json").write(&to_vec_pretty(&self.pfield_infos)?)?;
 
         info!("packed items in {:?}", time.elapsed());
 
-        self.string_keys.to_file(writer.join("string_keys"));
-        self.sub_blocks1.to_file(writer.join("sub_blocks1"), &self.string_keys);
-        self.sub_blocks2.to_file(writer.join("sub_blocks2"), &self.string_keys);
+        self.string_keys.to_file(writer.join("string_keys"))?;
+        self.sub_blocks1.to_file(writer.join("sub_blocks1"), &self.string_keys)?;
+        self.sub_blocks2.to_file(writer.join("sub_blocks2"), &self.string_keys)?;
         info!("sub blocks in {:?}", time.elapsed());
 
         if *types::ANIM_TABLES.lock().unwrap() {
@@ -836,7 +867,7 @@ impl Level {
                     if let types::SubBlock::Lua(val) = block {
                         let mut name = val.name.clone();
                         name.truncate(name.len()-4);
-                        script_manager.insert(Crc::from_string(&name), lua.convert(&val.data, "L4808").unwrap());
+                        script_manager.insert(Crc::from_string(&name), lua.convert(&val.data, "L4808")?);
                     }
                 }
             }
@@ -845,36 +876,37 @@ impl Level {
             let script_manager = Arc::new(script_manager);
             for anim in anim_scripts {
                 let val = lua_stuff::load_anim(script_manager.clone(), anim.clone());
-                writer.join("animation_tables").join(anim).with_extension("json").write(&to_vec_pretty(&val).unwrap());
+                writer.join("animation_tables").join(anim).with_extension("json").write(&to_vec_pretty(&val)?)?;
             }
             info!("animation tables in {:?}", time.elapsed());
         }
+        Ok(())
     }
 
-    pub fn from_file(reader: Reader) -> Self {
+    pub fn from_file(reader: Reader) -> Result<Self> {
         let time: Instant = Instant::now();
         info!("reading level");        
         
         let lua: lua_stuff::LuaCompiler = lua_stuff::LuaCompiler::new().unwrap();
 
-        let bin_header = serde_json::from_slice::<bin::Header>(&reader.join("bin_header.json").read()).unwrap();
-        let bin_strings = types::Strings::from_file(reader.join("bin_strings"));
+        let bin_header = serde_json::from_slice::<bin::Header>(&reader.join("bin_header.json").read()?)?;
+        let bin_strings = types::Strings::from_file(reader.join("bin_strings"))?;
         types::update_strings(&bin_strings.strings);
 
-        let pak_header = serde_json::from_slice::<pak::Header>(&reader.join("pak_header.json").read()).unwrap();
-        let pak_strings = types::Strings::from_file(reader.join("pak_strings"));
+        let pak_header = serde_json::from_slice::<pak::Header>(&reader.join("pak_header.json").read()?)?;
+        let pak_strings = types::Strings::from_file(reader.join("pak_strings"))?;
         types::update_strings(&pak_strings.strings);
         info!("headers in {:?}", time.elapsed());
 
-        let objas = serde_json::from_slice::<Vec<pak::ObjA>>(&reader.join("objas.json").read()).unwrap();
-        let obj0s = serde_json::from_slice::<Vec<pak::Obj0>>(&reader.join("obj0s.json").read()).unwrap();
-        let pak_vals_a = serde_json::from_slice::<Vec<pak::BlockAVal>>(&reader.join("pak_vals_a.json").read()).unwrap();
+        let objas = serde_json::from_slice::<Vec<pak::ObjA>>(&reader.join("objas.json").read()?)?;
+        let obj0s = serde_json::from_slice::<Vec<pak::Obj0>>(&reader.join("obj0s.json").read()?)?;
+        let pak_vals_a = serde_json::from_slice::<Vec<pak::BlockAVal>>(&reader.join("pak_vals_a.json").read()?)?;
         info!("unused objs in {:?}", time.elapsed());
 
         let mut meshes = HashMap::new();
         for path in reader.join("meshes") {
             let key = Crc::from_string(path.name());
-            let data = serde_json::from_slice::<Mesh>(&path.read()).unwrap();
+            let data = serde_json::from_slice::<Mesh>(&path.read()?)?;
             meshes.insert(key, data);
         }
         info!("meshes in {:?}", time.elapsed());
@@ -882,7 +914,7 @@ impl Level {
         let mut effects = HashMap::new();
         for path in reader.join("effects") {
             let key = Crc::from_string(path.name());
-            let data = GameObjs::from_file(path);
+            let data = GameObjs::from_file(path)?;
             effects.insert(key, data);
         }
         info!("effects in {:?}", time.elapsed());
@@ -890,10 +922,10 @@ impl Level {
         let mut foliages = HashMap::new();
         for path in reader.join("foliage").into_iter().filter(|x| x.path().extension().unwrap_or(OsStr::new("")).to_str() == Some("json")) {
             let key = Crc::from_string(path.name());
-            let info = serde_json::from_slice::<Vec<pak::FoliageInfo>>(&path.read()).unwrap();
+            let info = serde_json::from_slice::<Vec<pak::FoliageInfo>>(&path.read()?)?;
             let mut data = Vec::with_capacity(info.len());
             for i in 0..info.len() {
-                let dat = path.with_file_name(&format!("{}-{}.bin", key.to_string(), i)).read();
+                let dat = path.with_file_name(&format!("{}-{}.bin", key.to_string(), i)).read()?;
                 data.push(<Vec<u32> as OrderedDataVec>::from_bytes::<LE>(&dat, dat.len()/4));
             }
             foliages.insert(key, zip(info, data).collect::<Vec<_>>());
@@ -903,7 +935,7 @@ impl Level {
         let mut light_blocks = HashMap::new();
         for path in reader.join("illumination") {
             let key: u32 = path.name().parse().unwrap();
-            let dat = path.read();
+            let dat = path.read()?;
             let data = <Vec<u32> as OrderedDataVec>::from_bytes::<LE>(&dat, dat.len()/4);
             light_blocks.insert(key, data);
         }
@@ -912,16 +944,16 @@ impl Level {
         let mut gfx_blocks = HashMap::new();
         for path in reader.join("gfxs") {
             let key = Crc::from_string(path.name());
-            let data = path.read();
+            let data = path.read()?;
             gfx_blocks.insert(key, data);
         }
         info!("gfxs in {:?}", time.elapsed());
 
-        let animation_block_infos = serde_json::from_slice::<Vec<pak::AnimationBlockInfo>>(&reader.join("animation_block_infos.json").read()).unwrap();
+        let animation_block_infos = serde_json::from_slice::<Vec<pak::AnimationBlockInfo>>(&reader.join("animation_block_infos.json").read()?)?;
         let mut animations = HashMap::new();
         for path in reader.join("animations") {
             let key = Crc::from_string(path.name());
-            let data = serde_json::from_slice::<Animation>(&path.read()).unwrap();
+            let data = serde_json::from_slice::<Animation>(&path.read()?)?;
             animations.insert(key, data);
         }
         info!("animations in {:?}", time.elapsed());
@@ -929,7 +961,7 @@ impl Level {
         let mut textures = HashMap::new();
         for path in reader.join("textures").into_iter().filter(|x| x.path().extension().unwrap_or(OsStr::new("")).to_str() == Some("json")) {
             let key = Crc::from_string(path.name());
-            let data = bin::Tex::from_file(path);
+            let data = bin::Tex::from_file(path)?;
             textures.insert(key, data);
         }
         info!("textures in {:?}", time.elapsed());
@@ -937,24 +969,24 @@ impl Level {
         let mut radiosity = HashMap::new();
         for path in reader.join("radiosity") {
             let key = Crc::from_string(path.name());
-            let data = serde_json::from_slice::<bin::Radiosity>(&path.read()).unwrap();
+            let data = serde_json::from_slice::<bin::Radiosity>(&path.read()?)?;
             radiosity.insert(key, data);
         }
         info!("radiosity in {:?}", time.elapsed());
 
-        let pfield_infos = serde_json::from_slice::<Vec<pak::PFieldInfo>>(&reader.join("pfield_infos.json").read()).unwrap();
+        let pfield_infos = serde_json::from_slice::<Vec<pak::PFieldInfo>>(&reader.join("pfield_infos.json").read()?)?;
 
         info!("packed items in {:?}", time.elapsed());
 
-        let string_keys = types::StringKeys::from_file(reader.join("string_keys"));
-        let sub_blocks1 = types::SubBlocks::from_file(reader.join("sub_blocks1"), &lua);
-        let sub_blocks2 = types::SubBlocks::from_file(reader.join("sub_blocks2"), &lua);
+        let string_keys = types::StringKeys::from_file(reader.join("string_keys"))?;
+        let sub_blocks1 = types::SubBlocks::from_file(reader.join("sub_blocks1"), &lua)?;
+        let sub_blocks2 = types::SubBlocks::from_file(reader.join("sub_blocks2"), &lua)?;
         info!("sub blocks in {:?}", time.elapsed());
 
         let vertex_formats = HashMap::new();
         let block2_offsets = Vec::new();
 
-        Self {
+        Ok(Self {
             bin_header,
             bin_strings,
             pak_header,
@@ -977,7 +1009,6 @@ impl Level {
             vertex_formats,
             pak_vals_a,
             gfx_blocks,
-        }
-
+        })
     }
 }

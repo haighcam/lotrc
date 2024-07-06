@@ -49,6 +49,12 @@ simple examples:
  - compile all levels:  
  ```bash lotrc_rs.exe -c -o 'The Lord of the Rings Conquest 2\Levels' DumpedLevels\*```
 
+
+# Buffer size warnings
+If the tool gives a warning about buffer sizes being too small then the level will crash with an unmodified conquest executable.
+
+For testing if you are using a debugger you can modify the values at 00a3e200 and 00a3e204 to change the buffer sizes for texture and vertex data respectively (after the initialization has set their updated values and before they are read for constructing the buffers). A more permanent solution would be to modify c70500e2a3000000a00a in the hex of the executable to c70500e2a300 + desired size for texture data and c70504e2a30000006006 to c70504e2a300 + desired size for vertex data. (For example c70500e2a3000000a00a -> c70500e2a30000000010 would give 268435456 bytes for texture data).
+
 # Compiling from source
 Requires rust and cargo.
 ```bash

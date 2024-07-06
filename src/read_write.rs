@@ -1,9 +1,38 @@
+use std::fmt::Debug;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::path::{Path, PathBuf};
 use std::fs;
 use itertools::Itertools;
-use zip::{ZipArchive, ZipWriter, write::SimpleFileOptions};
+use zip::{ZipArchive, ZipWriter, write::SimpleFileOptions, result::ZipError};
+use anyhow::Result;
+
+#[derive(Debug)]
+pub enum ReadWriteZipError {
+    FileNotFound(String),
+    Zip(ZipError),
+}
+
+impl std::error::Error for ReadWriteZipError {}
+
+impl std::fmt::Display for ReadWriteZipError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::FileNotFound(name) => write!(f, "specified file not found in archive: {}", name),
+            Self::Zip(err) => std::fmt::Display::fmt(err, f)
+        }
+    }
+}
+
+fn map_zip_err<T>(val: Result<T, ZipError>, f: String) -> Result<T, ReadWriteZipError> {
+    match val {
+        Ok(val) => Ok(val),
+        Err(e) => Err(match e {
+            ZipError::FileNotFound => ReadWriteZipError::FileNotFound(f),
+            _ => ReadWriteZipError::Zip(e)
+        })
+    }
+}
 
 fn format_path(path: &Path) -> String {
     path.iter().map(|x| x.to_str().unwrap()).join("/")
@@ -60,17 +89,17 @@ impl PathStuff for Reader {
 }
 
 impl Reader {
-    pub fn new_zip<P: AsRef<Path>>(path: P) -> Self {
-        Self::Zip(
-            Arc::new(Mutex::new(ZipArchive::new(fs::File::open(path).unwrap()).unwrap())),
-            PathBuf::new()
-        )
-    }
-
-    pub fn new<P: AsRef<Path>>(path: P) -> Self {
-        Self::File(
-            path.as_ref().into()
-        )
+    pub fn new<P: AsRef<Path>>(path: P, zip: bool) -> Result<Self> {
+        Ok(if zip {
+            Self::Zip(
+                Arc::new(Mutex::new(ZipArchive::new(fs::File::open(path)?)?)),
+                PathBuf::new()
+            )
+        } else {
+            Self::File(
+                path.as_ref().into()
+            )
+        })
     }
 
     pub fn is_file(&self) -> bool {
@@ -80,17 +109,18 @@ impl Reader {
         }
     }
 
-    pub fn read(&self) -> Vec<u8> {
-        match self {
-            Self::File(path) => fs::read(path).unwrap(),
+    pub fn read(&self) -> Result<Vec<u8>> {
+        Ok(match self {
+            Self::File(path) => fs::read(path)?,
             Self::Zip(zip, path) => {
                 let mut zip = zip.lock().unwrap();
-                let mut file = zip.by_name(&format_path(path)).unwrap();
+                let name = format_path(path);
+                let mut file = map_zip_err(zip.by_name(&name), name)?;
                 let mut out = Vec::with_capacity(file.size() as usize);
-                file.read_to_end(&mut out).unwrap();
+                file.read_to_end(&mut out)?;
                 out
             }
-        }
+        })
     }
 }
 
@@ -137,33 +167,34 @@ impl PathStuff for Writer {
 }
 
 impl Writer {
-    pub fn new<P: AsRef<Path>>(path: P, zip: bool) -> Self {
-        if zip {
-            fs::create_dir_all(path.as_ref().parent().unwrap()).unwrap();
+    pub fn new<P: AsRef<Path>>(path: P, zip: bool) -> Result<Self> {
+        Ok(if zip {
+            fs::create_dir_all(path.as_ref().parent().unwrap())?;
             Self::Zip(
-                Arc::new(Mutex::new(ZipWriter::new(fs::File::create(path.as_ref().with_extension("zip")).unwrap()))),
+                Arc::new(Mutex::new(ZipWriter::new(fs::File::create(path.as_ref().with_extension("zip"))?))),
                 PathBuf::new()
             )
         } else {
             Self::File(
                 path.as_ref().into()
             )
-        }
+        })
     }
 
-    pub fn write(&self, contents: &[u8]) {
+    pub fn write(&self, contents: &[u8]) -> Result<()> {
         match self {
             Self::File(path) => {
-                fs::create_dir_all(path.parent().unwrap()).unwrap();
-                fs::write(path, contents).unwrap();
+                fs::create_dir_all(path.parent().unwrap())?;
+                fs::write(path, contents)?;
             },
             Self::Zip(zip, path) => {
                 let mut zip = zip.lock().unwrap();
-                zip.start_file(format_path(path), SimpleFileOptions::default()).unwrap();
-                zip.write_all(contents).unwrap();
-                zip.flush().unwrap();
+                zip.start_file(format_path(path), SimpleFileOptions::default())?;
+                zip.write_all(contents)?;
+                zip.flush()?;
             }
         }
+        Ok(())
     }
 }
 

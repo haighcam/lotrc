@@ -5,6 +5,7 @@ use audio::AudioTable;
 use zerocopy::LE;
 use log::error;
 use clap::{Parser, Args};
+use anyhow::Result;
 
 mod audio;
 mod types;
@@ -89,7 +90,7 @@ struct Commands {
     alt_comp: bool
 }
 
-fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parsed: &mut HashSet<PathBuf>) {
+fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parsed: &mut HashSet<PathBuf>) -> Result<()> {
     let mut q = VecDeque::from(vec![(PathBuf::new(), src.as_ref().to_path_buf())]);
     let dest = dest.as_ref();
     while let Some((name, src)) = q.pop_front() {
@@ -103,7 +104,7 @@ fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parse
             } else if args.alt_comp {
                 level_alt::Level::parse(src).dump::<LE, _>(dest.join(name));
             } else {
-                level_alt::Level::parse(src).to_file(Writer::new(dest.join(name), *types::ZIP.lock().unwrap()));
+                level_alt::Level::parse(src).to_file(Writer::new(dest.join(name), *types::ZIP.lock().unwrap())?)?;
             }
         } else if src.file_name().unwrap() == "level_info.dat" {
             parsed.insert(src.clone());
@@ -111,7 +112,7 @@ fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parse
             if args.compile {
                 level_info.dump::<LE, _>(dest.join(name));
             } else {
-                level_info.to_file(Writer::new(dest.join(name), *types::ZIP.lock().unwrap()));
+                level_info.to_file(Writer::new(dest.join(name), *types::ZIP.lock().unwrap())?)?;
             }
         } else if !src.with_extension("PAK").is_file() && src.with_extension("bin").is_file() && ext == "bin" {
             parsed.insert(src.with_extension("bin"));
@@ -130,21 +131,22 @@ fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parse
                 table.dump::<LE, _>(dest.join(name))
             }
         } else if {
-            if let Some(reader) = (ext == "zip").then(|| Reader::new_zip(&src))
-                .or(src.is_dir().then(|| Reader::new(&src))) {
+            if let Some(reader) = (ext == "zip").then(|| Reader::new(&src, true))
+                .or(src.is_dir().then(|| Reader::new(&src, false))) {
+                let reader = reader?;
                 let name = name.clone();
                 if reader.join("index.json").is_file() {
-                    let level_info = LevelInfo::from_file(reader);
+                    let level_info = LevelInfo::from_file(reader)?;
                     if args.dump {
-                        level_info.to_file(Writer::new(dest.join(name), *types::ZIP.lock().unwrap()));
+                        level_info.to_file(Writer::new(dest.join(name), *types::ZIP.lock().unwrap())?)?;
                     } else {
                         level_info.dump::<LE, _>(dest.join(name));
                     }
                     true
                 } else if reader.join("pak_header.json").is_file() {
-                    let level = level_alt::Level::from_file(reader);
+                    let level = level_alt::Level::from_file(reader)?;
                     if args.dump {
-                        level.to_file(Writer::new(dest.join(name), *types::ZIP.lock().unwrap()));
+                        level.to_file(Writer::new(dest.join(name), *types::ZIP.lock().unwrap())?)?;
                     } else {
                         level.dump::<LE, _>(dest.join(name))
                     }
@@ -166,9 +168,10 @@ fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parse
             error!("Could not parse input {:?}", src);
         }
     }
+    Ok(())
 }
 
-fn main() {
+fn main() -> Result<()> {
     let logger = pretty_env_logger::formatted_builder()
         .filter_level(log::LevelFilter::Info)
         .format(|buf, record| {
@@ -183,7 +186,6 @@ fn main() {
                 log::Level::Warn => style.set_color(Color::Yellow).value("WARN "),
                 log::Level::Error => style.set_color(Color::Red).value("ERROR"),
             };
-        
             writeln!(buf, " {} > {}", level, record.args())
         })
         .build();
@@ -214,7 +216,8 @@ fn main() {
         let output: PathBuf = args.output.map(|x| x.into()).unwrap_or(exe_dir);
         let mut parsed = HashSet::new();
         for input in args.input {
-            parse(input, output.clone(), &args.command, &mut parsed);
+            parse(input, output.clone(), &args.command, &mut parsed)?;
         }
     }
+    Ok(())
 }

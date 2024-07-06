@@ -7,6 +7,9 @@ from operator import attrgetter
 src_path = "DumpedLevels/MinasTirith_Top.zip"
 gamemodeguid = 144015924
 
+# for finding missing objects in the gamemode, set to dst of get_obj_index.py
+obj_index = None
+
 class ZipFile(zipfile.ZipFile):
     """
         Modified zipfile to allow for removing files. 
@@ -160,7 +163,7 @@ with ZipFile(src_path, "a", compression=zipfile.ZIP_DEFLATED) as src:
 
     gamemodemask = -1
     for i, val in enumerate(anim_infos):
-        if val.get('guid', val['unk_1']) == gamemodeguid:
+        if val.get('guid', val.get('unk_1')) == gamemodeguid:
             gamemodemask = 1 << i
             print(f'found gamemode at index {i}, {gamemodemask}')
             break
@@ -209,7 +212,7 @@ with ZipFile(src_path, "a", compression=zipfile.ZIP_DEFLATED) as src:
                 infos.add(anim.casefold())
 
     print("mesh / effects / anims")
-    textures = set()
+    textures = set([i for i in infos if f'textures/{i}.json' in files])
     for k in infos:
         f_name = f"meshes/{k}.json"
         if f_name in files:
@@ -252,3 +255,17 @@ with ZipFile(src_path, "a", compression=zipfile.ZIP_DEFLATED) as src:
     src.remove(*[files[i] for i in to_remove])
     for f_name, data in to_add.items():
         src.writestr(files[f_name], data)
+
+if obj_index is not None:
+    with open(obj_index, "rb") as f:
+        obj_index = json.load(f)
+
+    missing_meshes = [i for i in infos if i in obj_index['meshes'] and f'meshes/{i}.json' not in files]
+    missing_animations = [i for i in infos if i in obj_index['animations'] and f'animations/{i}.json' not in files]
+    missing_effects = [i for i in infos if i in obj_index['effects'] and f'effects/{i}.json' not in files]
+    missing_scripts = [i for i in infos if i in obj_index['scripts'] and f'sub_blocks1/{i}.lua' not in files]
+
+    print("missing meshes:", missing_meshes)
+    print("missing animations:", missing_animations)
+    print("missing effects:", missing_effects)
+    print("missing scripts:", missing_scripts)

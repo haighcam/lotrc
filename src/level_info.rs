@@ -4,6 +4,7 @@ use zerocopy::{ByteOrder, LE, BE};
 use log::warn;
 use serde::{Serialize, Deserialize};
 use lotrc_rs_proc::OrderedData;
+use anyhow::Result;
 
 use super::{
     lua_stuff,
@@ -160,20 +161,21 @@ impl LevelInfo {
         data
     }
 
-    pub fn to_file(&self, writer: Writer) {
-        writer.join("index.json").write(&serde_json::to_vec_pretty(self).unwrap());
-        self.strings.to_file(writer.join("debug_strings"));
-        self.string_keys.to_file(writer.join("string_keys"));
-        self.locale_strings.to_file(writer.join("locale_strings"), &self.string_keys);
+    pub fn to_file(&self, writer: Writer) -> Result<()> {
+        writer.join("index.json").write(&serde_json::to_vec_pretty(self)?)?;
+        self.strings.to_file(writer.join("debug_strings"))?;
+        self.string_keys.to_file(writer.join("string_keys"))?;
+        self.locale_strings.to_file(writer.join("locale_strings"), &self.string_keys)?;
+        Ok(())
     }
 
-    pub fn from_file(reader: Reader) -> Self {
+    pub fn from_file(reader: Reader) -> Result<Self> {
         let lua = lua_stuff::LuaCompiler::new().unwrap();
 
-        let mut val = serde_json::from_slice::<Self>(&reader.join("index.json").read()).unwrap();
-        val.strings = types::Strings::from_file(reader.join("debug_strings"));
-        val.string_keys = types::StringKeys::from_file(reader.join("string_keys"));
-        val.locale_strings = types::SubBlocks::from_file(reader.join("locale_strings"), &lua);
-        val
+        let mut val = serde_json::from_slice::<Self>(&reader.join("index.json").read()?)?;
+        val.strings = types::Strings::from_file(reader.join("debug_strings"))?;
+        val.string_keys = types::StringKeys::from_file(reader.join("string_keys"))?;
+        val.locale_strings = types::SubBlocks::from_file(reader.join("locale_strings"), &lua)?;
+        Ok(val)
     }
 }

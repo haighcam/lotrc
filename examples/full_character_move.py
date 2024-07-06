@@ -297,6 +297,9 @@ with ZipFile(src_path, "r") as src, ZipFile(dst_path, "a", compression=zipfile.Z
         f_name = src_files[f"sub_blocks1/{script}.lua"]
         index['block_headers'].insert(-3, {'key': f_name[len("sub_blocks1/"):], 'offset': 0, 'size': 0})
         to_add[f_name] = src.read(f_name)
+        if script.startswith("anm_"):
+            f_name = src_files[f'animation_tables/{i}.json']
+            to_add[f_name] = src.read(f_name)
     to_remove.add('sub_blocks1/index.json')
     to_add[dst_files['sub_blocks1/index.json']] = json.dumps(index, indent=1)
     
