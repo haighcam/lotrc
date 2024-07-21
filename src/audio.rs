@@ -62,7 +62,8 @@ impl AudioTable {
     }
 
     pub fn dump<O: ByteOrder + 'static, P: AsRef<Path>>(&self, path: P) {
-        fs::write(path, self.to_data::<O>()).unwrap();
+        path.as_ref().parent().map(fs::create_dir_all);
+        fs::write(path.as_ref().with_extension("bin"), self.to_data::<O>()).unwrap();
     }
 
     pub fn from_data<O: ByteOrder + 'static>(data: &[u8]) -> Self {

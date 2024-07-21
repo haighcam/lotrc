@@ -1,38 +1,10 @@
-use std::fmt::Debug;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::path::{Path, PathBuf};
 use std::fs;
 use itertools::Itertools;
-use zip::{ZipArchive, ZipWriter, write::SimpleFileOptions, result::ZipError};
-use anyhow::Result;
-
-#[derive(Debug)]
-pub enum ReadWriteZipError {
-    FileNotFound(String),
-    Zip(ZipError),
-}
-
-impl std::error::Error for ReadWriteZipError {}
-
-impl std::fmt::Display for ReadWriteZipError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Self::FileNotFound(name) => write!(f, "specified file not found in archive: {}", name),
-            Self::Zip(err) => std::fmt::Display::fmt(err, f)
-        }
-    }
-}
-
-fn map_zip_err<T>(val: Result<T, ZipError>, f: String) -> Result<T, ReadWriteZipError> {
-    match val {
-        Ok(val) => Ok(val),
-        Err(e) => Err(match e {
-            ZipError::FileNotFound => ReadWriteZipError::FileNotFound(f),
-            _ => ReadWriteZipError::Zip(e)
-        })
-    }
-}
+use zip::{ZipArchive, ZipWriter, write::SimpleFileOptions};
+use anyhow::{Result, Context};
 
 fn format_path(path: &Path) -> String {
     path.iter().map(|x| x.to_str().unwrap()).join("/")
@@ -115,7 +87,7 @@ impl Reader {
             Self::Zip(zip, path) => {
                 let mut zip = zip.lock().unwrap();
                 let name = format_path(path);
-                let mut file = map_zip_err(zip.by_name(&name), name)?;
+                let mut file = zip.by_name(&name).context(name)?;
                 let mut out = Vec::with_capacity(file.size() as usize);
                 file.read_to_end(&mut out)?;
                 out

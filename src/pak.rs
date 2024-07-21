@@ -1007,9 +1007,9 @@ impl Mesh {
         }
         if info.vals_k_offset != 0 {
             val.val_k_header = OrderedDataVec::from_bytes::<O>(&data[info.vals_k_offset as usize..], 2);
-            if (val.val_k_header[0] != 3) || (val.val_k_header[0] != 6) {
-                warn!("unexpected valsK data {:?}", info.key);
-            }
+            // if (val.val_k_header[0] != 3) || (val.val_k_header[0] != 6) {
+            //     warn!("unexpected valsK data {:?}", info.key);
+            // }
             val.vals_k = OrderedDataVec::from_bytes::<O>(&data[info.vals_k_offset as usize + 4..], 35);
         }
         if info.vals_i_offset != 0 {

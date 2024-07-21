@@ -47,11 +47,11 @@ struct CliArgs {
     command: Commands,
 
     /// Decompile lua files when loading a level
-    #[arg(long)]
+    #[arg(long, requires="unluac")]
     lua_decomp: bool,
 
     /// Compile lua files when loading a level, also converts endianess for xbox lua files
-    #[arg(long, requires="unluac")]
+    #[arg(long)]
     lua_recomp: bool,
 
     /// Zlib compression level to use when compiling levels, lower numbers are faster
@@ -102,15 +102,15 @@ fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parse
             if args.compile {
                 Level::parse(src).dump::<LE, _>(dest.join(name));
             } else if args.alt_comp {
-                level_alt::Level::parse(src).dump::<LE, _>(dest.join(name));
+                level_alt::Level::parse(src)?.dump::<LE, _>(dest.join(name))?;
             } else {
-                level_alt::Level::parse(src).to_file(Writer::new(dest.join(name), *types::ZIP.lock().unwrap())?)?;
+                level_alt::Level::parse(src)?.to_file(Writer::new(dest.join(name), *types::ZIP.lock().unwrap())?)?;
             }
         } else if src.file_name().unwrap() == "level_info.dat" {
             parsed.insert(src.clone());
-            let level_info = LevelInfo::parse(src);
+            let level_info = LevelInfo::parse(src)?;
             if args.compile {
-                level_info.dump::<LE, _>(dest.join(name));
+                level_info.dump::<LE, _>(dest.join(name))?;
             } else {
                 level_info.to_file(Writer::new(dest.join(name), *types::ZIP.lock().unwrap())?)?;
             }
@@ -140,7 +140,7 @@ fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parse
                     if args.dump {
                         level_info.to_file(Writer::new(dest.join(name), *types::ZIP.lock().unwrap())?)?;
                     } else {
-                        level_info.dump::<LE, _>(dest.join(name));
+                        level_info.dump::<LE, _>(dest.join(name))?;
                     }
                     true
                 } else if reader.join("pak_header.json").is_file() {
@@ -148,7 +148,7 @@ fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parse
                     if args.dump {
                         level.to_file(Writer::new(dest.join(name), *types::ZIP.lock().unwrap())?)?;
                     } else {
-                        level.dump::<LE, _>(dest.join(name))
+                        level.dump::<LE, _>(dest.join(name))?
                     }
                     true
                 } else {

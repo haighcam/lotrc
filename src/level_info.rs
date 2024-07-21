@@ -4,7 +4,7 @@ use zerocopy::{ByteOrder, LE, BE};
 use log::warn;
 use serde::{Serialize, Deserialize};
 use lotrc_rs_proc::OrderedData;
-use anyhow::Result;
+use anyhow::{Result, Context};
 
 use super::{
     lua_stuff,
@@ -92,20 +92,23 @@ pub struct LevelInfo {
 }
 
 impl LevelInfo {
-    pub fn parse<P: AsRef<Path>>(path: P) -> Self {
-        let data = fs::read(path).unwrap();
-        if data[0] == 4 {
+    pub fn parse<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let data = fs::read(path.as_ref()).context(path.as_ref().display().to_string())?;
+        Ok(if data[0] == 4 {
             Self::from_data::<LE>(&data[..])
         } else if data[3] == 4 {
             Self::from_data::<BE>(&data[..])
         } else {
             warn!("Invalid level_info data");
             Default::default()
-        }
+        })
     }
 
-    pub fn dump<O: ByteOrder + 'static, P: AsRef<Path>>(&self, path: P) {
-        fs::write(path, self.to_data::<O>()).unwrap();
+    pub fn dump<O: ByteOrder + 'static, P: AsRef<Path>>(&self, path: P) -> Result<()> {
+        let path = path.as_ref().with_extension("dat");
+        path.parent().map(fs::create_dir_all);
+        fs::write(&path, self.to_data::<O>()).context(path.display().to_string())?;
+        Ok(())
     }
 
     pub fn from_data<O: ByteOrder + 'static>(data: &[u8]) -> Self {

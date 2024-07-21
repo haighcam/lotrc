@@ -6,7 +6,7 @@ use serde::{Serialize, Deserialize};
 use serde_json::to_vec_pretty;
 use std::time::Instant;
 use std::iter::zip;
-use anyhow::Result;
+use anyhow::{Result, Context};
 
 use super::{
     pak, bin, lua_stuff, pak_alt::*,
@@ -46,31 +46,33 @@ pub struct Level {
 }
 
 impl Level {
-    pub fn parse<P: AsRef<Path>>(path: P) -> Self {
+    pub fn parse<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
         info!("Parsing level data {:?}", path);   
-        let pak_data = fs::read(path.with_extension("PAK")).unwrap();
-        let bin_data = fs::read(path.with_extension("BIN")).unwrap();
-        if bin_data[0] == 6 {
-            Self::from_data::<LE>(&bin_data[..], &pak_data[..])
+        let pak_data = fs::read(path.with_extension("PAK")).context(path.with_extension("PAK").display().to_string())?;
+        let bin_data = fs::read(path.with_extension("BIN")).context(path.with_extension("BIN").display().to_string())?;
+        Ok(if bin_data[0] == 6 {
+            Self::from_data::<LE>(&bin_data[..], &pak_data[..])?
         } else if bin_data[3] == 6 {
-            Self::from_data::<BE>(&bin_data[..], &pak_data[..])
+            Self::from_data::<BE>(&bin_data[..], &pak_data[..])?
         } else {
             warn!("Invalid level data");
             Default::default()
-        }
+        })
     }
 
-    pub fn dump<O: ByteOrder + 'static, P: AsRef<Path>>(&self, path: P) {
+    pub fn dump<O: ByteOrder + 'static, P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let path = path.as_ref();
         info!("Dumping level data {:?}", path);
         let (pak, bin, _infos) = self.to_data::<O>();
-        fs::write(path.with_extension("PAK"), pak).unwrap();
-        fs::write(path.with_extension("BIN"), bin).unwrap();
+        path.parent().map(fs::create_dir_all);
+        fs::write(path.with_extension("PAK"), pak).context(path.with_extension("PAK").display().to_string())?;
+        fs::write(path.with_extension("BIN"), bin).context(path.with_extension("BIN").display().to_string())?;
         // fs::write(path.with_extension("json"), serde_json::to_vec_pretty(&_infos).unwrap()).unwrap();
+        Ok(())
     }
 
-    pub fn from_data<O: ByteOrder + 'static>(bin_data: &[u8], pak_data: &[u8]) -> Self {
+    pub fn from_data<O: ByteOrder + 'static>(bin_data: &[u8], pak_data: &[u8]) -> Result<Self> {
         let time = Instant::now();
         info!("extracting level");
 
@@ -139,11 +141,12 @@ impl Level {
         }
 
         let textures = <Vec<pak::TextureInfo> as OrderedDataVec>::from_bytes::<O>(&block1[pak_header.texture_info_offset as usize..], pak_header.texture_info_num as usize).into_iter().map(|mut info| {
-            let data0 = &asset_data.get(&(info.asset_key.clone(), info.asset_type)).unwrap();
-            let data1 = &asset_data.get(&(Crc::Key(hash_string("*".as_bytes(), Some(info.asset_key.key()))), info.asset_type)).unwrap();
+            let data0 = asset_data.get(&(info.asset_key.clone(), info.asset_type)).unwrap();
+            let data1 = asset_data.get(&(Crc::Key(hash_string("*".as_bytes(), Some(info.asset_key.key()))), info.asset_type)).unwrap();
+            let tex = bin::Tex::from_data::<O>(data0, data1, &mut info)?;
             let key = info.key.clone();
-            (key, bin::Tex::from_data::<O>(&data0, &data1, &mut info))
-        }).collect::<HashMap<_, _>>();
+            Ok((key, tex))
+        }).collect::<Result<HashMap<_, _>>>()?;
 
         let blocks = animation_block_infos.iter().map(|info| 
             types::CompressedBlock::from_data(&pak_data[..], info.size as usize, info.size_comp as usize, info.offset as usize).data
@@ -163,7 +166,7 @@ impl Level {
         let pak_vals_a = OrderedDataVec::from_bytes::<O>(&pak_data[pak_header.block_a_offset as usize..], pak_header.block_a_num as usize);
         info!("buffers extracted in {:?}", time.elapsed());
 
-        Self {
+        Ok(Self {
             bin_header,
             bin_strings,
             pak_header,
@@ -186,7 +189,7 @@ impl Level {
             vertex_formats,
             pak_vals_a,
             gfx_blocks,
-        }
+        })
     }
     
     pub fn to_data<O: ByteOrder + 'static>(&self) -> (Vec<u8>, Vec<u8>, DumpInfos) {

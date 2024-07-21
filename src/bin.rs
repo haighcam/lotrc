@@ -142,15 +142,15 @@ impl Tex {
         }
     }
 
-    pub fn from_data<O: ByteOrder + 'static>(data0: &[u8], data1: &[u8], info: &mut TextureInfo) -> Self {
-        match info.kind {
+    pub fn from_data<O: ByteOrder + 'static>(data0: &[u8], data1: &[u8], info: &mut TextureInfo) -> Result<Self> {
+        Ok(match info.kind {
             0 | 7 | 8 => Self::Texture(Texture::from_data::<O>(data0, data1, info)),
-            1 | 9 => Self::CubeTexture(CubeTexture::from_data::<O>(data0, data1, info)),
+            1 | 9 => Self::CubeTexture(CubeTexture::from_data::<O>(data0, data1, info)?),
             _ => {
                 warn!("Unsupported Texture Type {} for texture {:?}", info.kind, info.key);
                 Self::Unknown(vec![data0.to_vec(), data1.to_vec()], info.clone())
             }
-        }
+        })
     }
 
 
@@ -177,14 +177,6 @@ impl Tex {
             Self::Unknown(vals, ..) => vals.iter().map(|x| x.len()).sum::<usize>()
         }
     }
-
-    // pub fn data(&self) -> &Vec<Vec<u8>> {
-    //     match self {
-    //         Self::Texture(val) => &val.levels,
-    //         Self::CubeTexture(val) => &val.faces,
-    //         Self::Unknown(vals, ..) => vals
-    //     }
-    // }
 
     pub fn to_file(&self, writer: Writer) -> Result<()> {
         match self {
@@ -285,7 +277,7 @@ pub fn conv_img(data: &[u8], height: usize, width: usize, f: u32) -> (Vec<u8>, u
             4,
             8
         ),
-        3 => (
+        3 | 4 => (
             data.chunks(4).flat_map(|x| [x[3], x[2], x[1], x[0]]).collect::<Vec<_>>(),
             1,
             4
@@ -315,10 +307,6 @@ pub fn conv_img(data: &[u8], height: usize, width: usize, f: u32) -> (Vec<u8>, u
             let dst = &mut out_data[j*d..(j+1)*d];
             dst.copy_from_slice(src);
         }
-        // for k in 0..d {
-        //     out_data[j*d+k] = *data.get(i*d+k).unwrap_or(&0);
-        // }
-        // out_data[i*d..(i+1)*d].copy_from_slice(&data[j * d..(j+1)*d]);
     };
     (out_data.chunks(w*d).take(h_).flat_map(|x| &x[..w_*d]).cloned().collect(), d, w_, h_)
 }
@@ -330,8 +318,6 @@ fn bin_mip(arr: &[u8], w: usize) -> Vec<u8> {
 fn decomp_bc4(arr: &[u8], w: usize, h: usize) -> Vec<u8> {
     bcndecode::decode(arr, w, h, bcndecode::BcnEncoding::Bc4, bcndecode::BcnDecoderFormat::LUM).unwrap()
 }
-// def bin_mip(arr, w, h):
-//     return np.frombuffer(arr, np.ubyte).reshape(h//2, 2, w//2, 2)[:,0,:,0].tobytes()
 
 impl Texture {
     pub fn from_data<O: ByteOrder + 'static>(data0: &[u8], data1: &[u8], info: &mut TextureInfo) -> Self {
@@ -385,7 +371,6 @@ impl Texture {
                             } else {
                                 conv_img(&data[offset..], sizes[i].1 as usize, sizes[i].0 as usize*2, format)
                             };
-                            // println!("{:?}, {:?}", (info.asset_key.clone(), info.asset_type), (packed_data.len(), d, pw, ph));
                         }
                         if m >= 4 {
                             let off = m >> 2;
@@ -480,7 +465,7 @@ pub struct CubeTexture {
 }
 
 impl CubeTexture {
-    pub fn from_data<O: ByteOrder + 'static>(data0: &[u8], data1: &[u8], info: &TextureInfo) -> Self {
+    pub fn from_data<O: ByteOrder + 'static>(data0: &[u8], data1: &[u8], info: &TextureInfo) -> Result<Self> {
         let format = info.format;
         let kind = info.asset_type;
         assert!(info.levels <= 1, "Cube Textures with > 1 level are unhanded");
@@ -488,12 +473,12 @@ impl CubeTexture {
             Some(val) => val,
             None => {
                 warn!("Unhandled Cube Texture Format {}", format);
-                return Self {
+                return Ok(Self {
                     faces: vec![data0.to_vec(), data1.to_vec()],
                     format,
                     kind,
                     ..Default::default()
-                }
+                })
             }
         };
 
@@ -503,29 +488,31 @@ impl CubeTexture {
 
         if TypeId::of::<O>() == TypeId::of::<LE>() {
             let data_size = (block_size.0 * block_size.1 * d) as usize;
+            data1.len().ge(&(data_size*6)).then_some(()).ok_or(anyhow::anyhow!("{:?}, texture data is too small. Expected {} got {}", info.key, data_size*6, data1.len()))?;
             for i in 0..6 {
                 faces.push(data1[data_size*i..data_size*i+data_size].to_vec());
             }
         } else {
             let data_size = (block_size.0.max(32) * block_size.1.max(32) * d) as usize;
+            data1.len().ge(&(data_size*6)).then_some(()).ok_or(anyhow::anyhow!("{:?}, texture data is too small. Expected {} got {}", info.key, data_size*6, data1.len()))?;
             for i in 0..6 {
                 faces.push(conv_img(&data1[data_size*i..data_size*i+data_size], size.1 as usize, size.0 as usize, format).0);
             }
         }
 
-        Self {
+        Ok(Self {
             faces,
             format,
             kind,
             info: info.clone(),
             ..Default::default()
-        }
+        })
     }
 
     pub fn dump<O: ByteOrder + 'static>(&self) -> (Vec<u8>, Vec<u8>) {
         if TypeId::of::<O>() == TypeId::of::<LE>() {
             match self.format {
-                3 | 7 | 8 | 10 | 0xb | 0xc | 0x11 => (vec![], self.faces.iter().flatten().cloned().collect()),
+                3 | 4 | 7 | 8 | 10 | 0xb | 0xc | 0x11 => (vec![], self.faces.iter().flatten().cloned().collect()),
                 _ => (self.faces[0].clone(), self.faces[1].clone()),
             }
         } else {
@@ -554,6 +541,6 @@ impl CubeTexture {
 
     pub fn from_file(reader: Reader, info: TextureInfo) -> Result<Self> {
         let dds = ddsfile::Dds::read(reader.with_extension("dds").read()?.as_slice())?;
-        Ok(Self::from_data::<LE>(&[], &dds.data, &info))
+        Self::from_data::<LE>(&[], &dds.data, &info)
     }
 }

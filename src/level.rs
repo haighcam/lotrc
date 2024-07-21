@@ -4,6 +4,7 @@ use log::{warn, info};
 use serde::{Serialize, Deserialize};
 use std::time::Instant;
 use std::iter::zip;
+use anyhow::Context;
 
 use super::{
     pak, bin, lua_stuff,
@@ -100,8 +101,9 @@ impl Level {
     pub fn dump<O: ByteOrder + 'static, P: AsRef<Path>>(&mut self, path: P) {
         let path = path.as_ref();
         let (pak, bin) = self.to_data::<O>();
-        fs::write(path.with_extension("PAK"), pak).unwrap();
-        fs::write(path.with_extension("BIN"), bin).unwrap();
+        path.parent().map(fs::create_dir_all);
+        fs::write(path.with_extension("PAK"), pak).context(path.with_extension("PAK").display().to_string()).unwrap();
+        fs::write(path.with_extension("BIN"), bin).context(path.with_extension("BIN").display().to_string()).unwrap();
     }
 
     pub fn from_data<O: ByteOrder + 'static>(bin_data: &[u8], pak_data: &[u8]) -> Self {
@@ -188,7 +190,7 @@ impl Level {
             let data1 = &val.asset_data.get(&(hash_string("*".as_bytes(), Some(info.asset_key.key())), info.asset_type)).unwrap().data;
             match info.kind {
                 0 | 7 | 8 => Some((info.asset_key.clone(), bin::Tex::Texture(bin::Texture::from_data::<O>(&data0[..], &data1[..], info)))),
-                1 | 9 => Some((info.asset_key.clone(), bin::Tex::CubeTexture(bin::CubeTexture::from_data::<O>(&data0[..], &data1[..], info)))),
+                1 | 9 => Some((info.asset_key.clone(), bin::Tex::CubeTexture(bin::CubeTexture::from_data::<O>(&data0[..], &data1[..], info).unwrap()))),
                 _ => {
                     warn!("Unsupported Texture Type {}", info.kind);
                     None
