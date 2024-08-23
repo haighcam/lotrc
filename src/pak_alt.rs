@@ -1,34 +1,33 @@
-use std::{collections::{HashMap, HashSet}, iter::zip};
+use std::{any::TypeId, collections::{HashMap, HashSet}, iter::zip};
 use itertools::Itertools;
 use log::warn;
-use zerocopy::ByteOrder;
 use serde::{Serialize, Deserialize};
 use crate::types::Crc;
 
 use lotrc_rs_proc::OrderedData;
-use super::types::{OrderedData, Vector4, Matrix4x4, OrderedDataVec};
+use super::types::{OrderedData, Vector4, Matrix4x4, OrderedDataVec, OrderedDataImpl, Version, PS3};
 use super::pak::*;
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Mesh {
     pub info: MeshInfo,
-    pub indices: Vec<u32>,
-    pub keys: Vec<Crc>,
-    pub matrices: Vec<Matrix4x4>,
-    pub vals_a: Vec<u32>,
+    pub indices: Vec<u32>, // probably i32, parent bone
+    pub keys: Vec<Crc>, // bone names
+    pub matrices: Vec<Matrix4x4>, // relative bone transforms
+    pub vals_a: Vec<u32>, // probably f32
     pub mat_order: Vec<u32>,
     pub vals_c: Vec<u32>,
-    pub vals_d: Vec<u32>,
+    pub vals_d: Vec<u32>, // 1 per contained mesh, stores result of some absolute position calculation?
     pub vbuff_order: Vec<u32>,
     pub ibuff_order: Vec<u32>,
-    pub vals_g: Vec<u32>,
+    pub vals_g: Vec<u32>, // mat4
     pub vals_j: Vec<u32>,
     pub val_k_header: Vec<u16>,
     pub vals_k: Vec<u32>,
-    pub vals_i: Vec<u32>,
-    pub keys2: Vec<Key2>,
-    pub keys2_order: Vec<u32>,
-    pub block_header: Option<u32>,
+    pub vals_i: Vec<u32>, // bone mapping for vals_g
+    pub keys2: Vec<Key2>, // attachment points
+    pub keys2_order: Vec<u32>, // attachment bone mapping
+    pub block_header: Option<u32>, // has to do with havok cloth / hair stuff
     pub block_offsets: Vec<u32>,
     pub blocks: Vec<(mesh::BlockHeader, Vec<u32>, Vec<mesh::BlockVal>, Vec<u32>)>,
     pub mats: Vec<Mat>,
@@ -44,7 +43,7 @@ pub struct Mesh {
 }
 
 impl Mesh {
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize) -> Self {
         let info: MeshInfo = OrderedData::from_bytes::<O>(&data[offset..]);
         let indices: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[info.indices_offset as usize..], info.keys_num as usize);
         let keys: Vec<Crc> = if info.keys_offset != 0 {
@@ -140,10 +139,10 @@ impl Mesh {
         vbuff_map.insert(0, 0xFFFFFFFF);
         let mut buffer_infos: Vec<BufferInfo> = OrderedDataVec::from_bytes::<O>(&data[info.buffer_info_offset as usize..], info.mat_num as usize);
         buffer_infos.iter_mut().for_each(|buff| {
-            buff.vbuff_info_offset = *vbuff_map.get(&buff.vbuff_info_offset).unwrap();
-            buff.vbuff_info_offset_2 = *vbuff_map.get(&buff.vbuff_info_offset_2).unwrap();
-            buff.vbuff_info_offset_3 = *vbuff_map.get(&buff.vbuff_info_offset_3).unwrap();
-            buff.ibuff_info_offset = *ibuff_map.get(&buff.ibuff_info_offset).unwrap();
+            buff.vbuff_info_offset = *vbuff_map.get(&buff.vbuff_info_offset).unwrap_or(&buff.vbuff_info_offset);
+            buff.vbuff_info_offset_2 = *vbuff_map.get(&buff.vbuff_info_offset_2).unwrap_or(&buff.vbuff_info_offset_2);
+            buff.vbuff_info_offset_3 = *vbuff_map.get(&buff.vbuff_info_offset_3).unwrap_or(&buff.vbuff_info_offset_3);
+            buff.ibuff_info_offset = *ibuff_map.get(&buff.ibuff_info_offset).unwrap_or(&buff.ibuff_info_offset);
         });
 
         Self {
@@ -180,7 +179,7 @@ impl Mesh {
         }
     }
 
-    pub fn dump<O: ByteOrder + 'static>(&self, mut offset: usize, infos: &mut DumpInfos) -> Vec<u8> {
+    pub fn dump<O: Version + 'static>(&self, mut offset: usize, infos: &mut DumpInfos) -> Vec<u8> {
         let mut info = self.info.clone();
         let mut data = vec![];
 
@@ -410,7 +409,7 @@ impl Mesh {
         data
     }
 
-    pub fn dump_terrain<O: ByteOrder + 'static>(&self, mut offset: usize, indices_offset: u32, infos: &mut DumpInfos) -> Vec<u8> {
+    pub fn dump_terrain<O: Version + 'static>(&self, mut offset: usize, indices_offset: u32, infos: &mut DumpInfos) -> Vec<u8> {
         let mut info = self.info.clone();
         let mut data = vec![];
 
@@ -655,14 +654,14 @@ pub struct HkConstraint {
     pub info: HkConstraintInfo,
     pub shorts: Vec<u16>,
     pub strings: Vec<(String, u32)>,
-    pub string_offsets: Vec<u32>,
-    pub vals: Vec<u32>,
-    pub vals2: Vec<u32>,
-    pub keys: Vec<Key2>,
+    pub string_offsets: Vec<u32>, // not needed
+    pub vals: Vec<u32>, // probably f32
+    pub vals2: Vec<u32>, // probably f32
+    pub keys: Vec<Key2>, // same as parent mesh ?
 }
 
 impl HkConstraint {
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize) -> Self {
         let info: HkConstraintInfo = OrderedData::from_bytes::<O>(&data[offset..]);
         if info.kind != 0 { panic!("Unknown & Unhandled HkConstraint type {} at offset {}", info.kind, offset); }
 
@@ -675,7 +674,7 @@ impl HkConstraint {
         for offset_ in string_offsets.iter() {
             let (mut offset, val) = { 
                 let vals: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[*offset_ as usize..], 2);
-                (vals[0], vals[1]) 
+                (vals[0], vals[1])
             };
             let start = offset;
             while data[offset as usize] != 0 { offset += 1; }
@@ -690,7 +689,7 @@ impl HkConstraint {
         }
     }
 
-    pub fn dump<O: ByteOrder + 'static>(&self, mut offset: usize, keys_offset: u32, keys_num: u32, infos: &mut DumpInfos) -> Vec<u8> {
+    pub fn dump<O: Version + 'static>(&self, mut offset: usize, keys_offset: u32, keys_num: u32, infos: &mut DumpInfos) -> Vec<u8> {
         let mut info = self.info.clone();
         info.keys_num = keys_num as u16;
         info.keys_offset = keys_offset;
@@ -770,8 +769,12 @@ pub enum Mat {
 }
 
 impl Mat {
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize) -> Self {
-        let ty: u32 = OrderedData::from_bytes::<O>(&data[offset + 208..]);
+    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize) -> Self {
+        let ty: u32 = if TypeId::of::<O>() == TypeId::of::<PS3>() {
+            OrderedData::from_bytes::<O>(&data[offset + 200..])
+        } else {
+            OrderedData::from_bytes::<O>(&data[offset + 208..])
+        };
         match ty {
             0 => Self::Mat1(OrderedData::from_bytes::<O>(&data[offset..])),
             1 => Self::Mat4(OrderedData::from_bytes::<O>(&data[offset..])),
@@ -808,7 +811,7 @@ pub struct Shape {
 }
 
 impl Shape {
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize) -> Self {
         let info: ShapeInfo = OrderedData::from_bytes::<O>(&data[offset..]);
         let extra = (info.kind == 0).then(|| ShapeExtra::from_data::<O>(data, info.offset as usize));
         let hk_shapes = (0..info.hk_shape_num as usize).map(|i| 
@@ -820,7 +823,7 @@ impl Shape {
             hk_shapes,
         }
     }
-    pub fn dump<O: ByteOrder + 'static>(&self, mut offset: usize, extra_offset: Option<u32>, infos: &mut DumpInfos) -> Vec<u8> {
+    pub fn dump<O: Version + 'static>(&self, mut offset: usize, extra_offset: Option<u32>, infos: &mut DumpInfos) -> Vec<u8> {
         let mut info = self.info.clone();
         if let Some(extra_offset) = extra_offset {
             info.offset = extra_offset;
@@ -855,7 +858,7 @@ pub struct ShapeExtra {
 }
 
 impl ShapeExtra {
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], mut offset: usize) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], mut offset: usize) -> Self {
         let info: ShapeExtraInfo = OrderedData::from_bytes::<O>(&data[offset..]);
         offset += ShapeExtraInfo::size::<O>();
         let offs: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[offset..], info.num as usize);
@@ -865,7 +868,7 @@ impl ShapeExtra {
         Self { info, offs, data: data[offset..off].to_vec() }
     }
 
-    pub fn dump<O: ByteOrder + 'static>(&self) -> Vec<u8> {
+    pub fn dump<O: Version + 'static>(&self) -> Vec<u8> {
         self.info.dump_bytes::<O>().into_iter().chain(self.offs.dump_bytes::<O>()).chain(self.data.clone()).collect()
     }
 }
@@ -1026,7 +1029,7 @@ pub enum HkShapeInfo {
 }
 
 impl HkShapeInfo {
-    pub fn to_bytes<O: ByteOrder + 'static>(&self, data: &mut [u8]) {
+    pub fn to_bytes<O: Version + 'static>(&self, data: &mut [u8]) {
         match self {
             Self::HkShape0(val) => val.to_bytes::<O>(data),
             Self::HkShape1(val) => val.to_bytes::<O>(data),
@@ -1040,7 +1043,7 @@ impl HkShapeInfo {
 }
 
 impl HkShape {
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize) -> Self {
         let ty: u32 = OrderedData::from_bytes::<O>(&data[offset + 32..]);
         match ty {
             0 => Self::HkShape0(OrderedData::from_bytes::<O>(&data[offset..])),
@@ -1070,7 +1073,7 @@ impl HkShape {
         }
     }
 
-    pub fn dump<O: ByteOrder + 'static>(&self, mut offset: usize, infos: &mut DumpInfos) -> Vec<u8> {
+    pub fn dump<O: Version + 'static>(&self, mut offset: usize, infos: &mut DumpInfos) -> Vec<u8> {
         match self {
             Self::HkShape0(shape) => {
                 infos.hk_shape.push(HkShapeInfo::HkShape0(shape.clone()));
@@ -1164,7 +1167,7 @@ pub struct Animation {
 }
 
 impl Animation {
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offsets: &mut Vec<usize>, blocks: & Vec<Vec<u8>>) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], offsets: &mut Vec<usize>, blocks: & Vec<Vec<u8>>) -> Self {
         let info: AnimationInfo = OrderedData::from_bytes::<O>(data);
         let (_, (offset, block)) = zip(offsets.iter().cloned(), blocks.iter()).enumerate().find(|(i, _)| {
             info.gamemodemask & (1 << i) != 0
@@ -1194,7 +1197,7 @@ impl Animation {
         Self { info, obj1, obj2, obj3, keys, obj5_a, obj5_b, obj5_header, obj_c }
     }
 
-    pub fn dump<O: ByteOrder + 'static>(&self, offset: usize, infos: &mut DumpInfos) -> Vec<u8> {
+    pub fn dump<O: Version + 'static>(&self, offset: usize, infos: &mut DumpInfos) -> Vec<u8> {
         let mut info = self.info.clone();
         info.offset = offset as u32;
         let mut data = vec![0u8; info.size as usize];

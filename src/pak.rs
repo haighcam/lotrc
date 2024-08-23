@@ -1,16 +1,15 @@
 use std::{any::TypeId, collections::HashMap, fmt::Display, iter::zip, num::ParseIntError, ops::Div, str::FromStr};
 use log::warn;
-use zerocopy::{ByteOrder, BE};
 use serde::{Serialize, Deserialize};
 
 use lotrc_rs_proc::OrderedData;
-use super::types::{BaseTypes, OrderedData, Vector4, Matrix4x4, OrderedDataVec, Vector2, Crc, Vector3};
+use super::types::{BaseTypes, OrderedData, Vector4, Matrix4x4, OrderedDataVec, Vector2, Crc, Vector3, OrderedDataImpl, Version, XBOX, PS3};
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct Header {
-    #[ordered_data(LE)]
+    #[ordered_data(PC)]
     pub block_a_num: u32, 
-    #[ordered_data(LE)]
+    #[ordered_data(PC)]
     pub block_a_offset: u32, 
     pub constx13: u32, 
     pub version: u32, 
@@ -132,25 +131,25 @@ pub struct Header {
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct ObjA {
-    #[ordered_data(LE)]
+    #[ordered_data(PC)]
     pub key: Crc,
-    #[ordered_data(LE)]
+    #[ordered_data(PC)]
     pub unk_1: u32,
-    #[ordered_data(LE)]
+    #[ordered_data(PC)]
     pub size: u32,
-    #[ordered_data(LE)]
+    #[ordered_data(PC)]
     pub size_comp: u32,
-    #[ordered_data(LE)]
+    #[ordered_data(PC)]
     pub unk_4: u32,
-    #[ordered_data(LE)]
+    #[ordered_data(PC)]
     pub kind: u32,
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct Obj0{
-    #[ordered_data(LE)]
+    #[ordered_data(PC)]
     pub unk_0: u32,
-    #[ordered_data(LE)]
+    #[ordered_data(PC)]
     pub key: Crc,
 }
 
@@ -201,9 +200,9 @@ pub struct MeshInfo {
     pub vbuff_num: u32,
     pub ibuff_offset: u32,
     pub ibuff_num: u32,
-    pub vals_d_offset: u32, // f_num * 8 ints
-    pub unk_46: u32,
-    pub unk_47: u32,
+    pub vals_d_offset: u32,
+    pub unk_46: u32, // probably a float
+    pub unk_47: u32, // maybe something to do with variation
     pub vals_j_num: u32,
     pub vals_j_offset: u32,
     pub block_offset: u32,
@@ -211,14 +210,23 @@ pub struct MeshInfo {
     pub asset_key: Crc, // data in bin that is vertex & index buffer values
     pub asset_type: u32,
     pub unk_54: u32,
+    #[name_ps3(shape_offset)]
     pub unk_55: u32,
+    #[name_ps3(shape_num)]
     pub shape_offset: u32,
+    #[name_ps3(hk_constraint_data_offset)]
     pub shape_num: u32,
+    #[name_ps3(hk_constraint_data_num)]
     pub hk_constraint_data_offset: u32, // optional pointer to obje
+    #[name_ps3(hk_constraint_offset)]
     pub hk_constraint_data_num: u32,
+    #[name_ps3(keys2_offset)]
     pub hk_constraint_offset: u32, // optional pointer to hkConstraint
+    #[name_ps3(keys2_order_offset)]
     pub keys2_offset: u32,
+    #[name_ps3(vals_a_offset)]
     pub keys2_order_offset: u32,
+    #[name_ps3(unk_55)]
     pub vals_a_offset: u32, // 8 ints
 }
 
@@ -244,83 +252,156 @@ pub struct BufferInfo {
     pub unk_17: u32,
     pub unk_18: u32,
     pub unk_19: u32,
+    #[ordered_data(skipPS3)]
     pub unk_20: u32,
+    #[ordered_data(skipPS3)]
     pub unk_21: u32,
+    #[ordered_data(skipPS3)]
     pub unk_22: u32,
+    #[ordered_data(skipPS3)]
     pub unk_23: u32,
+    #[ordered_data(skipPS3)]
     pub unk_24: u32,
+    #[ordered_data(skipPS3)]
     pub unk_25: u32,
+    #[ordered_data(skipPS3)]
     pub unk_26: u32,
+    #[ordered_data(skipPS3)]
     pub unk_27: u32,
+    #[ordered_data(skipPS3)]
     pub unk_28: u32,
+    #[ordered_data(skipPS3)]
     pub unk_29: u32,
+    #[ordered_data(skipPS3)]
     pub unk_30: u32,
+    #[ordered_data(skipPS3)]
     pub unk_31: u32,
+    #[ordered_data(skipPS3)]
     pub v_size: u32,
+    #[ordered_data(skipPS3)]
     pub v_size_2: u32,
+    #[ordered_data(skipPS3)]
     pub v_size_3: u32,
+    #[ordered_data(skipPS3)]
     pub unk_35: u32,
+    #[ordered_data(skipPS3)]
     pub unk_36: u32,
+    #[ordered_data(skipPS3)]
     pub unk_37: u32,
+    #[ordered_data(skipPS3)]
     pub unk_38: u32,
+    #[ordered_data(skipPS3)]
     pub unk_39: u32,
+    #[ordered_data(skipPS3)]
     pub unk_40: u32,
+    #[ordered_data(skipPS3)]
     pub unk_41: u32,
+    #[ordered_data(skipPS3)]
     pub unk_42: u32,
+    #[ordered_data(skipPS3)]
     pub unk_43: u32,
+    #[ordered_data(skipPS3)]
     pub unk_44: u32,
+    #[ordered_data(skipPS3)]
     pub unk_45: u32,
+    #[ordered_data(skipPS3)]
     pub unk_46: u32,
+    #[ordered_data(skipPS3)]
     pub unk_47: u32,
+    #[ordered_data(skipPS3)]
     pub vbuff_size: u32,
+    #[ordered_data(skipPS3)]
     pub vbuff_size_2: u32,
+    #[ordered_data(skipPS3)]
     pub vbuff_size_3: u32,
+    #[ordered_data(skipPS3)]
     pub unk_51: u32,
+    #[ordered_data(skipPS3)]
     pub unk_52: u32,
+    #[ordered_data(skipPS3)]
     pub unk_53: u32,
+    #[ordered_data(skipPS3)]
     pub unk_54: u32,
+    #[ordered_data(skipPS3)]
     pub unk_55: u32,
+    #[ordered_data(skipPS3)]
     pub unk_56: u32,
+    #[ordered_data(skipPS3)]
     pub unk_57: u32,
+    #[ordered_data(skipPS3)]
     pub unk_58: u32,
+    #[ordered_data(skipPS3)]
     pub unk_59: u32,
+    #[ordered_data(skipPS3)]
     pub unk_60: u32,
+    #[ordered_data(skipPS3)]
     pub unk_61: u32,
+    #[ordered_data(skipPS3)]
     pub unk_62: u32,
+    #[ordered_data(skipPS3)]
     pub unk_63: u32,
+    #[ordered_data(skipPS3)]
     pub unk_64: u32,
+    #[ordered_data(skipPS3)]
     pub ibuff_info_offset: u32, // poiner to objg
+    #[ordered_data(skipPS3)]
     pub i_num: u32, // number of indeices in ibuffer
+    #[ordered_data(skipPS3)]
     pub unk_67: u32,
+    #[ordered_data(skipPS3)]
     pub unk_68: u32,
+    #[ordered_data(skipPS3)]
     pub unk_69: u32,
+    #[ordered_data(skipPS3)]
     pub unk_70: u32,
+    #[ordered_data(skipPS3)]
     pub tri_num: u32, // number of objects(triangles) in ibufffer
+    #[ordered_data(skipPS3)]
     pub unk_72: u32,
+    #[ordered_data(skipPS3)]
     pub unk_73: u32,
+    #[ordered_data(skipPS3)]
     pub unk_74: u32,
+    #[ordered_data(skipPS3)]
     pub unk_75: u32,
+    #[ordered_data(skipPS3)]
     pub unk_76: u32,
+    #[ordered_data(skipPS3)]
     pub unk_77: u32,
+    #[ordered_data(skipPS3)]
     pub unk_78: u32,
+    #[ordered_data(skipPS3)]
     pub unk_79: u32,
+    #[ordered_data(skipPS3)]
     pub unk_80: u32,
+    #[ordered_data(skipPS3)]
     pub unk_81: u32,
+    #[ordered_data(skipPS3)]
     pub unk_82: u32,
+    #[ordered_data(skipPS3)]
     pub unk_83: u32,
+    #[ordered_data(skipPS3)]
     pub unk_84: u32,
+    #[ordered_data(skipPS3)]
     pub unk_85: u32,
+    #[ordered_data(skipPS3)]
     pub unk_86: u32,
+    #[ordered_data(skipPS3)]
     pub unk_87: u32,
+    #[ordered_data(skipPS3)]
     pub unk_88a: u8,
+    #[ordered_data(skipPS3)]
     pub unk_88b: u8,
+    #[ordered_data(skipPS3)]
     pub unk_88c: u8,
+    #[ordered_data(skipPS3)]
     pub unk_88d: u8,
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct MatBase {
     pub unk_0: u32,
+    #[ordered_data(skipPS3)]
     pub unk_1: u32,
     pub tex_2: Crc,
     pub tex_3: Crc,
@@ -354,6 +435,7 @@ pub struct MatBase {
     pub unk_31: u32,
     pub unk_32: u32,
     pub unk_33: u32,
+    #[ordered_data(skipPS3)]
     pub z_34: u32,
     pub z_35: u32,
     pub z_36: u32,
@@ -490,6 +572,10 @@ pub struct Mat3 {
     pub unk_114c: u8,
     pub unk_114d: u8,
     pub unk_115: u32,
+    #[ordered_data(skipPC, skipXBOX)]
+    pub unk_116: u32,
+    #[ordered_data(skipPC, skipXBOX)]
+    pub unk_117: u32,
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
@@ -699,53 +785,64 @@ pub struct HkConstraintData {
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct VBuffInfo {
     pub unk_0: u32,
+    #[name_ps3(unk_7)]
     pub size: u32,
     pub unk_3: u32,
+    #[name_ps3(unk_8)]
     pub offset: u32,
-    #[name_be(fmt2)]
+    #[name_xbox(fmt2)]
+    #[name_ps3(unk_9)]
     pub fmt1: u32,
-    #[name_be(fmt1)]
+    #[name_xbox(fmt1)]
+    #[name_ps3(size)]
     pub fmt2: u32,
     pub unk_6: u32,
+    #[name_ps3(offset)]
     pub unk_7: u32,
-    #[ordered_data(skipLE)]
+    #[name_ps3(fmt2)]
+    #[ordered_data(skipPC)]
     pub unk_8: u32,
-    #[ordered_data(skipLE)]
+    #[name_ps3(fmt1)]
+    #[ordered_data(skipPC)]
     pub unk_9: u32,
-    #[ordered_data(skipLE)]
+    #[ordered_data(skipPC, skipPS3)]
     pub unk_10: u32,
-    #[ordered_data(skipLE)]
+    #[ordered_data(skipPC, skipPS3)]
     pub unk_11: u32,
-    #[ordered_data(skipLE)]
+    #[ordered_data(skipPC, skipPS3)]
     pub unk_12: u32,
-    #[ordered_data(skipLE)]
+    #[ordered_data(skipPC, skipPS3)]
     pub unk_13: u32,
-
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct IBuffInfo {
     pub unk_0: u32,
+    #[name_ps3(unk_5)]
     pub size: u32,
+    #[name_ps3(unk_6)]
     pub format: u32,
     pub unk_3: u32,
+    #[name_ps3(unk_8)]
     pub offset: u32,
+    #[name_ps3(size)]
     pub unk_5: u32,
-    #[ordered_data(skipLE)]
+    #[name_ps3(format)]
+    #[ordered_data(skipPC)]
     pub unk_6: u32,
-    #[ordered_data(skipLE)]
+    #[ordered_data(skipPC)]
     pub unk_7: u32,
-    #[ordered_data(skipLE)]
+    #[name_ps3(offset)]
+    #[ordered_data(skipPC)]
     pub unk_8: u32,
-    #[ordered_data(skipLE)]
+    #[ordered_data(skipPC, skipPS3)]
     pub unk_9: u32,
-    #[ordered_data(skipLE)]
+    #[ordered_data(skipPC, skipPS3)]
     pub unk_10: u32,
-    #[ordered_data(skipLE)]
+    #[ordered_data(skipPC, skipPS3)]
     pub unk_11: u32,
-    #[ordered_data(skipLE)]
+    #[ordered_data(skipPC, skipPS3)]
     pub unk_12: u32,
-
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
@@ -978,7 +1075,7 @@ pub struct Mesh {
 }
 
 impl Mesh {
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], info: &MeshInfo) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], info: &MeshInfo) -> Self {
         let mut val = Self::default();
 
         val.indices = OrderedDataVec::from_bytes::<O>(&data[info.indices_offset as usize..], info.keys_num.max(4) as usize);
@@ -1051,7 +1148,7 @@ impl Mesh {
         val
     }
 
-    pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut [u8], info: &MeshInfo) {
+    pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], info: &MeshInfo) {
         self.indices.to_bytes::<O>(&mut data[info.indices_offset as usize..]);
         self.keys.to_bytes::<O>(&mut data[info.keys_offset as usize..]);
         self.matrices.to_bytes::<O>(&mut data[info.matrices_offset as usize..]);
@@ -1121,7 +1218,7 @@ pub struct Shape {
 }
 
 impl Shape {
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], info: &ShapeInfo) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], info: &ShapeInfo) -> Self {
         let mut val = Self::default();
         if info.kind == 0 {
             let mut offset = info.offset as usize;
@@ -1134,7 +1231,7 @@ impl Shape {
         val
     }
 
-    pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut [u8], info: &ShapeInfo) {
+    pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], info: &ShapeInfo) {
         if info.kind == 0 {
             let mut offset = info.offset as usize;
             self.header.to_bytes::<O>(&mut data[offset..]);
@@ -1156,7 +1253,7 @@ pub struct HkShape {
 }
 
 impl HkShape {
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], info: &HkShapeInfo) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], info: &HkShapeInfo) -> Self {
         let mut val = Self::default();
         if info.kind == 5 {
             val.a = OrderedDataVec::from_bytes::<O>(&data[info.a_offset as usize..], info.a_num as usize * 4);
@@ -1173,7 +1270,7 @@ impl HkShape {
         val
     }
 
-    pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut [u8], info: &HkShapeInfo) {
+    pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], info: &HkShapeInfo) {
         if info.kind == 5 {
             self.a.to_bytes::<O>(&mut data[info.a_offset as usize..]);
             self.b.to_bytes::<O>(&mut data[info.b_offset as usize..]);
@@ -1198,7 +1295,7 @@ pub struct HkConstraint {
 }
 
 impl HkConstraint {
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], info: &HkConstraintInfo) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], info: &HkConstraintInfo) -> Self {
         let mut val = Self::default();
         if info.kind != 0 { warn!("Unknown & Unhandled HkConstraint type {}", info.kind); }
 
@@ -1223,7 +1320,7 @@ impl HkConstraint {
         val
     }
 
-    pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut [u8], info: &HkConstraintInfo) {
+    pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], info: &HkConstraintInfo) {
         self.shorts.to_bytes::<O>(&mut data[info.shorts_offset as usize..]);
         self.string_offsets.to_bytes::<O>(&mut data[info.strings_offset as usize..]);
         for (offset_, (string, offset, val)) in zip(&self.string_offsets, &self.strings) {
@@ -1248,7 +1345,7 @@ pub mod animation {
     }
     
     impl HkaSplineSkeletalAnimationObj1Types {
-        pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize, num: usize, kind: u8) -> Self {
+        pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize, num: usize, kind: u8) -> Self {
             match kind {
                 0 | 2 =>  Self::Type1(OrderedDataVec::from_bytes::<O>(&data[offset..], num)),
                 1 | 3 =>  Self::Type2(OrderedDataVec::from_bytes::<O>(&data[offset..], num)),
@@ -1256,7 +1353,7 @@ pub mod animation {
             }
         }
     
-        pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut [u8], offset: usize) {
+        pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], offset: usize) {
             match self {
                 Self::Type1(vals) => vals.to_bytes::<O>(&mut data[offset..]),
                 Self::Type2(vals) => vals.to_bytes::<O>(&mut data[offset..]),
@@ -1264,7 +1361,7 @@ pub mod animation {
             };
         }
     
-        pub fn size<O: ByteOrder + 'static>(&self) -> usize {
+        pub fn size<O: Version + 'static>(&self) -> usize {
             match self {
                 Self::Type1(vals) => vals.size::<O>(),
                 Self::Type2(vals) => vals.size::<O>(),
@@ -1287,7 +1384,7 @@ pub mod animation {
         // const ITEM_SIZES: [usize; 4] = [1,2,1,2];
         const COUNTS: [usize; 8] = [0,1,1,2,1,2,2,3];
     
-        pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset_: usize, flags: u8, kind: u8) -> Self {
+        pub fn from_data<O: Version + 'static>(data: &[u8], offset_: usize, flags: u8, kind: u8) -> Self {
             let mut val = Self::default();
             let mut offset = offset_;
             if flags != 0 {        
@@ -1325,7 +1422,7 @@ pub mod animation {
             val
         }
     
-        pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut [u8], offset: usize, flags: u8) {
+        pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], offset: usize, flags: u8) {
             let mut offset = offset;
             if flags == 0 { return; }
             if flags & 0xf0 != 0 {
@@ -1380,7 +1477,7 @@ pub mod animation {
     }
     
     impl HkaSplineSkeletalAnimationObj2Types {
-        pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize, num: usize, kind: u8) -> Self {
+        pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize, num: usize, kind: u8) -> Self {
             match kind {
                 0 =>  Self::Type1(OrderedDataVec::from_bytes::<O>(&data[offset..], num)),
                 1 =>  Self::Type2(OrderedDataVec::from_bytes::<O>(&data[offset..], num)),
@@ -1392,7 +1489,7 @@ pub mod animation {
             }
         }
     
-        pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut [u8], offset: usize) {
+        pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], offset: usize) {
             match self {
                 Self::Type1(vals) => vals.to_bytes::<O>(&mut data[offset..]),
                 Self::Type2(vals) => vals.to_bytes::<O>(&mut data[offset..]),
@@ -1404,7 +1501,7 @@ pub mod animation {
             };
         }
     
-        pub fn size<O: ByteOrder + 'static>(&self) -> usize {
+        pub fn size<O: Version + 'static>(&self) -> usize {
             match self {
                 Self::Type1(vals) => vals.size::<O>(),
                 Self::Type2(vals) => vals.size::<O>(),
@@ -1430,7 +1527,7 @@ pub mod animation {
     impl HkaSplineSkeletalAnimationObj2 {
         const ALIGNMENTS: [u32; 6] = [4, 1, 2, 1, 2, 4];
     
-        pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset_: usize, flags: u8, kind: u8) -> Self {
+        pub fn from_data<O: Version + 'static>(data: &[u8], offset_: usize, flags: u8, kind: u8) -> Self {
             let mut val = Self::default();
             let mut offset = offset_;
             if flags != 0 {
@@ -1456,7 +1553,7 @@ pub mod animation {
             val
         }
     
-        pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut [u8], offset: usize, flags: u8) {
+        pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], offset: usize, flags: u8) {
             let mut offset = offset;
             if flags == 0 { return; }
             if flags & 0xf0 != 0 {
@@ -1497,7 +1594,7 @@ pub mod animation {
     }
     
     impl HkaSplineSkeletalAnimation {
-        pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize, info: &AnimationInfo) -> Self {
+        pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize, info: &AnimationInfo) -> Self {
             let mut val = Self::default();
             val.block_starts = OrderedDataVec::from_bytes::<O>(&data[offset + info.block_starts_offset as usize..], info.block_starts_num as usize);
             val.block_starts2 = OrderedDataVec::from_bytes::<O>(&data[offset + info.block_starts2_offset as usize..], info.block_starts2_num as usize);
@@ -1539,7 +1636,7 @@ pub mod animation {
             val
         }
     
-        pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut [u8], offset: usize, info: &AnimationInfo) {
+        pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], offset: usize, info: &AnimationInfo) {
             self.block_starts.to_bytes::<O>(&mut data[offset + info.block_starts_offset as usize..]);
             self.block_starts2.to_bytes::<O>(&mut data[offset + info.block_starts2_offset as usize..]);
             self.obj_c3.to_bytes::<O>(&mut data[offset + info.obj_c3_offset as usize..]);
@@ -1601,7 +1698,7 @@ pub struct Animation {
 }
 
 impl Animation {
-    pub fn unpack_from_block<O: ByteOrder + 'static>(&mut self, data: &[u8], offset: usize, index: usize, info: &AnimationInfo) {
+    pub fn unpack_from_block<O: Version + 'static>(&mut self, data: &[u8], offset: usize, index: usize, info: &AnimationInfo) {
         self.obj1.insert(index, OrderedDataVec::from_bytes::<O>(&data[offset + info.obj1_offset as usize..], info.obj1_num as usize * 2));
         self.obj2.insert(index, OrderedDataVec::from_bytes::<O>(&data[offset + info.obj2_offset as usize..], info.obj2_num as usize * 4));
         self.obj3.insert(index, OrderedDataVec::from_bytes::<O>(&data[offset + info.obj3_offset as usize..], info.obj3_num as usize));
@@ -1621,7 +1718,7 @@ impl Animation {
         }
     }
 
-    pub fn pack_into_block<O: ByteOrder + 'static>(&self, data: &mut [u8], offset: usize, index: usize, info: &AnimationInfo) {
+    pub fn pack_into_block<O: Version + 'static>(&self, data: &mut [u8], offset: usize, index: usize, info: &AnimationInfo) {
         self.obj1.get(&index).unwrap().to_bytes::<O>(&mut data[offset + info.obj1_offset as usize..]);
         self.obj2.get(&index).unwrap().to_bytes::<O>(&mut data[offset + info.obj2_offset as usize..]);
         self.obj3.get(&index).unwrap().to_bytes::<O>(&mut data[offset + info.obj3_offset as usize..]);
@@ -1637,7 +1734,7 @@ impl Animation {
         }
     }
 
-    pub fn unpack_block<O: ByteOrder + 'static>(anims: &mut [Self], infos: &[AnimationInfo], data: & [u8], offset: usize, index: usize) {
+    pub fn unpack_block<O: Version + 'static>(anims: &mut [Self], infos: &[AnimationInfo], data: & [u8], offset: usize, index: usize) {
         let mut offset = offset;
         for (anim, info) in zip(anims, infos) {
             let gamemodemask = 1i32 << index;
@@ -1648,7 +1745,7 @@ impl Animation {
         }
     }
 
-    pub fn pack_block<O: ByteOrder + 'static>(anims: & [Self], infos: &[AnimationInfo], data: &mut [u8], offset: usize, index: usize) {
+    pub fn pack_block<O: Version + 'static>(anims: & [Self], infos: &[AnimationInfo], data: &mut [u8], offset: usize, index: usize) {
         let mut offset = offset;
         for (anim, info) in zip(anims, infos) {
             let gamemodemask = 1i32 << index;
@@ -1805,7 +1902,7 @@ impl VertexTypes {
     }
 }
 
-fn get_vertex_format<O: ByteOrder + 'static>(fmt1: u32, fmt2: u32) -> (Vec<(u32, VertexUsage)>, usize) {
+fn get_vertex_format<O: Version + 'static>(fmt1: u32, fmt2: u32) -> (Vec<(u32, VertexUsage)>, usize) {
     let mut fmt = Vec::new();
     let mut s = 0;
     if fmt2 == 0 {
@@ -1830,6 +1927,9 @@ fn get_vertex_format<O: ByteOrder + 'static>(fmt1: u32, fmt2: u32) -> (Vec<(u32,
                 }
                 fmt.push((BaseTypes::VECTOR4_KEY, VertexUsage::BlendWeight));
                 s += 16;
+            } else if TypeId::of::<O>() == TypeId::of::<PS3>() {
+                fmt.push((BaseTypes::VECTOR3_KEY, VertexUsage::BlendWeight));
+                s += 12;
             } else {
                 fmt.push((BaseTypes::COLOR_KEY, VertexUsage::BlendWeight));
                 s += 4;
@@ -1924,7 +2024,7 @@ pub struct VertexBuffer {
 }
 
 impl VertexBuffer {
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], info: &mut VBuffInfo, formats: &mut HashMap<(u32, u32), (Vec<(u32, VertexUsage)>, usize)>) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], info: &mut VBuffInfo, formats: &mut HashMap<(u32, u32), (Vec<(u32, VertexUsage)>, usize)>) -> Self {
         let (fmt, size) = formats.entry((info.fmt1, info.fmt2)).or_insert_with(|| {
             get_vertex_format::<O>(info.fmt1, info.fmt2)
         });
@@ -1940,7 +2040,7 @@ impl VertexBuffer {
                 val.push(v);
             }
         }
-        if TypeId::of::<O>() == TypeId::of::<BE>() {
+        if TypeId::of::<O>() == TypeId::of::<XBOX>() {
             if (info.fmt1 & 0x80000 != 0) & (info.fmt1 & 0x400 == 0) {
                 info.fmt1 |= 0x400;
                 let (fmt, _) = formats.entry((info.fmt1, info.fmt2)).or_insert_with(|| {
@@ -2029,7 +2129,7 @@ impl VertexBuffer {
         Self { vals }
     }
 
-    pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut[u8], info: &VBuffInfo) {
+    pub fn into_data<O: Version + 'static>(&self, data: &mut[u8], info: &VBuffInfo) {
         let mut offset = info.offset as usize;
         let mut off_ = 0;
         let i = self.vals.iter().map(|(_, x)| x.len()).min().unwrap();
@@ -2050,7 +2150,7 @@ impl VertexBuffer {
         //     }
         // }
     }
-    pub fn dump<O: ByteOrder + 'static>(&self) -> Vec<u8> {
+    pub fn dump<O: Version + 'static>(&self) -> Vec<u8> {
         // self.vals.iter().flat_map(|x| x.iter().flat_map(|x| x.dump_bytes::<O>())).collect()
         let i = self.vals.iter().map(|(_, x)| x.len()).min().unwrap();
         (0..i).flat_map(|i| self.vals.iter().flat_map(move |(_, val)| val.get(i).dump_bytes::<O>())).collect()
@@ -2064,7 +2164,7 @@ pub enum IndexBuffer {
 }
 
 impl IndexBuffer {
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], info: &IBuffInfo) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], info: &IBuffInfo) -> Self {
         let size = match info.format {
             0x10 => u16::size::<O>(),
             _ => u32::size::<O>(),
@@ -2076,13 +2176,13 @@ impl IndexBuffer {
             _ => Self::U32 { vals: OrderedDataVec::from_bytes::<O>(&data[info.offset as usize..], n) },
         }
     }
-    pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut [u8]) {
+    pub fn into_data<O: Version + 'static>(&self, data: &mut [u8]) {
         match self {
             Self::U16 { vals } => vals.to_bytes::<O>(data),
             Self::U32 { vals } => vals.to_bytes::<O>(data)
         };
     }
-    pub fn dump<O: ByteOrder + 'static>(&self) -> Vec<u8> {
+    pub fn dump<O: Version + 'static>(&self) -> Vec<u8> {
         match self {
             Self::U16 { vals } => vals.dump_bytes::<O>(),
             Self::U32 { vals } => vals.dump_bytes::<O>()
@@ -2097,11 +2197,11 @@ pub struct Illumination {
 }
 
 impl Illumination {
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], info: &IlluminationInfo) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], info: &IlluminationInfo) -> Self {
         Self { vals: OrderedDataVec::from_bytes::<O>(&data[info.offset as usize..], info.num as usize) }
     }
 
-    pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut [u8], info: &IlluminationInfo) {
+    pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], info: &IlluminationInfo) {
         self.vals.to_bytes::<O>(&mut data[info.offset as usize..]);
     }
 }
@@ -2113,12 +2213,12 @@ pub struct Foliage {
 
 impl Foliage {
     // holds vertex data of some sort
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], info: &FoliageInfo) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], info: &FoliageInfo) -> Self {
         let n = (info.s1b - info.s1a) * (info.s2b - info.s2a) * 2;
         Self { vals: OrderedDataVec::from_bytes::<O>(&data[info.offset as usize..], n as usize) }
     }
 
-    pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut [u8], info: &FoliageInfo) {
+    pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], info: &FoliageInfo) {
         self.vals.to_bytes::<O>(&mut data[info.offset as usize..]);
     }
 }

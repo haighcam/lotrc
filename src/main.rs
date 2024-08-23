@@ -2,7 +2,6 @@ use std::{
     collections::{HashSet, VecDeque}, fs, path::{Path, PathBuf}
 };
 use audio::AudioTable;
-use zerocopy::LE;
 use log::error;
 use clap::{Parser, Args};
 use anyhow::Result;
@@ -21,7 +20,7 @@ mod read_write;
 use level::Level;
 use level_info::LevelInfo;
 use read_write::{Reader, Writer, PathStuff};
-
+use types::PC;
 
 fn v3_styling() -> clap::builder::styling::Styles {
     use clap::builder::styling::*;
@@ -100,9 +99,9 @@ fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parse
         if src.with_extension("PAK").is_file() && !parsed.contains(&src.with_extension("PAK")) {
             parsed.insert(src.with_extension("PAK"));
             if args.compile {
-                Level::parse(src).dump::<LE, _>(dest.join(name));
+                Level::parse(src).dump::<PC, _>(dest.join(name));
             } else if args.alt_comp {
-                level_alt::Level::parse(src)?.dump::<LE, _>(dest.join(name))?;
+                level_alt::Level::parse(src)?.dump::<PC, _>(dest.join(name))?;
             } else {
                 level_alt::Level::parse(src)?.to_file(Writer::new(dest.join(name), *types::ZIP.lock().unwrap())?)?;
             }
@@ -110,7 +109,7 @@ fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parse
             parsed.insert(src.clone());
             let level_info = LevelInfo::parse(src)?;
             if args.compile {
-                level_info.dump::<LE, _>(dest.join(name))?;
+                level_info.dump::<PC, _>(dest.join(name))?;
             } else {
                 level_info.to_file(Writer::new(dest.join(name), *types::ZIP.lock().unwrap())?)?;
             }
@@ -118,7 +117,7 @@ fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parse
             parsed.insert(src.with_extension("bin"));
             let table: AudioTable = AudioTable::parse(src);
             if args.compile {
-                table.dump::<LE, _>(dest.join(name))
+                table.dump::<PC, _>(dest.join(name))
             } else {
                 table.to_file(dest.join(name));
             }
@@ -128,7 +127,7 @@ fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parse
             if args.dump {
                 table.to_file(dest.join(name));
             } else {
-                table.dump::<LE, _>(dest.join(name))
+                table.dump::<PC, _>(dest.join(name))
             }
         } else if {
             if let Some(reader) = (ext == "zip").then(|| Reader::new(&src, true))
@@ -140,7 +139,7 @@ fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parse
                     if args.dump {
                         level_info.to_file(Writer::new(dest.join(name), *types::ZIP.lock().unwrap())?)?;
                     } else {
-                        level_info.dump::<LE, _>(dest.join(name))?;
+                        level_info.dump::<PC, _>(dest.join(name))?;
                     }
                     true
                 } else if reader.join("pak_header.json").is_file() {
@@ -148,7 +147,7 @@ fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parse
                     if args.dump {
                         level.to_file(Writer::new(dest.join(name), *types::ZIP.lock().unwrap())?)?;
                     } else {
-                        level.dump::<LE, _>(dest.join(name))?
+                        level.dump::<PC, _>(dest.join(name))?
                     }
                     true
                 } else {

@@ -1,13 +1,12 @@
 use std::any::TypeId;
 use log::warn;
-use zerocopy::{ByteOrder, LE};
 use serde::{Serialize, Deserialize};
 use anyhow::Result;
 use crate::types::Crc;
 
 use super::pak::TextureInfo;
 use lotrc_rs_proc::OrderedData;
-use super::types::{OrderedData, OrderedDataVec};
+use super::types::{OrderedDataVec, OrderedDataImpl, Version, PC, PS3};
 use super::read_write::{Reader, Writer, PathStuff};
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
@@ -73,7 +72,7 @@ pub struct Radiosity {
 }
 
 impl Radiosity {
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], usage: u32) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], usage: u32) -> Self {
         if data.len() % 4 != 0 {
             warn!("Radiosity length is incorrect?")
         }
@@ -81,7 +80,7 @@ impl Radiosity {
         Self { data, usage }
     }
 
-    pub fn dump<O: ByteOrder + 'static>(&self) -> Vec<u8> {
+    pub fn dump<O: Version + 'static>(&self) -> Vec<u8> {
         self.data.dump_bytes::<O>()
     }
 }
@@ -142,7 +141,7 @@ impl Tex {
         }
     }
 
-    pub fn from_data<O: ByteOrder + 'static>(data0: &[u8], data1: &[u8], info: &mut TextureInfo) -> Result<Self> {
+    pub fn from_data<O: Version + 'static>(data0: &[u8], data1: &[u8], info: &mut TextureInfo) -> Result<Self> {
         Ok(match info.kind {
             0 | 7 | 8 => Self::Texture(Texture::from_data::<O>(data0, data1, info)),
             1 | 9 => Self::CubeTexture(CubeTexture::from_data::<O>(data0, data1, info)?),
@@ -154,7 +153,7 @@ impl Tex {
     }
 
 
-    pub fn dump<O: ByteOrder + 'static>(&self) -> (Vec<u8>, Vec<u8>) {
+    pub fn dump<O: Version + 'static>(&self) -> (Vec<u8>, Vec<u8>) {
         match self {
             Self::Texture(val) => val.dump::<O>(),
             Self::CubeTexture(val) => val.dump::<O>(),
@@ -320,7 +319,7 @@ fn decomp_bc4(arr: &[u8], w: usize, h: usize) -> Vec<u8> {
 }
 
 impl Texture {
-    pub fn from_data<O: ByteOrder + 'static>(data0: &[u8], data1: &[u8], info: &mut TextureInfo) -> Self {
+    pub fn from_data<O: Version + 'static>(data0: &[u8], data1: &[u8], info: &mut TextureInfo) -> Self {
         let sizes = (0..info.levels).map(|x| 2u32.pow(x as u32)).map(|x| (info.width as u32/x, info.height as u32/x)).collect::<Vec<_>>();
         let mut format = info.format;
         let kind = info.asset_type;
@@ -339,7 +338,7 @@ impl Texture {
 
         let block_sizes = sizes.iter().map(|(x,y)| ((x/s).max(1), (y/s).max(1))).collect::<Vec<_>>();
         let data = data0.iter().chain(data1.iter()).cloned().collect::<Vec<_>>();
-        let levels = if TypeId::of::<O>() == TypeId::of::<LE>() {
+        let levels = if TypeId::of::<O>() == TypeId::of::<PC>() || TypeId::of::<O>() == TypeId::of::<PS3>() {
             let data_sizes = block_sizes.iter().map(|(x,y)| (x * y * d) as usize).collect::<Vec<_>>();
             let mut levels = Vec::with_capacity(data_sizes.len());
             let mut offset = 0;
@@ -406,10 +405,10 @@ impl Texture {
         }
     }
 
-    pub fn dump<O: ByteOrder + 'static>(&self) -> (Vec<u8>, Vec<u8>) {
-        if TypeId::of::<O>() == TypeId::of::<LE>() {
+    pub fn dump<O: Version + 'static>(&self) -> (Vec<u8>, Vec<u8>) {
+        if TypeId::of::<O>() == TypeId::of::<PC>() {
             match self.format {
-                3 | 6 | 7 | 8 | 10 | 0xb | 0xc | 0x11 => {
+                3 | 4 | 6 | 7 | 8 | 10 | 0xb | 0xc | 0x11 => {
                     if self.levels.len() > 1 {
                         (self.levels[0].clone(), self.levels[1..].iter().flatten().cloned().collect())
                     } else {
@@ -449,9 +448,9 @@ impl Texture {
         let size = dds.get_main_texture_size().unwrap() as usize;
         let data = &dds.data;
         Ok(if info.levels == 1 {
-            Self::from_data::<LE>(&[], data, &mut info)
+            Self::from_data::<PC>(&[], data, &mut info)
         } else {
-            Self::from_data::<LE>(&data[..size], &data[size..], &mut info)
+            Self::from_data::<PC>(&data[..size], &data[size..], &mut info)
         })
     }
 }
@@ -465,7 +464,7 @@ pub struct CubeTexture {
 }
 
 impl CubeTexture {
-    pub fn from_data<O: ByteOrder + 'static>(data0: &[u8], data1: &[u8], info: &TextureInfo) -> Result<Self> {
+    pub fn from_data<O: Version + 'static>(data0: &[u8], data1: &[u8], info: &TextureInfo) -> Result<Self> {
         let format = info.format;
         let kind = info.asset_type;
         assert!(info.levels <= 1, "Cube Textures with > 1 level are unhanded");
@@ -486,7 +485,7 @@ impl CubeTexture {
         let block_size = (size.0 as u32/s, size.1 as u32/s);
         let mut faces = Vec::with_capacity(6);
 
-        if TypeId::of::<O>() == TypeId::of::<LE>() {
+        if TypeId::of::<O>() == TypeId::of::<PC>() || TypeId::of::<O>() == TypeId::of::<PS3>() {
             let data_size = (block_size.0 * block_size.1 * d) as usize;
             data1.len().ge(&(data_size*6)).then_some(()).ok_or(anyhow::anyhow!("{:?}, texture data is too small. Expected {} got {}", info.key, data_size*6, data1.len()))?;
             for i in 0..6 {
@@ -509,8 +508,8 @@ impl CubeTexture {
         })
     }
 
-    pub fn dump<O: ByteOrder + 'static>(&self) -> (Vec<u8>, Vec<u8>) {
-        if TypeId::of::<O>() == TypeId::of::<LE>() {
+    pub fn dump<O: Version + 'static>(&self) -> (Vec<u8>, Vec<u8>) {
+        if TypeId::of::<O>() == TypeId::of::<PC>() {
             match self.format {
                 3 | 4 | 7 | 8 | 10 | 0xb | 0xc | 0x11 => (vec![], self.faces.iter().flatten().cloned().collect()),
                 _ => (self.faces[0].clone(), self.faces[1].clone()),
@@ -541,6 +540,6 @@ impl CubeTexture {
 
     pub fn from_file(reader: Reader, info: TextureInfo) -> Result<Self> {
         let dds = ddsfile::Dds::read(reader.with_extension("dds").read()?.as_slice())?;
-        Self::from_data::<LE>(&[], &dds.data, &info)
+        Self::from_data::<PC>(&[], &dds.data, &info)
     }
 }

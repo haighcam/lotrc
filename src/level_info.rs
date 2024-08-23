@@ -1,6 +1,5 @@
 
 use std::{fs, path::Path};
-use zerocopy::{ByteOrder, LE, BE};
 use log::warn;
 use serde::{Serialize, Deserialize};
 use lotrc_rs_proc::OrderedData;
@@ -8,7 +7,7 @@ use anyhow::{Result, Context};
 
 use super::{
     lua_stuff,
-    types::{self, Crc, OrderedData, OrderedDataVec},
+    types::{self, Crc, OrderedData, OrderedDataVec, OrderedDataImpl, Version, PC, XBOX},
     read_write::{Reader, Writer, PathStuff},
 };
 
@@ -37,9 +36,10 @@ impl From<[u8; 32]> for Name {
     }
 }
 
-impl OrderedData for Name {
-    type LE = [u8; 32];
-    type BE = [u8; 32];
+impl OrderedDataImpl for Name {
+    type PC = [u8; 32];
+    type XBOX = [u8; 32];
+    type PS3 = [u8; 32];
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
@@ -95,23 +95,23 @@ impl LevelInfo {
     pub fn parse<P: AsRef<Path>>(path: P) -> Result<Self> {
         let data = fs::read(path.as_ref()).context(path.as_ref().display().to_string())?;
         Ok(if data[0] == 4 {
-            Self::from_data::<LE>(&data[..])
+            Self::from_data::<PC>(&data[..])
         } else if data[3] == 4 {
-            Self::from_data::<BE>(&data[..])
+            Self::from_data::<XBOX>(&data[..])
         } else {
             warn!("Invalid level_info data");
             Default::default()
         })
     }
 
-    pub fn dump<O: ByteOrder + 'static, P: AsRef<Path>>(&self, path: P) -> Result<()> {
+    pub fn dump<O: Version + 'static, P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let path = path.as_ref().with_extension("dat");
         path.parent().map(fs::create_dir_all);
         fs::write(&path, self.to_data::<O>()).context(path.display().to_string())?;
         Ok(())
     }
 
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8]) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8]) -> Self {
         let lua = lua_stuff::LuaCompiler::new().unwrap();
 
         let header: Header = OrderedData::from_bytes::<O>(data);
@@ -134,7 +134,7 @@ impl LevelInfo {
         }
     }
 
-    pub fn to_data<O: ByteOrder + 'static>(&self) -> Vec<u8> {
+    pub fn to_data<O: Version + 'static>(&self) -> Vec<u8> {
         let lua = lua_stuff::LuaCompiler::new().unwrap();
 
         let mut dump_header = self.header.clone();

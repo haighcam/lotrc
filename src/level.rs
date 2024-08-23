@@ -1,5 +1,4 @@
 use std::{collections::HashMap, fs, path::Path, any::TypeId};
-use zerocopy::{ByteOrder, LE, BE};
 use log::{warn, info};
 use serde::{Serialize, Deserialize};
 use std::time::Instant;
@@ -8,9 +7,8 @@ use anyhow::Context;
 
 use super::{
     pak, bin, lua_stuff,
-    types::{self, hash_string, OrderedData, OrderedDataVec}
+    types::{self, hash_string, OrderedData, OrderedDataVec, Version, PC, XBOX, PS3}
 };
-
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Level {
@@ -89,16 +87,18 @@ impl Level {
         let pak_data = fs::read(path.with_extension("PAK")).unwrap();
         let bin_data = fs::read(path.with_extension("BIN")).unwrap();    
         if bin_data[0] == 6 {
-            Self::from_data::<LE>(&bin_data[..], &pak_data[..])
-        } else if bin_data[3] == 6 {
-            Self::from_data::<BE>(&bin_data[..], &pak_data[..])
+            Self::from_data::<PC>(&bin_data[..], &pak_data[..])
+        } else if bin_data[3] == 6 && bin_data[7] == 2 {
+            Self::from_data::<XBOX>(&bin_data[..], &pak_data[..])
+        } else if bin_data[3] == 6 && bin_data[7] == 3 {
+            Self::from_data::<PS3>(&bin_data[..], &pak_data[..])
         } else {
             warn!("Invalid level data");
             Default::default()
         }
     }
 
-    pub fn dump<O: ByteOrder + 'static, P: AsRef<Path>>(&mut self, path: P) {
+    pub fn dump<O: Version + 'static, P: AsRef<Path>>(&mut self, path: P) {
         let path = path.as_ref();
         let (pak, bin) = self.to_data::<O>();
         path.parent().map(fs::create_dir_all);
@@ -106,7 +106,7 @@ impl Level {
         fs::write(path.with_extension("BIN"), bin).context(path.with_extension("BIN").display().to_string()).unwrap();
     }
 
-    pub fn from_data<O: ByteOrder + 'static>(bin_data: &[u8], pak_data: &[u8]) -> Self {
+    pub fn from_data<O: Version + 'static>(bin_data: &[u8], pak_data: &[u8]) -> Self {
         let time = Instant::now();
         info!("extracting level");
 
@@ -124,12 +124,12 @@ impl Level {
         val.asset_handle_lookup = val.asset_handles.iter().enumerate().map(|(i, info)| ((info.key.key(), info.kind), i)).collect();
         val.asset_data = val.asset_handles.iter().map(|info| (
             (info.key.key(), info.kind), 
-            types::CompressedBlock::from_data(bin_data, info.size as usize, info.size_comp as usize, info.offset as usize))
+            types::CompressedBlock::from_data::<O>(bin_data, info.size as usize, info.size_comp as usize, info.offset as usize))
         ).collect();
         info!("assets extracted in {:?}", time.elapsed());
 
-        val.block1 = types::CompressedBlock::from_data(pak_data, val.pak_header.block1_size as usize, val.pak_header.block1_size_comp as usize, val.pak_header.block1_offset as usize);
-        val.block2 = types::CompressedBlock::from_data(pak_data, val.pak_header.block2_size as usize, val.pak_header.block2_size_comp as usize, val.pak_header.block2_offset as usize);
+        val.block1 = types::CompressedBlock::from_data::<O>(pak_data, val.pak_header.block1_size as usize, val.pak_header.block1_size_comp as usize, val.pak_header.block1_offset as usize);
+        val.block2 = types::CompressedBlock::from_data::<O>(pak_data, val.pak_header.block2_size as usize, val.pak_header.block2_size_comp as usize, val.pak_header.block2_offset as usize);
         info!("main blocks extracted in {:?}", time.elapsed());
 
         val.objas = OrderedDataVec::from_bytes::<O>(&val.block1.data[val.pak_header.obja_offset as usize..], val.pak_header.obja_num as usize);
@@ -167,7 +167,7 @@ impl Level {
         val.foliages = val.foliage_infos.iter().map(|info| pak::Foliage::from_data::<O>(val.block1.data.as_slice(), info)).collect();
         info!("item extra extracted in {:?}", time.elapsed());
 
-        val.animation_blocks = val.animation_block_infos.iter().map(|info| types::CompressedBlock::from_data(pak_data, info.size as usize, info.size_comp as usize,info.offset as usize)).collect();
+        val.animation_blocks = val.animation_block_infos.iter().map(|info| types::CompressedBlock::from_data::<O>(pak_data, info.size as usize, info.size_comp as usize,info.offset as usize)).collect();
         val.animations = val.animation_infos.iter().map(|_| pak::Animation::default()).collect();
         for (i, block) in val.animation_blocks.iter().enumerate() {
             pak::Animation::unpack_block::<O>(&mut val.animations[..], &val.animation_infos[..], &block.data[..], 0, i);
@@ -219,7 +219,7 @@ impl Level {
         val
     }
     
-    pub fn to_data<O: ByteOrder + 'static>(&mut self) -> (Vec<u8>, Vec<u8>) {
+    pub fn to_data<O: Version + 'static>(&mut self) -> (Vec<u8>, Vec<u8>) {
         let time: Instant = Instant::now();
         info!("compressing level");
 
@@ -227,7 +227,7 @@ impl Level {
 
         let mut bin_data = vec![0u8; bin::Header::size::<O>()];
         let mut dump_bin_header = self.bin_header.clone();
-        dump_bin_header.version = if TypeId::of::<O>() == TypeId::of::<LE>() { 1 } else { 2 };
+        dump_bin_header.version = if TypeId::of::<O>() == TypeId::of::<PC>() { 1 } else { 2 };
         let mut dump_asset_handles = self.asset_handles.clone();
         for asset_handle in &mut dump_asset_handles {
             asset_handle.size = 0;
@@ -355,7 +355,7 @@ impl Level {
 
         let mut pak_data = vec![0u8; pak::Header::size::<O>()];
         let mut dump_pak_header = self.pak_header.clone();
-        dump_pak_header.version = if TypeId::of::<O>() == TypeId::of::<LE>() { 1 } else { 2 };
+        dump_pak_header.version = if TypeId::of::<O>() == TypeId::of::<PC>() { 1 } else { 2 };
 
         self.dump_animation_blocks.clear();
         self.dump_animation_block_infos = self.animation_block_infos.clone();

@@ -5,61 +5,83 @@ use syn::Attribute;
 use syn::{parse_macro_input, spanned::Spanned, Data, DeriveInput, Fields,Ident, Index, Token};
 
 
-#[proc_macro_derive(OrderedData, attributes(ordered_data, name_be, name_le))]
+#[proc_macro_derive(OrderedData, attributes(ordered_data, name_pc, name_xbox, name_ps3))]
 pub fn derive_ordered_data_fn(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
     let name = input.ident;
-    let little_endian = format_ident!("LE");
-    let big_endian = format_ident!("BE");
-    let name_le = format_ident!("{}LE", name);
-    let name_be = format_ident!("{}BE", name);
+    let pc = format_ident!("PC");
+    let xbox = format_ident!("XBOX");
+    let ps3 = format_ident!("PS3");
+    let name_pc = format_ident!("{}PC", name);
+    let name_xbox = format_ident!("{}XBOX", name);
+    let name_ps3 = format_ident!("{}PS3", name);
 
     let vis = input.vis;
 
-    // let generics = conv_from(input.generics);
-    let alt_class_le = alt_class_def(&input.data, &name_le, &little_endian);
-    let alt_class_be = alt_class_def(&input.data, &name_be, &big_endian);
-    let conv_le: TokenStream = conv_def(&input.data, &little_endian);
-    let conv_back_le = conv_back_def(&input.data, &little_endian);
-    let conv_be = conv_def(&input.data, &big_endian);
-    let conv_back_be = conv_back_def(&input.data, &big_endian);
+    let alt_class_pc = alt_class_def(&input.data, &name_pc, &pc);
+    let alt_class_xbox = alt_class_def(&input.data, &name_xbox, &xbox);
+    let alt_class_ps3 = alt_class_def(&input.data, &name_ps3, &ps3);
+    let conv_pc: TokenStream = conv_def(&input.data, &pc);
+    let conv_back_pc = conv_back_def(&input.data, &pc);
+    let conv_xbox: TokenStream = conv_def(&input.data, &xbox);
+    let conv_back_xbox = conv_back_def(&input.data, &xbox);
+    let conv_ps3: TokenStream = conv_def(&input.data, &ps3);
+    let conv_back_ps3 = conv_back_def(&input.data, &ps3);
 
     let expanded = quote! {
         #[repr(C)]
         #[derive(Default, Debug, Clone, zerocopy::FromZeroes, zerocopy::FromBytes, zerocopy::AsBytes)]
-        #vis #alt_class_le
+        #vis #alt_class_pc
 
         #[repr(C)]
         #[derive(Default, Debug, Clone, zerocopy::FromZeroes, zerocopy::FromBytes, zerocopy::AsBytes)]
-        #vis #alt_class_be
+        #vis #alt_class_xbox
 
-        impl OrderedData for #name {
-            type LE = #name_le;
-            type BE = #name_be;
+        #[repr(C)]
+        #[derive(Default, Debug, Clone, zerocopy::FromZeroes, zerocopy::FromBytes, zerocopy::AsBytes)]
+        #vis #alt_class_ps3
+
+
+        impl OrderedDataImpl for #name {
+            type PC = #name_pc;
+            type XBOX = #name_xbox;
+            type PS3 = #name_ps3;
         }
 
-        impl From<#name_le> for #name {
-            fn from(value: #name_le) -> Self {
-                #conv_back_le
+        impl From<#name_pc> for #name {
+            fn from(value: #name_pc) -> Self {
+                #conv_back_pc
             }
         }
 
-        impl From<#name> for #name_le {
+        impl From<#name> for #name_pc {
             fn from(value: #name) -> Self {
-                #conv_le
+                #conv_pc
             }
         }
 
-        impl From<#name_be> for #name {
-            fn from(value: #name_be) -> Self {
-                #conv_back_be
+        impl From<#name_xbox> for #name {
+            fn from(value: #name_xbox) -> Self {
+                #conv_back_xbox
             }
         }
 
-        impl From<#name> for #name_be {
+        impl From<#name> for #name_xbox {
             fn from(value: #name) -> Self {
-                #conv_be
+                #conv_xbox
+            }
+        }
+
+        impl From<#name_ps3> for #name {
+            fn from(value: #name_ps3) -> Self {
+                #conv_back_ps3
+            }
+        }
+
+        impl From<#name> for #name_ps3 {
+            fn from(value: #name) -> Self {
+                #conv_ps3
             }
         }
     };
@@ -70,31 +92,54 @@ pub fn derive_ordered_data_fn(input: proc_macro::TokenStream) -> proc_macro::Tok
 fn filter_attrs(attrs: &Vec<Attribute>, endian: &Ident, name: Ident) -> (Ident, bool, Ident) {
     let mut val_endian = endian.clone();
     let mut skip = false;
-    match attrs.iter().filter(|a| a.path().is_ident("ordered_data")).flat_map(|a| {
+    for val in attrs.iter().filter(|a| a.path().is_ident("ordered_data")).flat_map(|a| {
         a.parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)
             .unwrap()
-    }).next() {
-        Some(val) => {
-            if val == "LE" || val == "BE" {
-                val_endian = val;
-            } else if val == "skipBE" && endian == "BE" {
-                skip = true;
-            } else if val == "skipLE" && endian == "LE" {
-                skip = true;
-            }
+    }) {
+        if val == "PC" || val == "XBOX" || val == "PS3" {
+            val_endian = val;
+        } else if val == "skipPC" && endian == "PC" {
+            skip = true;
+        } else if val == "skipXBOX" && endian == "XBOX" {
+            skip = true;
+        } else if val == "skipPS3" && endian == "PS3" {
+            skip = true;
         }
-        None => ()
     }
-    let alt_name = if endian == "BE" {
-        attrs.iter().filter(|a| a.path().is_ident("name_be")).flat_map(|a| {
+    // match attrs.iter().filter(|a| a.path().is_ident("ordered_data")).flat_map(|a| {
+    //     a.parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)
+    //         .unwrap()
+    // }).next() {
+    //     Some(val) => {
+    //         if val == "PC" || val == "XBOX" || val == "PS3" {
+    //             val_endian = val;
+    //         } else if val == "skipPC" && endian == "PC" {
+    //             skip = true;
+    //         } else if val == "skipXBOX" && endian == "XBOX" {
+    //             skip = true;
+    //         } else if val == "skipPS3" && endian == "PS3" {
+    //             skip = true;
+    //         }    
+    //     }
+    //     None => ()
+    // }
+    let alt_name = if endian == "PC" {
+        attrs.iter().filter(|a| a.path().is_ident("name_pc")).flat_map(|a| {
+            a.parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)
+                .unwrap()
+        }).next()
+    } else if endian == "XBOX" {
+        attrs.iter().filter(|a| a.path().is_ident("name_xbox")).flat_map(|a| {
+            a.parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)
+                .unwrap()
+        }).next()
+    } else if endian == "PS3" {
+        attrs.iter().filter(|a| a.path().is_ident("name_ps3")).flat_map(|a| {
             a.parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)
                 .unwrap()
         }).next()
     } else {
-        attrs.iter().filter(|a| a.path().is_ident("name_le")).flat_map(|a| {
-            a.parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)
-                .unwrap()
-        }).next()
+        None
     }.unwrap_or(name);
 
     (val_endian, skip, alt_name)
@@ -206,7 +251,7 @@ fn alt_class_def(data: &Data, classname: &Ident, endian: &Ident) -> TokenStream 
                         let (val, skip, _) = filter_attrs(&f.attrs, endian, name.clone().unwrap());
                         if !skip {
                             Some(quote_spanned! {
-                                f.span() => #name: <#ty as OrderedData>::#val
+                                f.span() => #name: <#ty as OrderedDataImpl>::#val
                             })
                         } else {
                             None
@@ -222,7 +267,7 @@ fn alt_class_def(data: &Data, classname: &Ident, endian: &Ident) -> TokenStream 
                     let recurse = fields.unnamed.iter().map(|f| {
                         let ty = &f.ty;
                         quote_spanned! {
-                            f.span() => <#ty as OrderedData>::#endian
+                            f.span() => <#ty as OrderedDataImpl>::#endian
                         }
 
                     });

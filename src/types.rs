@@ -1,4 +1,6 @@
-use std::{any::TypeId, collections::HashMap, iter::zip, mem::size_of};
+use std::any::TypeId;
+use std::{collections::HashMap, iter::zip, mem::size_of};
+use flate2::Decompress;
 use log::warn;
 use serde_json::{Value, json, to_vec_pretty, from_slice, Map};
 use zerocopy::{AsBytes, ByteOrder, FromBytes, BE, F32, LE, U16, U32, U64, I32};
@@ -13,87 +15,161 @@ use super::lua_stuff::LuaCompiler;
 use super::read_write::{Reader, Writer, PathStuff};
 
 use lotrc_rs_proc::OrderedData;
-pub trait OrderedData where Self: Sized + Clone + Default {
-    type LE: Into<Self> + From<Self> + FromBytes + AsBytes + Clone;
-    type BE: Into<Self> + From<Self> + FromBytes + AsBytes + Clone;
+
+pub struct PC;
+pub struct XBOX;
+pub struct PS3;
+
+pub trait Version {
+    fn from_bytes<T: OrderedDataImpl>(data: &[u8]) -> T;
+    fn to_bytes<T: OrderedDataImpl>(val: &T, data: &mut [u8]);
+    fn dump_bytes<T: OrderedDataImpl>(val: &T) -> Vec<u8>;
+    fn size<T: OrderedDataImpl>() -> usize;
+    fn from_bytes_vec<T: OrderedDataImpl>(data: &[u8], num: usize) -> Vec<T>;
+    fn to_bytes_vec<T: OrderedDataImpl>(val: &Vec<T>, data: &mut [u8]);
+    fn dump_bytes_vec<T: OrderedDataImpl>(val: &Vec<T>) -> Vec<u8>;
     #[inline]
-    fn from_bytes<O: ByteOrder + 'static>(data: &[u8]) -> Self {
-        if TypeId::of::<O>() == TypeId::of::<LE>() {
-            Self::LE::read_from_prefix(data).unwrap().into()
-        } else {
-            Self::BE::read_from_prefix(data).unwrap().into()
-        }
+    fn size_vec<T: OrderedDataImpl>(val: &Vec<T>) -> usize {
+        val.len() * Self::size::<T>()
+    }
+}
+
+impl Version for PC {
+    #[inline]
+    fn from_bytes<T: OrderedData>(data: &[u8]) -> T {
+        T::PC::read_from_prefix(data).unwrap().into()
     }
     #[inline]
-    fn to_bytes<O: ByteOrder + 'static>(&self, data: &mut [u8]) {
-        if TypeId::of::<O>() == TypeId::of::<LE>() {
-            Self::LE::write_to_prefix(&self.clone().into(), data).unwrap();
-        } else {
-            Self::BE::write_to_prefix(&self.clone().into(), data).unwrap();
-        }
+    fn to_bytes<T: OrderedData>(val: &T, data: &mut [u8]) {
+        T::PC::write_to_prefix(&val.clone().into(), data).unwrap();
     }
     #[inline]
-    fn dump_bytes<O: ByteOrder + 'static>(&self) -> Vec<u8> {
-        if TypeId::of::<O>() == TypeId::of::<LE>() {
-            Self::LE::as_bytes(&self.clone().into()).to_vec()
-        } else {
-            Self::BE::as_bytes(&self.clone().into()).to_vec()
-        }
+    fn dump_bytes<T: OrderedData>(val: &T) -> Vec<u8> {
+        T::PC::as_bytes(&val.clone().into()).to_vec()
     }
     #[inline]
-    fn size<O: ByteOrder + 'static>() -> usize {
-        if TypeId::of::<O>() == TypeId::of::<LE>() {
-            size_of::<Self::LE>()
-        } else {
-            size_of::<Self::BE>()
-        }
+    fn size<T: OrderedData>() -> usize {
+        size_of::<T::PC>()
     }
-    // fn from_data(data: &[u8], offset: usize) -> Self;
+    #[inline]
+    fn from_bytes_vec<T: OrderedData>(data: &[u8], num: usize) -> Vec<T> {
+        T::PC::slice_from_prefix(data, num).unwrap().0.iter().cloned().map(|x| x.into()).collect()
+    }
+    #[inline]
+    fn to_bytes_vec<T: OrderedData>(val: &Vec<T>, data: &mut [u8]) {
+        val.iter().cloned().map(|x| T::PC::from(x)).collect::<Vec<_>>().as_slice().write_to_prefix(data).unwrap()
+    }
+    #[inline]
+    fn dump_bytes_vec<T: OrderedData>(val: &Vec<T>) -> Vec<u8> {
+        val.iter().cloned().flat_map(|x| T::PC::from(x).as_bytes().iter().cloned().collect::<Vec<_>>()).collect()
+    }
+
+}
+
+impl Version for XBOX {
+    #[inline]
+    fn from_bytes<T: OrderedData>(data: &[u8]) -> T {
+        T::XBOX::read_from_prefix(data).unwrap().into()
+    }
+    #[inline]
+    fn to_bytes<T: OrderedData>(val: &T, data: &mut [u8]) {
+        T::XBOX::write_to_prefix(&val.clone().into(), data).unwrap();
+    }
+    #[inline]
+    fn dump_bytes<T: OrderedData>(val: &T) -> Vec<u8> {
+        T::XBOX::as_bytes(&val.clone().into()).to_vec()
+    }
+    #[inline]
+    fn size<T: OrderedData>() -> usize {
+        size_of::<T::XBOX>()
+    }
+    #[inline]
+    fn from_bytes_vec<T: OrderedData>(data: &[u8], num: usize) -> Vec<T> {
+        T::XBOX::slice_from_prefix(data, num).unwrap().0.iter().cloned().map(|x| x.into()).collect()
+    }
+    #[inline]
+    fn to_bytes_vec<T: OrderedData>(val: &Vec<T>, data: &mut [u8]) {
+        val.iter().cloned().map(|x| T::XBOX::from(x)).collect::<Vec<_>>().as_slice().write_to_prefix(data).unwrap()
+    }
+    #[inline]
+    fn dump_bytes_vec<T: OrderedData>(val: &Vec<T>) -> Vec<u8> {
+        val.iter().cloned().flat_map(|x| T::XBOX::from(x).as_bytes().iter().cloned().collect::<Vec<_>>()).collect()
+    }
+}
+
+impl Version for PS3 {
+    #[inline]
+    fn from_bytes<T: OrderedData>(data: &[u8]) -> T {
+        T::PS3::read_from_prefix(data).unwrap().into()
+    }
+    #[inline]
+    fn to_bytes<T: OrderedData>(val: &T, data: &mut [u8]) {
+        T::PS3::write_to_prefix(&val.clone().into(), data).unwrap();
+    }
+    #[inline]
+    fn dump_bytes<T: OrderedData>(val: &T) -> Vec<u8> {
+        T::PS3::as_bytes(&val.clone().into()).to_vec()
+    }
+    #[inline]
+    fn size<T: OrderedData>() -> usize {
+        size_of::<T::PS3>()
+    }
+    #[inline]
+    fn from_bytes_vec<T: OrderedData>(data: &[u8], num: usize) -> Vec<T> {
+        T::PS3::slice_from_prefix(data, num).unwrap().0.iter().cloned().map(|x| x.into()).collect()
+    }
+    #[inline]
+    fn to_bytes_vec<T: OrderedData>(val: &Vec<T>, data: &mut [u8]) {
+        val.iter().cloned().map(|x| T::PS3::from(x)).collect::<Vec<_>>().as_slice().write_to_prefix(data).unwrap()
+    }
+    #[inline]
+    fn dump_bytes_vec<T: OrderedData>(val: &Vec<T>) -> Vec<u8> {
+        val.iter().cloned().flat_map(|x| T::PS3::from(x).as_bytes().iter().cloned().collect::<Vec<_>>()).collect()
+    }
+}
+
+pub trait OrderedData where Self: OrderedDataImpl {
+    #[inline]
+    fn from_bytes<V: Version>(data: &[u8]) -> Self { V::from_bytes(data) }
+    #[inline]
+    fn to_bytes<V: Version>(&self, data: &mut [u8]) { V::to_bytes(self, data) }
+    #[inline]
+    fn dump_bytes<V: Version>(&self) -> Vec<u8> { V::dump_bytes(self) }
+    #[inline]
+    fn size<V: Version>() -> usize { V::size::<Self>() }
+}
+
+impl <T: OrderedDataImpl> OrderedData for T {}
+
+pub trait OrderedDataImpl where Self: Sized + Clone + Default {
+    type PC: Into<Self> + From<Self> + FromBytes + AsBytes + Clone;
+    type XBOX: Into<Self> + From<Self> + FromBytes + AsBytes + Clone;
+    type PS3: Into<Self> + From<Self> + FromBytes + AsBytes + Clone;
 }
 pub trait OrderedDataVec {
-    fn from_bytes<O: ByteOrder + 'static>(data: &[u8], num: usize) -> Self;
-    fn to_bytes<O: ByteOrder + 'static>(&self, data: &mut [u8]);
-    fn dump_bytes<O: ByteOrder + 'static>(&self) -> Vec<u8>;
-    fn size<O: ByteOrder + 'static>(&self) -> usize;
+    fn from_bytes<V: Version>(data: &[u8], num: usize) -> Self;
+    fn to_bytes<V: Version>(&self, data: &mut [u8]);
+    fn dump_bytes<V: Version>(&self) -> Vec<u8>;
+    fn size<V: Version>(&self) -> usize;
 }
 
-impl <T> OrderedDataVec for Vec<T> where T: OrderedData {
+impl <T: OrderedDataImpl> OrderedDataVec for Vec<T> {
     #[inline]
-    fn from_bytes<O: ByteOrder + 'static>(data: &[u8], num: usize) -> Self {
-        if TypeId::of::<O>() == TypeId::of::<LE>() {
-            T::LE::slice_from_prefix(data, num).unwrap().0.iter().cloned().map(|x| x.into()).collect()
-        } else {
-            T::BE::slice_from_prefix(data, num).unwrap().0.iter().cloned().map(|x| x.into()).collect()
-        }
-    }
+    fn from_bytes<V: Version>(data: &[u8], num: usize) -> Self { V::from_bytes_vec(data, num) }
     #[inline]
-    fn to_bytes<O: ByteOrder + 'static>(&self, data: &mut [u8]) {
-        if TypeId::of::<O>() == TypeId::of::<LE>() {
-            self.iter().cloned().map(|x| T::LE::from(x)).collect::<Vec<_>>().as_slice().write_to_prefix(data).unwrap()
-        } else {
-            self.iter().cloned().map(|x| T::BE::from(x)).collect::<Vec<_>>().as_slice().write_to_prefix(data).unwrap()
-        }
-    }
+    fn to_bytes<V: Version>(&self, data: &mut [u8]) { V::to_bytes_vec(self, data) }
     #[inline]
-    fn dump_bytes<O: ByteOrder + 'static>(&self) -> Vec<u8> {
-        if TypeId::of::<O>() == TypeId::of::<LE>() {
-            self.iter().cloned().flat_map(|x| T::LE::from(x).as_bytes().iter().cloned().collect::<Vec<_>>()).collect()
-        } else {
-            self.iter().cloned().flat_map(|x| T::BE::from(x).as_bytes().iter().cloned().collect::<Vec<_>>()).collect()
-        }
-    }
+    fn dump_bytes<V: Version>(&self) -> Vec<u8> { V::dump_bytes_vec(self) }
     #[inline]
-    fn size<O: ByteOrder + 'static>(&self) -> usize {
-        self.len() * T::size::<O>()
-    }
+    fn size<V: Version>(&self) -> usize { V::size_vec(self) }
 }
 
-impl OrderedData for f32 { type LE = F32<LE>; type BE = F32<BE>; }
-impl OrderedData for u64 { type LE = U64<LE>; type BE = U64<BE>; }
-impl OrderedData for u32 { type LE = U32<LE>; type BE = U32<BE>; }
-impl OrderedData for i32 { type LE = I32<LE>; type BE = I32<BE>; }
-impl OrderedData for u16 { type LE = U16<LE>; type BE = U16<BE>; }
-impl OrderedData for u8 { type LE = u8; type BE = u8;}
+impl OrderedDataImpl for f32 { type PC = F32<LE>; type XBOX = F32<BE>; type PS3 = F32<BE>; }
+impl OrderedDataImpl for u64 { type PC = U64<LE>; type XBOX = U64<BE>; type PS3 = U64<BE>; }
+impl OrderedDataImpl for u32 { type PC = U32<LE>; type XBOX = U32<BE>; type PS3 = U32<BE>; }
+impl OrderedDataImpl for i32 { type PC = I32<LE>; type XBOX = I32<BE>; type PS3 = I32<BE>; }
+impl OrderedDataImpl for u16 { type PC = U16<LE>; type XBOX = U16<BE>; type PS3 = U16<BE>; }
+impl OrderedDataImpl for u8 { type PC = u8; type XBOX = u8; type PS3 = u8; }
 
 const HASHING_ARRAY: [u32; 256] = [
     0x00000000, 0x04c11db7, 0x09823b6e, 0x0d4326d9, 0x130476dc, 0x17c56b6b, 0x1a864db2, 0x1e475005, 
@@ -300,7 +376,7 @@ impl From<U32String> for Crc {
     }
 }
 
-impl OrderedData for Crc { type LE = U32<LE>; type BE = U32<BE>; }
+impl OrderedDataImpl for Crc { type PC = U32<LE>; type XBOX = U32<BE>; type PS3 = U32<BE>; }
 
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
@@ -316,7 +392,7 @@ pub struct Strings {
 }
 
 impl Strings {
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize, num: usize) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize, num: usize) -> Self {
         let mut strings = Vec::with_capacity(num);
         let mut offset = offset;
         for _ in 0..num {
@@ -328,7 +404,7 @@ impl Strings {
         Self { strings, ..Default::default() }
     }
 
-    pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut [u8], offset: usize) {
+    pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], offset: usize) {
         let mut offset = offset;
         for string in &self.strings {
             (string.len() as u32).to_bytes::<O>(&mut data[offset..]);
@@ -338,7 +414,7 @@ impl Strings {
         }
     }
 
-    pub fn dump<O: ByteOrder + 'static>(&self) -> Vec<u8> {
+    pub fn dump<O: Version + 'static>(&self) -> Vec<u8> {
         self.strings.iter().flat_map(|string| {
             (string.len() as u32).dump_bytes::<O>().into_iter().chain(string.as_bytes().iter().cloned()).collect::<Vec<_>>()
         }).collect()
@@ -370,10 +446,20 @@ pub struct CompressedBlock {
 }
 
 impl CompressedBlock {
-    pub fn from_data(data: &[u8], size: usize, size_comp: usize, offset: usize) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], size: usize, size_comp: usize, offset: usize) -> Self {
         let data = match size_comp {
             0 => data[offset..offset + size].to_vec(),
-            _ => {
+            _ => if TypeId::of::<O>() == TypeId::of::<PS3>() {
+                let mut out = Vec::with_capacity(size);
+                let data = &data[offset..offset+size_comp];
+                let mut s = 2;
+                while s < size_comp {
+                    let mut decoder = ZlibDecoder::new_with_decompress(&data[s..], Decompress::new(false));
+                    decoder.read_to_end(&mut out).unwrap();
+                    s += decoder.total_in() as usize + 2;
+                }
+                out
+            } else {
                 let mut out = Vec::with_capacity(size);
                 ZlibDecoder::new(&data[offset..offset+size_comp]).read_to_end(&mut out).unwrap();
                 out
@@ -494,7 +580,7 @@ impl BaseTypes {
     pub const CRCLIST_KEY: u32 = hash_string("CRCList".as_bytes(), None);
     pub const WEIGHTLIST_KEY: u32 = hash_string("WeightList".as_bytes(), None);
     pub const MATRIXLIST_KEY: u32 = hash_string("MatrixList".as_bytes(), None);
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], kind: u32) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], kind: u32) -> Self {
         match kind {
             Self::CRC_KEY => Self::CRC(OrderedData::from_bytes::<O>(data)),
             Self::GUID_KEY => Self::GUID(OrderedData::from_bytes::<O>(data)),
@@ -554,7 +640,7 @@ impl BaseTypes {
         }
     }
 
-    pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut [u8], off: &mut usize) {
+    pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], off: &mut usize) {
         match self {
             Self::CRC(val) => val.to_bytes::<O>(data),
             Self::GUID(val) => val.to_bytes::<O>(data),
@@ -618,7 +704,7 @@ impl BaseTypes {
         }
     }
 
-    pub fn dump<O: ByteOrder + 'static>(&self, data: &mut Vec<u8>, off: usize) {
+    pub fn dump<O: Version + 'static>(&self, data: &mut Vec<u8>, off: usize) {
         match self {
             Self::CRC(val) => val.to_bytes::<O>(&mut data[off..]),
             Self::GUID(val) => val.to_bytes::<O>(&mut data[off..]),
@@ -675,7 +761,7 @@ impl BaseTypes {
     }
 
 
-    pub fn dump_bytes<O: ByteOrder + 'static>(&self) -> Vec<u8> {
+    pub fn dump_bytes<O: Version + 'static>(&self) -> Vec<u8> {
         match self {
             Self::CRC(val) => val.dump_bytes::<O>(),
             Self::GUID(val) => val.dump_bytes::<O>(),
@@ -693,7 +779,7 @@ impl BaseTypes {
     }
 
 
-    pub fn off_size<O: ByteOrder + 'static>(&self) -> usize {
+    pub fn off_size<O: Version + 'static>(&self) -> usize {
         match self {
             Self::String(vals) => {
                 if vals.len() != 0 { vals.len() + 1 } else { 0 }
@@ -729,7 +815,7 @@ impl BaseTypes {
         }
     }
 
-    pub fn size<O: ByteOrder + 'static>(&self) -> usize {
+    pub fn size<O: Version + 'static>(&self) -> usize {
         match self {
             Self::CRC(..) => u32::size::<O>(),
             Self::GUID(..) => u32::size::<O>(),
@@ -858,7 +944,7 @@ pub enum SubBlock {
 }
 
 impl SubBlock {
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], info: &SubBlocksBlockHeader, lua: &LuaCompiler) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], info: &SubBlocksBlockHeader, lua: &LuaCompiler) -> Self {
         match info.key.key() {
             LangStrings::KEY_POLISH | LangStrings::KEY_GERMAN | LangStrings::KEY_FRENCH | LangStrings::KEY_SPANISH | LangStrings::KEY_RUSSIAN | LangStrings::KEY_SWEDISH | LangStrings::KEY_ENGLISH | LangStrings::KEY_ITALIAN | LangStrings::KEY_NORWEGIAN => 
                 SubBlock::LangStrings(LangStrings::from_data::<O>(data, info.offset as usize, info.size as usize)),
@@ -880,7 +966,7 @@ impl SubBlock {
         }
     }
 
-    pub fn dump<O: ByteOrder + 'static>(&self, lua: &LuaCompiler) -> Vec<u8> {
+    pub fn dump<O: Version + 'static>(&self, lua: &LuaCompiler) -> Vec<u8> {
         match self {
             SubBlock::LangStrings(val) => val.dump::<O>(),
             SubBlock::Data(val) => val.dump(),
@@ -893,7 +979,7 @@ impl SubBlock {
         }
     }
 
-    pub fn size<O: ByteOrder + 'static>(&self) -> usize {
+    pub fn size<O: Version + 'static>(&self) -> usize {
         match self {
             SubBlock::LangStrings(val) => val.size(),
             SubBlock::Data(val) => val.data.len(),
@@ -968,7 +1054,7 @@ pub struct SubBlocks {
 }
 
 impl SubBlocks {
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize, lua: &LuaCompiler) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize, lua: &LuaCompiler) -> Self {
         let mut val = Self::default();
         val.header = OrderedData::from_bytes::<O>(&data[offset..]);
         val.block_headers = OrderedDataVec::from_bytes::<O>(&data[offset+SubBlocksHeader::size::<O>()..], val.header.block_num as usize);
@@ -978,7 +1064,7 @@ impl SubBlocks {
         val
     }
 
-    pub fn size<O: ByteOrder + 'static>(&self) -> usize {
+    pub fn size<O: Version + 'static>(&self) -> usize {
         let mut s = SubBlocksHeader::size::<O>() + self.block_headers.size::<O>();
         for block in &self.blocks {
             s = (s + 16) & 0xFFFFFFF0;
@@ -988,7 +1074,7 @@ impl SubBlocks {
         return s
     }
 
-    pub fn dump<O: ByteOrder + 'static>(&self, lua: &LuaCompiler) -> Vec<u8> {
+    pub fn dump<O: Version + 'static>(&self, lua: &LuaCompiler) -> Vec<u8> {
         let mut block_headers = self.block_headers.clone();
         let mut offset = SubBlocksHeader::size::<O>() + block_headers.size::<O>();
         let mut data = vec![];
@@ -1048,7 +1134,7 @@ pub struct StringKeys {
 }
 
 impl StringKeys {
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize) -> Self {
         let mut offset: usize = offset;
         let header: StringKeysHeader = OrderedData::from_bytes::<O>(&data[offset..]);
         assert!(header.num_a == header.num_b, "Seems to be true");
@@ -1059,7 +1145,7 @@ impl StringKeys {
         Self { header, vals, pad }
     }
 
-    pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut [u8], offset: usize) {
+    pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], offset: usize) {
         let mut offset = offset;
         self.header.to_bytes::<O>(&mut data[offset..]);
         offset += StringKeysHeader::size::<O>();
@@ -1068,11 +1154,11 @@ impl StringKeys {
         self.pad.to_bytes::<O>(&mut data[offset..]);
     }
 
-    pub fn size<O: ByteOrder + 'static>(&self) -> usize {
+    pub fn size<O: Version + 'static>(&self) -> usize {
         StringKeysHeader::size::<O>() + self.vals.size::<O>() + self.pad.size::<O>()
     }
 
-    pub fn dump<O: ByteOrder + 'static>(&self) -> Vec<u8> {
+    pub fn dump<O: Version + 'static>(&self) -> Vec<u8> {
         self.header.dump_bytes::<O>().into_iter().chain(self.vals.dump_bytes::<O>().into_iter()).chain(self.pad.dump_bytes::<O>().into_iter()).collect()
     }
 
@@ -1093,7 +1179,7 @@ impl StringKeys {
             z5: 0,
         };
         let pad = vec![0u32; keys.len()];
-        let mut off = StringKeysHeader::size::<LE>() + keys.len() * StringKeysVal::size::<LE>();
+        let mut off = StringKeysHeader::size::<PC>() + keys.len() * StringKeysVal::size::<PC>();
         let vals = keys.into_iter().map(|key| {
             let val = StringKeysVal { key, offset: off as u32};
             off += 4;
@@ -1119,7 +1205,7 @@ impl LangStrings {
     pub const KEY_ITALIAN: u32 = hash_string("Italian".as_bytes(), None);
     pub const KEY_NORWEGIAN: u32 = hash_string("Norwegian".as_bytes(), None);
 
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize, size: usize) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize, size: usize) -> Self {
         let mut val = Self::default();
         let mut offset_ = offset;
         while offset_ < size + offset {
@@ -1134,7 +1220,7 @@ impl LangStrings {
         val
     }
 
-    pub fn dump<O: ByteOrder + 'static>(&self) -> Vec<u8> {
+    pub fn dump<O: Version + 'static>(&self) -> Vec<u8> {
         let vals = self.strings.iter().flat_map(|x| x.encode_utf16().chain([0u16])).collect::<Vec<_>>();
         vals.dump_bytes::<O>()
     }
@@ -1172,8 +1258,8 @@ pub struct SSA {
 }
 
 impl SSA {
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize, size: usize) -> Self {
-        let n = <u32 as OrderedData>::from_bytes::<O>(&data[offset..]) as usize;
+    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize, size: usize) -> Self {
+        let n = u32::from_bytes::<O>(&data[offset..]) as usize;
         let vals: Vec<SSAVal> = OrderedDataVec::from_bytes::<O>(&data[offset + 4..], n as usize);
         let offs = vals.iter().map(|x| x.off as usize).chain([size]).collect::<Vec<_>>();
         let strings = (0..n).map(|i| {
@@ -1183,7 +1269,7 @@ impl SSA {
         Self { vals, strings }
     }
 
-    pub fn dump<O: ByteOrder + 'static>(&self) -> Vec<u8> {
+    pub fn dump<O: Version + 'static>(&self) -> Vec<u8> {
         let mut data = vec![0u8; 4 + (SSAVal::size::<O>() * self.vals.len())];
         (self.vals.len() as u32).to_bytes::<O>(&mut data);
         let mut vals: Vec<SSAVal> = self.vals.clone();
@@ -1196,7 +1282,7 @@ impl SSA {
     }
 
     pub fn size(&self) -> usize {
-        self.strings.iter().map(|x| x.encode_utf16().map(|_| 2).sum::<usize>()).sum::<usize>() + 4 + (SSAVal::size::<LE>() * self.vals.len())
+        self.strings.iter().map(|x| x.encode_utf16().map(|_| 2).sum::<usize>()).sum::<usize>() + 4 + (SSAVal::size::<PC>() * self.vals.len())
     }
 
     pub fn to_file(&self, writer: Writer) -> Result<()> {
@@ -1256,7 +1342,7 @@ impl Lua {
     pub fn from_file(reader: Reader, lua: &LuaCompiler) -> Result<Self> {
         let name: String = reader.path().file_name().unwrap().to_str().unwrap().into();
         let mut val = reader.read()?;
-        let (data, code) = if (val[0] == 0x1bu8) && (val[1] == 76) && (val[2] == 117) && (val[3] == 97) {
+        let (data, code) = if (val.len() > 3) && (val[0] == 0x1bu8) && (val[1] == 76) && (val[2] == 117) && (val[3] == 97) {
             let code = if *DECOMP_LUA.lock().unwrap() {
                 lua.decomp(&val, UNLUAC.lock().unwrap().clone())?
             } else {
@@ -1328,7 +1414,7 @@ pub struct GameObjs {
 
 impl GameObjs {
     pub const KEY: u32 = hash_string("Level".as_bytes(), None);
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize, size: usize, gamemodemask: i32) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize, size: usize, gamemodemask: i32) -> Self {
         let mut val = Self::default();
         val.gamemodemask = gamemodemask;
         val.size = size;
@@ -1364,7 +1450,7 @@ impl GameObjs {
         val
     }
 
-    pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut[u8], offset: usize) {
+    pub fn into_data<O: Version + 'static>(&self, data: &mut[u8], offset: usize) {
         self.header.to_bytes::<O>(&mut data[offset..]);
         {
             let mut offset = offset + self.header.types_offset as usize;
@@ -1396,7 +1482,7 @@ impl GameObjs {
         }
     }
 
-    pub fn dump<O: ByteOrder + 'static>(&self) -> Vec<u8> {
+    pub fn dump<O: Version + 'static>(&self) -> Vec<u8> {
         let mut data = vec![0u8; GameObjsHeader::size::<O>()];
         let types_offset = data.len();
         for (obj, type_fields) in zip(self.types.iter(), self.type_fields.iter()) {
@@ -1496,10 +1582,10 @@ impl GameObjs {
             let ts = &type_fields[*type_field_lookup.get(&key.key()).unwrap()];
             let o_ = o["fields"].as_object().unwrap();
             let fields = ts.iter().map(|t| BaseTypes::from_json(&o_[&t.key.to_string()], t.kind.key())).collect::<Vec<_>>();
-            let mut off = zip(&fields, ts).map(|(t, f)| f.offset as usize + t.size::<LE>()).fold(0, usize::max);
+            let mut off = zip(&fields, ts).map(|(t, f)| f.offset as usize + t.size::<PC>()).fold(0, usize::max);
             off = (off + 15) & 0xFFFFFFF0;
             for (val, t) in zip(&fields, ts) {
-                off += val.off_size::<LE>();
+                off += val.off_size::<PC>();
                 if t.key.key() == BaseTypes::INTLISTS_KEY {
                     off = (off + 15) & 0xFFFFFFF0;
                 }
@@ -1519,12 +1605,12 @@ impl GameObjs {
             types_num: types.len() as u32,
             types_offset: 32,
             obj_num: objs.len() as u32,
-            obj_offset: ((types.len() * GameObjsTypeHeader::size::<LE>()) + (types.iter().map(|x| x.size as usize).sum::<usize>() * GameObjsTypeField::size::<LE>()) + 32 + 15) as u32 & 0xFFFFFFF0,
+            obj_offset: ((types.len() * GameObjsTypeHeader::size::<PC>()) + (types.iter().map(|x| x.size as usize).sum::<usize>() * GameObjsTypeField::size::<PC>()) + 32 + 15) as u32 & 0xFFFFFFF0,
             z5: 0,
             z6: 0,
             z7: 0
         };
-        let size = header.obj_offset as usize + obj_headers.iter().map(|x| x.size as usize).sum::<usize>() + objs.len() * GameObjsObjHeader::size::<LE>() ;
+        let size = header.obj_offset as usize + obj_headers.iter().map(|x| x.size as usize).sum::<usize>() + objs.len() * GameObjsObjHeader::size::<PC>() ;
         let gamemodemask = val["gamemodemask"].as_i64().unwrap() as i32;
         Ok(Self {
             size,
@@ -1581,7 +1667,7 @@ pub struct Spray {
 
 impl Spray {
     pub const KEY: u32 = hash_string("Spray".as_bytes(), None);
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize, size: usize) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize, size: usize) -> Self {
         let mut val = Self::default();
         val.size = size;
         let mut offset = offset;
@@ -1595,7 +1681,7 @@ impl Spray {
         val
     }
 
-    pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut[u8], offset: usize) {
+    pub fn into_data<O: Version + 'static>(&self, data: &mut[u8], offset: usize) {
         let mut offset = offset;
         self.obj1_num.to_bytes::<O>(&mut data[offset..]);
         offset += u32::size::<O>();
@@ -1606,7 +1692,7 @@ impl Spray {
         self.obj2s.to_bytes::<O>(&mut data[offset..]);
     }
 
-    pub fn dump<O: ByteOrder + 'static>(&self) -> Vec<u8> {
+    pub fn dump<O: Version + 'static>(&self) -> Vec<u8> {
         let mut data = vec![0u8; self.size];
         self.into_data::<O>(data.as_mut_slice(), 0);
         data
@@ -1655,7 +1741,7 @@ pub struct Crowd {
 
 impl Crowd {
     pub const KEY: u32 = hash_string("3dCrowd".as_bytes(), None);
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize, size: usize) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize, size: usize) -> Self {
         let mut val = Self::default();
         val.size = size;
         val.const_ = OrderedData::from_bytes::<O>(&data[offset..]);
@@ -1676,7 +1762,7 @@ impl Crowd {
         val
     }
 
-    pub fn into_data<O: ByteOrder + 'static>(&self, data: &mut [u8], offset: usize) {
+    pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], offset: usize) {
         self.const_.to_bytes::<O>(&mut data[offset..]);
         self.num.to_bytes::<O>(&mut data[offset + u32::size::<O>()..]);
         self.offsets.to_bytes::<O>(&mut data[offset + u32::size::<O>() * 2..]);
@@ -1690,7 +1776,7 @@ impl Crowd {
         }
     }
 
-    pub fn dump<O: ByteOrder + 'static>(&self) -> Vec<u8> {
+    pub fn dump<O: Version + 'static>(&self) -> Vec<u8> {
         let mut data = vec![0u8; self.size];
         self.into_data::<O>(data.as_mut_slice(), 0);
         data
@@ -1723,7 +1809,7 @@ impl AtlasUV {
     pub const KEY1: u32 = hash_string("atlas_1.uv".as_bytes(), None);
     pub const KEY2: u32 = hash_string("atlas_2.uv".as_bytes(), None);
 
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8], offset: usize, size: usize) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize, size: usize) -> Self {
         assert!(size%AtlasUVVal::size::<O>() == 0, "Invalid UV Atlas size");
         let num = size / AtlasUVVal::size::<O>();
         let vals = OrderedDataVec::from_bytes::<O>(&data[offset..], num);
@@ -1731,7 +1817,7 @@ impl AtlasUV {
         Self { vals }
     }
 
-    pub fn dump<O: ByteOrder + 'static>(&self) -> Vec<u8> {
+    pub fn dump<O: Version + 'static>(&self) -> Vec<u8> {
         self.vals.dump_bytes::<O>()
     }
 

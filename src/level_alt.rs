@@ -1,6 +1,5 @@
 use std::{any::TypeId, collections::HashMap, ffi::OsStr, fs, path::Path, sync::Arc};
 use itertools::Itertools;
-use zerocopy::{ByteOrder, LE, BE};
 use log::{warn, info};
 use serde::{Serialize, Deserialize};
 use serde_json::to_vec_pretty;
@@ -10,7 +9,7 @@ use anyhow::{Result, Context};
 
 use super::{
     pak, bin, lua_stuff, pak_alt::*,
-    types::{self, hash_string, GameObjs, OrderedData, OrderedDataVec, CompressedBlock, Crc},
+    types::{self, hash_string, GameObjs, OrderedData, OrderedDataVec, CompressedBlock, Crc, Version, PC, XBOX, PS3},
     read_write::{Reader, Writer, PathStuff},
 };
 
@@ -52,16 +51,18 @@ impl Level {
         let pak_data = fs::read(path.with_extension("PAK")).context(path.with_extension("PAK").display().to_string())?;
         let bin_data = fs::read(path.with_extension("BIN")).context(path.with_extension("BIN").display().to_string())?;
         Ok(if bin_data[0] == 6 {
-            Self::from_data::<LE>(&bin_data[..], &pak_data[..])?
-        } else if bin_data[3] == 6 {
-            Self::from_data::<BE>(&bin_data[..], &pak_data[..])?
+            Self::from_data::<PC>(&bin_data[..], &pak_data[..])?
+        } else if bin_data[3] == 6 && bin_data[7] == 2 {
+            Self::from_data::<XBOX>(&bin_data[..], &pak_data[..])?
+        } else if bin_data[3] == 6 && bin_data[7] == 3 {
+            Self::from_data::<PS3>(&bin_data[..], &pak_data[..])?
         } else {
             warn!("Invalid level data");
             Default::default()
         })
     }
 
-    pub fn dump<O: ByteOrder + 'static, P: AsRef<Path>>(&self, path: P) -> Result<()> {
+    pub fn dump<O: Version + 'static, P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let path = path.as_ref();
         info!("Dumping level data {:?}", path);
         let (pak, bin, _infos) = self.to_data::<O>();
@@ -72,7 +73,7 @@ impl Level {
         Ok(())
     }
 
-    pub fn from_data<O: ByteOrder + 'static>(bin_data: &[u8], pak_data: &[u8]) -> Result<Self> {
+    pub fn from_data<O: Version + 'static>(bin_data: &[u8], pak_data: &[u8]) -> Result<Self> {
         let time = Instant::now();
         info!("extracting level");
 
@@ -82,12 +83,28 @@ impl Level {
         types::update_strings(&bin_strings.strings);
 
         let asset_handles: Vec<bin::AssetHandle> = OrderedDataVec::from_bytes::<O>(&bin_data[bin_header.asset_handle_offset as usize..], bin_header.asset_handle_num as usize);
-        let asset_data = HashMap::<(Crc, u32), Vec<u8>>::from_iter(
-            asset_handles.iter().map(|info| ((info.key.clone(), info.kind), types::CompressedBlock::from_data(bin_data, info.size as usize, info.size_comp as usize, info.offset as usize).data))
+        // let asset_data = HashMap::<(Crc, u32), Vec<u8>>::from_iter(
+        //     asset_handles.iter().map(|info| ((info.key.clone(), info.kind), types::CompressedBlock::from_data::<O>(bin_data, info.size as usize, info.size_comp as usize, info.offset as usize).data))
+        // );
+        let mesh_data = HashMap::<Crc, Vec<u8>>::from_iter(
+            asset_handles.iter().map(|info| (info.key.clone(), types::CompressedBlock::from_data::<O>(bin_data, info.size as usize, info.size_comp as usize, info.offset as usize).data)).take(bin_header.vdata_num as usize)
         );
+        let texture_data = HashMap::<Crc, Vec<u8>>::from_iter(
+            asset_handles.iter().skip(bin_header.vdata_num as usize).map(|info| (info.key.clone(), types::CompressedBlock::from_data::<O>(bin_data, info.size as usize, info.size_comp as usize, info.offset as usize).data))
+        );
+        // for key in mesh_data.keys() {
+        //     println!("mesh: {}", key.to_string());
+        // }
+        // for key in texture_data.keys() {
+        //     println!("texture: {}", key.to_string());
+        // }
+        // println!("{:?}, {}, {}", bin_header, mesh_data.len(), texture_data.len());
+        // for asset in asset_handles.iter() {
+        //     println!("asset: {}", asset.key.to_string());
+        // }
 
-        let radiosity: HashMap<Crc, bin::Radiosity> = asset_data.iter().filter(|(key, _)| key.0.str().map(|x| x.ends_with("_radiosity")).unwrap_or(false)).map(|(key, data)| (
-            key.0.clone(), bin::Radiosity::from_data::<O>(&data[..], key.1)
+        let radiosity: HashMap<Crc, bin::Radiosity> = mesh_data.iter().filter(|(key, _)| key.str().map(|x| x.ends_with("_radiosity")).unwrap_or(false)).map(|(key, data)| (
+            key.clone(), bin::Radiosity::from_data::<O>(&data[..], 0)
         )).collect();
 
         info!("bin parsed in {:?}", time.elapsed());
@@ -97,12 +114,12 @@ impl Level {
         types::update_strings(&pak_strings.strings);
         info!("headers in {:?}", time.elapsed());
 
-        let block2 = types::CompressedBlock::from_data(pak_data, pak_header.block2_size as usize, pak_header.block2_size_comp as usize, pak_header.block2_offset as usize).data;
+        let block2 = types::CompressedBlock::from_data::<O>(pak_data, pak_header.block2_size as usize, pak_header.block2_size_comp as usize, pak_header.block2_offset as usize).data;
         let sub_blocks2 = types::SubBlocks::from_data::<O>(&block2[..], pak_header.sub_blocks2_offset as usize, &lua);
         let block2_offsets = OrderedDataVec::from_bytes::<O>(&block2[pak_header.block2_offsets_offset as usize..], pak_header.block2_offsets_num as usize);
         info!("block2 parsed in {:?}", time.elapsed());
 
-        let block1 = types::CompressedBlock::from_data(pak_data, pak_header.block1_size as usize, pak_header.block1_size_comp as usize, pak_header.block1_offset as usize).data;
+        let block1 = types::CompressedBlock::from_data::<O>(pak_data, pak_header.block1_size as usize, pak_header.block1_size_comp as usize, pak_header.block1_offset as usize).data;
         info!("main blocks extracted in {:?}", time.elapsed());
 
         let objas = OrderedDataVec::from_bytes::<O>(&block1[pak_header.obja_offset as usize..], pak_header.obja_num as usize);
@@ -114,7 +131,7 @@ impl Level {
         let meshes = (0..pak_header.mesh_info_num as usize).map(|i| {
             let mut mesh = Mesh::from_data::<O>(&block1[..], pak_header.mesh_info_offset as usize + i * pak::MeshInfo::size::<O>());
             if mesh.info.vbuff_num != 0 || mesh.info.ibuff_num != 0 {
-                let buffer = asset_data.get(&(mesh.info.asset_key.clone(), mesh.info.asset_type)).unwrap();
+                let buffer = mesh_data.get(&mesh.info.asset_key.clone()).unwrap();
                 mesh.vertex_data.extend(mesh.vbuffs.iter_mut().map(|info| pak::VertexBuffer::from_data::<O>(&buffer[..], info, &mut vertex_formats)));
                 mesh.index_data.extend(mesh.ibuffs.iter().map(|info| pak::IndexBuffer::from_data::<O>(&buffer[..], info)));    
             }
@@ -141,15 +158,15 @@ impl Level {
         }
 
         let textures = <Vec<pak::TextureInfo> as OrderedDataVec>::from_bytes::<O>(&block1[pak_header.texture_info_offset as usize..], pak_header.texture_info_num as usize).into_iter().map(|mut info| {
-            let data0 = asset_data.get(&(info.asset_key.clone(), info.asset_type)).unwrap();
-            let data1 = asset_data.get(&(Crc::Key(hash_string("*".as_bytes(), Some(info.asset_key.key()))), info.asset_type)).unwrap();
+            let data0 = texture_data.get(&info.asset_key).expect(format!("could not find texture data {}", info.asset_key.to_string()).as_str());
+            let data1 = texture_data.get(&Crc::Key(hash_string("*".as_bytes(), Some(info.asset_key.key())))).unwrap();
             let tex = bin::Tex::from_data::<O>(data0, data1, &mut info)?;
             let key = info.key.clone();
             Ok((key, tex))
         }).collect::<Result<HashMap<_, _>>>()?;
 
         let blocks = animation_block_infos.iter().map(|info| 
-            types::CompressedBlock::from_data(&pak_data[..], info.size as usize, info.size_comp as usize, info.offset as usize).data
+            types::CompressedBlock::from_data::<O>(&pak_data[..], info.size as usize, info.size_comp as usize, info.offset as usize).data
         ).collect::<Vec<_>>();
         let mut offsets = blocks.iter().map(|_| 0usize).collect::<Vec<_>>();
         let animations = (0..pak_header.animation_info_num as usize).map(|i| {
@@ -192,8 +209,8 @@ impl Level {
         })
     }
     
-    pub fn to_data<O: ByteOrder + 'static>(&self) -> (Vec<u8>, Vec<u8>, DumpInfos) {
-        fn dump_vertex_data<O: ByteOrder + 'static>(mesh: &mut Mesh) -> Option<((Crc, u32), Vec<u8>)> {
+    pub fn to_data<O: Version + 'static>(&self) -> (Vec<u8>, Vec<u8>, DumpInfos) {
+        fn dump_vertex_data<O: Version + 'static>(mesh: &mut Mesh) -> Option<((Crc, u32), Vec<u8>)> {
             if mesh.vertex_data.len() != 0 || mesh.index_data.len() != 0 {
                 let size = mesh.vbuffs.iter().map(|x| x.size + x.offset).chain(mesh.ibuffs.iter().map(|x| x.size + x.offset)).max().unwrap();
                 let mut data = vec![0u8; size as usize];
@@ -276,7 +293,7 @@ impl Level {
 
         // pak stuff
         let mut pak_header = self.pak_header.clone();
-        pak_header.version = if TypeId::of::<O>() == TypeId::of::<LE>() { 2 } else { 1 };
+        pak_header.version = if TypeId::of::<O>() == TypeId::of::<PC>() { 2 } else { 1 };
         let mut pak_data = vec![0u8; pak::Header::size::<O>()];
 
         // block1 stuff
@@ -690,7 +707,7 @@ impl Level {
         // bin_data
         let mut bin_header = self.bin_header.clone();
         let mut bin_data = vec![0u8; bin::Header::size::<O>()];
-        bin_header.version = if TypeId::of::<O>() == TypeId::of::<LE>() { 2 } else { 1 };
+        bin_header.version = if TypeId::of::<O>() == TypeId::of::<PC>() { 2 } else { 1 };
 
         bin_data.extend(vec![0u8; ((bin_data.len() + 2047) & 0xfffff800)-bin_data.len()]);
         let mut mesh_asset_handles = mesh_data.into_iter().map(|((key, kind), data)| {
@@ -824,12 +841,12 @@ impl Level {
             let (info, data): (Vec<_>, Vec<_>) = Iterator::unzip(data.iter().map(|(a,b)| (a,b)));
             writer.join("foliage").join(key.to_string()).with_extension("json").write(&to_vec_pretty(&info)?)?;
             for (i, data) in data.iter().enumerate() {
-                writer.join("foliage").join(format!("{}-{}", key.to_string(), i)).with_extension("bin").write(&data.dump_bytes::<LE>())?;
+                writer.join("foliage").join(format!("{}-{}", key.to_string(), i)).with_extension("bin").write(&data.dump_bytes::<PC>())?;
             }
         }
         info!("foliage objs in {:?}", time.elapsed());
         for (key, data) in &self.light_blocks {
-            writer.join("illumination").join(format!("{}", key)).with_extension("bin").write(&data.dump_bytes::<LE>())?;
+            writer.join("illumination").join(format!("{}", key)).with_extension("bin").write(&data.dump_bytes::<PC>())?;
         }
         info!("illumination objs in {:?}", time.elapsed());
         for (key, data) in &self.gfx_blocks {
@@ -929,7 +946,7 @@ impl Level {
             let mut data = Vec::with_capacity(info.len());
             for i in 0..info.len() {
                 let dat = path.with_file_name(&format!("{}-{}.bin", key.to_string(), i)).read()?;
-                data.push(<Vec<u32> as OrderedDataVec>::from_bytes::<LE>(&dat, dat.len()/4));
+                data.push(<Vec<u32> as OrderedDataVec>::from_bytes::<PC>(&dat, dat.len()/4));
             }
             foliages.insert(key, zip(info, data).collect::<Vec<_>>());
         }
@@ -939,7 +956,7 @@ impl Level {
         for path in reader.join("illumination") {
             let key: u32 = path.name().parse().unwrap();
             let dat = path.read()?;
-            let data = <Vec<u32> as OrderedDataVec>::from_bytes::<LE>(&dat, dat.len()/4);
+            let data = <Vec<u32> as OrderedDataVec>::from_bytes::<PC>(&dat, dat.len()/4);
             light_blocks.insert(key, data);
         }
         info!("illumination objs in {:?}", time.elapsed());

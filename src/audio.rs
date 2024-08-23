@@ -1,11 +1,10 @@
 use std::fs;
-use zerocopy::{ByteOrder, LE, BE};
 use serde::{Serialize, Deserialize};
 use std::path::Path;
 use log::{error, info};
 
 use lotrc_rs_proc::OrderedData;
-use super::types::{OrderedData, OrderedDataVec, Crc};
+use super::types::{OrderedData, OrderedDataVec, Crc, OrderedDataImpl, Version, PC, XBOX};
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct Header {
@@ -52,21 +51,21 @@ impl AudioTable {
         info!("Parsing audio table {}", path.file_stem().unwrap().to_str().unwrap());   
         let data = fs::read(path).unwrap();
         if data[0] == 2 {
-            Self::from_data::<LE>(&data[..])
+            Self::from_data::<PC>(&data[..])
         } else if data[3] == 2 {
-            Self::from_data::<BE>(&data[..])
+            Self::from_data::<XBOX>(&data[..])
         } else {
             error!("Invalid audio table data");
             Default::default()
         }
     }
 
-    pub fn dump<O: ByteOrder + 'static, P: AsRef<Path>>(&self, path: P) {
+    pub fn dump<O: Version + 'static, P: AsRef<Path>>(&self, path: P) {
         path.as_ref().parent().map(fs::create_dir_all);
         fs::write(path.as_ref().with_extension("bin"), self.to_data::<O>()).unwrap();
     }
 
-    pub fn from_data<O: ByteOrder + 'static>(data: &[u8]) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8]) -> Self {
         let header: Header = OrderedData::from_bytes::<O>(&data);
         let mut offset = Header::size::<O>();
         let obj1s: Vec<Obj1> = OrderedDataVec::from_bytes::<O>(&data[offset..], header.n1 as usize);
@@ -111,7 +110,7 @@ impl AudioTable {
         }
     }
 
-    pub fn to_data<O: ByteOrder + 'static>(&self) -> Vec<u8> {
+    pub fn to_data<O: Version + 'static>(&self) -> Vec<u8> {
         self.header.dump_bytes::<O>().into_iter()
         .chain(self.obj1s.dump_bytes::<O>())
         .chain(self.obj2s.iter().flat_map(|(obj, objs)| obj.dump_bytes::<O>().into_iter().chain(objs.dump_bytes::<O>())))
