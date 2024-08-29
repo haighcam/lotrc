@@ -227,7 +227,15 @@ impl Level {
 
         let mut bin_data = vec![0u8; bin::Header::size::<O>()];
         let mut dump_bin_header = self.bin_header.clone();
-        dump_bin_header.version = if TypeId::of::<O>() == TypeId::of::<PC>() { 1 } else { 2 };
+        dump_bin_header.version = if TypeId::of::<O>() == TypeId::of::<PC>() { 
+            1 
+        } else if TypeId::of::<O>() == TypeId::of::<XBOX>() {
+            2
+        }  else if TypeId::of::<O>() == TypeId::of::<PS3>() {
+            3
+        } else {
+            panic!("Unsupported format")
+        };
         let mut dump_asset_handles = self.asset_handles.clone();
         for asset_handle in &mut dump_asset_handles {
             asset_handle.size = 0;
@@ -355,7 +363,15 @@ impl Level {
 
         let mut pak_data = vec![0u8; pak::Header::size::<O>()];
         let mut dump_pak_header = self.pak_header.clone();
-        dump_pak_header.version = if TypeId::of::<O>() == TypeId::of::<PC>() { 1 } else { 2 };
+        dump_pak_header.version = if TypeId::of::<O>() == TypeId::of::<PC>() { 
+            1 
+        } else if TypeId::of::<O>() == TypeId::of::<XBOX>() {
+            2
+        }  else if TypeId::of::<O>() == TypeId::of::<PS3>() {
+            3
+        } else {
+            panic!("Unsupported format")
+        };
 
         self.dump_animation_blocks.clear();
         self.dump_animation_block_infos = self.animation_block_infos.clone();

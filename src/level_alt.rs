@@ -1,4 +1,4 @@
-use std::{any::TypeId, collections::HashMap, ffi::OsStr, fs, path::Path, sync::Arc};
+use std::{any::TypeId, collections::{hash_map::Entry, HashMap, HashSet}, ffi::OsStr, fs, path::Path, sync::Arc};
 use itertools::Itertools;
 use log::{warn, info};
 use serde::{Serialize, Deserialize};
@@ -7,9 +7,11 @@ use std::time::Instant;
 use std::iter::zip;
 use anyhow::{Result, Context};
 
+use crate::types::BaseTypes;
+
 use super::{
     pak, bin, lua_stuff, pak_alt::*,
-    types::{self, hash_string, GameObjs, OrderedData, OrderedDataVec, CompressedBlock, Crc, Version, PC, XBOX, PS3},
+    types::{self, hash_string, GameObjs, OrderedData, OrderedDataVec, CompressedBlock, Crc, Version, PC, XBOX, PS3, SubBlock},
     read_write::{Reader, Writer, PathStuff},
 };
 
@@ -211,46 +213,95 @@ impl Level {
     
     pub fn to_data<O: Version + 'static>(&self) -> (Vec<u8>, Vec<u8>, DumpInfos) {
         fn dump_vertex_data<O: Version + 'static>(mesh: &mut Mesh) -> Option<((Crc, u32), Vec<u8>)> {
-            if mesh.vertex_data.len() != 0 || mesh.index_data.len() != 0 {
-                let size = mesh.vbuffs.iter().map(|x| x.size + x.offset).chain(mesh.ibuffs.iter().map(|x| x.size + x.offset)).max().unwrap();
-                let mut data = vec![0u8; size as usize];
-                for (vbuff, buff) in zip(&mesh.vbuffs, &mesh.vertex_data) {
-                    buff.into_data::<O>(&mut data, vbuff);
+            fn pack_vbuff<O: Version + 'static>(vbuffs: &mut Vec<pak::VBuffInfo>, vertex_data: &Vec<pak::VertexBuffer>, i: usize, vbuff_map: &mut HashMap<usize, (u32, u32)>, data: &mut Vec<u8>) -> (u32, u32) {
+                if i == 0xFFFFFFFF {
+                    return (0, 0);
                 }
-                for (ibuff, buff) in zip(&mesh.ibuffs, &mesh.index_data) {
-                    buff.into_data::<O>(&mut data[ibuff.offset as usize..]);
-                }
-                let mut data = Vec::with_capacity(size as usize);
-                for i in 0..(mesh.vbuff_order.len().max(mesh.ibuff_order.len())) {
-                    if i < mesh.vbuff_order.len() {
-                        let info = &mut mesh.vbuffs[i];
-                        let vals = mesh.vertex_data[i].dump::<O>();
+                match vbuff_map.entry(i) {
+                    Entry::Occupied(val) => *val.get(),
+                    Entry::Vacant(val) => {
+                        data.extend(vec![0u8; ((data.len() + 15) & 0xFFFFFFF0) - data.len()]);
+                        let info = &mut vbuffs[i];
+                        let vals = vertex_data[i].dump::<O>();
                         info.offset = data.len() as u32;
                         info.size = vals.len() as u32;
                         data.extend(vals);
-                        for buffer_info in &mut mesh.buffer_infos {
-                            if buffer_info.vbuff_info_offset == mesh.vbuff_order[i] {
-                                buffer_info.v_size = mesh.vertex_data[i].vals.iter().map(|(_, x)| x.size()).sum::<usize>() as u32;
-                                buffer_info.vbuff_size = info.size;
-                            }
-                            if buffer_info.vbuff_info_offset_2 == mesh.vbuff_order[i] {
-                                buffer_info.v_size_2 = mesh.vertex_data[i].vals.iter().map(|(_, x)| x.size()).sum::<usize>() as u32;
-                                buffer_info.vbuff_size_2 = info.size;
-                            }
-                            if buffer_info.vbuff_info_offset_3 == mesh.vbuff_order[i] {
-                                buffer_info.v_size_3 = mesh.vertex_data[i].vals.iter().map(|(_, x)| x.size()).sum::<usize>() as u32;
-                                buffer_info.vbuff_size_3 = info.size;
-                            }
-                        }
+                        *val.insert((vertex_data[i].vals.iter().map(|(_, x)| x.size()).sum::<usize>() as u32, info.size))      
                     }
-                    if i < mesh.ibuff_order.len() {
+                }
+            }
+
+            if mesh.vertex_data.len() != 0 || mesh.index_data.len() != 0 {
+                let size = mesh.vbuffs.iter().map(|x| x.size + x.offset).chain(mesh.ibuffs.iter().map(|x| x.size + x.offset)).max().unwrap();
+                // let mut data = vec![0u8; size as usize];
+                // for (vbuff, buff) in zip(&mesh.vbuffs, &mesh.vertex_data) {
+                //     buff.into_data::<O>(&mut data, vbuff);
+                // }
+                // for (ibuff, buff) in zip(&mesh.ibuffs, &mesh.index_data) {
+                //     buff.into_data::<O>(&mut data[ibuff.offset as usize..]);
+                // }
+
+                let mut data = Vec::with_capacity(size as usize);
+                let mut vbuff_map = HashMap::with_capacity(mesh.vbuffs.len());
+                let mut ibuffs = HashSet::with_capacity(mesh.ibuffs.len());
+                for buffer_info in &mut mesh.buffer_infos {
+                    (
+                        buffer_info.v_size, 
+                        buffer_info.vbuff_size
+                    ) = pack_vbuff::<O>(&mut mesh.vbuffs, &mesh.vertex_data, buffer_info.vbuff_info_offset as usize, &mut vbuff_map, &mut data);
+                    (
+                        buffer_info.v_size_2, 
+                        buffer_info.vbuff_size_2
+                    ) = pack_vbuff::<O>(&mut mesh.vbuffs, &mesh.vertex_data, buffer_info.vbuff_info_offset_2 as usize, &mut vbuff_map, &mut data);
+                    (
+                        buffer_info.v_size_3, 
+                        buffer_info.vbuff_size_3
+                    ) = pack_vbuff::<O>(&mut mesh.vbuffs, &mesh.vertex_data, buffer_info.vbuff_info_offset_3 as usize, &mut vbuff_map, &mut data);
+                    let i = buffer_info.ibuff_info_offset as usize;
+                    if i != 0xFFFFFFFF && !ibuffs.contains(&i) {
+                        ibuffs.insert(i);
+                        data.extend(vec![0u8; ((data.len() + 15) & 0xFFFFFFF0) - data.len()]);
                         let info = &mut mesh.ibuffs[i];
                         let vals = mesh.index_data[i].dump::<O>();
                         info.offset = data.len() as u32;
                         info.size = vals.len() as u32;
                         data.extend(vals);
                     }
-                }        
+                }
+
+                // let mut data = Vec::with_capacity(size as usize);
+                // for i in 0..(mesh.vbuff_order.len().max(mesh.ibuff_order.len())) {
+                //     if i < mesh.vbuff_order.len() {
+                //         data.extend(vec![0u8; ((data.len() + 15) & 0xFFFFFFF0) - data.len()]);
+                //         let info = &mut mesh.vbuffs[i];
+                //         let vals = mesh.vertex_data[i].dump::<O>();
+                //         info.offset = data.len() as u32;
+                //         info.size = vals.len() as u32;
+                //         data.extend(vals);
+                //         for buffer_info in &mut mesh.buffer_infos {
+                //             if buffer_info.vbuff_info_offset == mesh.vbuff_order[i] {
+                //                 buffer_info.v_size = mesh.vertex_data[i].vals.iter().map(|(_, x)| x.size()).sum::<usize>() as u32;
+                //                 buffer_info.vbuff_size = info.size;
+                //             }
+                //             if buffer_info.vbuff_info_offset_2 == mesh.vbuff_order[i] {
+                //                 buffer_info.v_size_2 = mesh.vertex_data[i].vals.iter().map(|(_, x)| x.size()).sum::<usize>() as u32;
+                //                 buffer_info.vbuff_size_2 = info.size;
+                //             }
+                //             if buffer_info.vbuff_info_offset_3 == mesh.vbuff_order[i] {
+                //                 buffer_info.v_size_3 = mesh.vertex_data[i].vals.iter().map(|(_, x)| x.size()).sum::<usize>() as u32;
+                //                 buffer_info.vbuff_size_3 = info.size;
+                //             }
+                //         }
+                //     }
+                //     if i < mesh.ibuff_order.len() {
+                //         data.extend(vec![0u8; ((data.len() + 15) & 0xFFFFFFF0) - data.len()]);
+                //         let info = &mut mesh.ibuffs[i];
+                //         let vals = mesh.index_data[i].dump::<O>();
+                //         info.offset = data.len() as u32;
+                //         info.size = vals.len() as u32;
+                //         data.extend(vals);
+                //     }
+                // }        
                 Some(((mesh.info.asset_key.clone(), mesh.info.asset_type), data))
             } else {
                 None
@@ -261,8 +312,9 @@ impl Level {
         let lua: lua_stuff::LuaCompiler = lua_stuff::LuaCompiler::new().unwrap();
         
         let mut texture_data = vec![];
+        let mut seen_textures = HashSet::new();
         fn sort_texture(tex: &&bin::Tex) -> u32 {
-            let k = tex.info().asset_key.key();
+            let k = tex.info().key.key();
             if k == 3804089404 {
                 0
             } else if k == 4026460901 {
@@ -273,18 +325,21 @@ impl Level {
         }
         let texture_infos = self.textures.values().sorted_by_key(sort_texture).map(|tex| {
             let (data0, data1) = tex.dump::<O>();
-            if data1.len() == 0 {
-                texture_data.push((
-                    (Crc::Key(hash_string("*".as_bytes(), Some(tex.info().asset_key.key()))), tex.info().asset_type),
-                    data1
-                ));
-                texture_data.push(((tex.info().asset_key.clone(), tex.info().asset_type), data0));
-            } else {
-                texture_data.push(((tex.info().asset_key.clone(), tex.info().asset_type), data0));
-                texture_data.push((
-                    (Crc::Key(hash_string("*".as_bytes(), Some(tex.info().asset_key.key()))), tex.info().asset_type),
-                    data1
-                ));
+            if !seen_textures.contains(&tex.info().asset_key.key()) {
+                if data1.len() == 0 {
+                    texture_data.push((
+                        (Crc::Key(hash_string("*".as_bytes(), Some(tex.info().asset_key.key()))), tex.info().asset_type),
+                        data1
+                    ));
+                    texture_data.push(((tex.info().asset_key.clone(), tex.info().asset_type), data0));
+                } else {
+                    texture_data.push(((tex.info().asset_key.clone(), tex.info().asset_type), data0));
+                    texture_data.push((
+                        (Crc::Key(hash_string("*".as_bytes(), Some(tex.info().asset_key.key()))), tex.info().asset_type),
+                        data1
+                    ));
+                }
+                seen_textures.insert(tex.info().asset_key.key());
             }
             tex.info().clone()
         }).collect::<Vec<_>>();
@@ -293,7 +348,15 @@ impl Level {
 
         // pak stuff
         let mut pak_header = self.pak_header.clone();
-        pak_header.version = if TypeId::of::<O>() == TypeId::of::<PC>() { 2 } else { 1 };
+        pak_header.version = if TypeId::of::<O>() == TypeId::of::<PC>() { 
+            1 
+        } else if TypeId::of::<O>() == TypeId::of::<XBOX>() {
+            2
+        }  else if TypeId::of::<O>() == TypeId::of::<PS3>() {
+            3
+        } else {
+            panic!("Unsupported format")
+        };
         let mut pak_data = vec![0u8; pak::Header::size::<O>()];
 
         // block1 stuff
@@ -455,9 +518,27 @@ impl Level {
         terrain.sort_unstable_by_key(|x|
             x.str().and_then(|x| x.split('_').last().and_then(|x| x.parse::<usize>().ok())).unwrap_or_default()
         );
-        collision_road.sort_unstable_by_key(|x| 
-            x.str().and_then(|x| x.split('_').last().and_then(|x| x.parse::<usize>().ok())).unwrap_or_default()
-        );
+        if let Some(SubBlock::GameObjs(obj)) = self.sub_blocks1.blocks.last() {
+            let guid_order: HashMap<usize, usize> = HashMap::from_iter(obj.objs.iter().zip(obj.obj_headers.iter()).enumerate().map(|(i, (fields, header))|{
+                let ts = obj.type_fields.get(*obj.type_field_lookup.get(&header.key.key()).unwrap()).unwrap();
+                (ts.iter().zip(fields).find_map(|(ty, val)| {
+                    if let BaseTypes::GUID(guid) = val {
+                        (ty.key.key() == 3482846511).then_some(*guid as usize)
+                    } else {
+                        None
+                    }
+                }).unwrap(), i)
+            }));
+            collision_road.sort_unstable_by_key(|x| 
+                guid_order.get(&x.str().and_then(|x| x.split('_').last().and_then(|x| x.parse::<usize>().ok())).unwrap_or_default())
+            );    
+
+        } else {
+            collision_road.sort_unstable_by_key(|x| 
+                x.str().and_then(|x| x.split('_').last().and_then(|x| x.parse::<usize>().ok())).unwrap_or_default()
+            );    
+        }
+        // should be sorted in the order that they appear the level block
         for key in normal.into_iter().chain(collision_road) {
             let mut mesh = self.meshes.get(key).unwrap().clone();
             if let Some(val) = dump_vertex_data::<O>(&mut mesh) {
@@ -504,7 +585,7 @@ impl Level {
             gfx_block
         }).collect::<Vec<_>>();
 
-        let light_blocks = self.light_blocks.iter().map(|(&guid, val)| {
+        let light_blocks = self.light_blocks.iter().sorted_by_key(|(_, val)| val.first()).map(|(&guid, val)| {
             let light_block = pak::IlluminationInfo { guid, num: val.len() as u32, offset: block1.len() as u32 };
             block1.extend(val.dump_bytes::<O>());
             block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
@@ -701,13 +782,22 @@ impl Level {
         pak_header.block_a_num = self.pak_vals_a.len() as u32;
         pak_data.extend(self.pak_vals_a.dump_bytes::<O>());
 
+        pak_data.extend(vec![0u8; ((pak_data.len() + 2047) & 0xfffff800)-pak_data.len()]);
         pak_header.to_bytes::<O>(&mut pak_data);
         info!("pak in {:?}", time.elapsed());
 
         // bin_data
         let mut bin_header = self.bin_header.clone();
         let mut bin_data = vec![0u8; bin::Header::size::<O>()];
-        bin_header.version = if TypeId::of::<O>() == TypeId::of::<PC>() { 2 } else { 1 };
+        bin_header.version = if TypeId::of::<O>() == TypeId::of::<PC>() { 
+            1 
+        } else if TypeId::of::<O>() == TypeId::of::<XBOX>() {
+            2
+        }  else if TypeId::of::<O>() == TypeId::of::<PS3>() {
+            3
+        } else {
+            panic!("Unsupported format")
+        };
 
         bin_data.extend(vec![0u8; ((bin_data.len() + 2047) & 0xfffff800)-bin_data.len()]);
         let mut mesh_asset_handles = mesh_data.into_iter().map(|((key, kind), data)| {
@@ -905,7 +995,7 @@ impl Level {
 
     pub fn from_file(reader: Reader) -> Result<Self> {
         let time: Instant = Instant::now();
-        info!("reading level");        
+        info!("Reading level {:?}", reader.full_path());        
         
         let lua: lua_stuff::LuaCompiler = lua_stuff::LuaCompiler::new().unwrap();
 

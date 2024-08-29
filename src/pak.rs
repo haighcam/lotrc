@@ -167,7 +167,7 @@ pub struct MeshInfo {
     pub unk_9: u32,
     pub unk_10: u32,
     pub unk_11: u32,
-    pub vals_c_offset: u32, // ints (c & 0x3fffffff is an index into the obj2s referenced by this object)
+    pub vals_c_offset: u32, // ints (c & 0x3fffffff is an index into the obj2s referenced by this object) (1 for each mesh)
     pub unk_13: u32, // (v1, v2, v3, v4, v5) * 4 (up to unk_23), v1 is a starting offset to obj2s, v2 is the end offset
     pub unk_14: u32,
     pub block_start: u32,
@@ -573,8 +573,10 @@ pub struct Mat3 {
     pub unk_114d: u8,
     pub unk_115: u32,
     #[ordered_data(skipPC, skipXBOX)]
+    #[serde(default)]
     pub unk_116: u32,
     #[ordered_data(skipPC, skipXBOX)]
+    #[serde(default)]
     pub unk_117: u32,
 }
 
@@ -1643,6 +1645,7 @@ pub mod animation {
             self.obj_c4.to_bytes::<O>(&mut data[offset + info.obj_c4_offset as usize..]);
             for (((start, start2), (flags, flags2)), ((vals_a, vals_b), (vals_c, vals_d))) in zip(zip(zip(&self.block_starts, &self.block_starts2), zip(&self.flags, &self.flags2)), zip(zip(&self.vals_a, &self.vals_b), zip(&self.vals_c, &self.vals_d))) {
                 flags.to_bytes::<O>(&mut data[offset + (start + info.block_offset) as usize..]);
+                flags2.to_bytes::<O>(&mut data[offset + (start + info.block_offset) as usize + flags.size::<O>()..]);
                 let mut off = offset + (info.block_offset + start + info.data_offset) as usize;
                 for ((flag, a), (b, c)) in zip(zip(flags, vals_a), zip(vals_b, vals_c)) {
                     a.into_data::<O>(data, off, flag.a);
@@ -2128,7 +2131,8 @@ impl VertexBuffer {
         }
         Self { vals }
     }
-
+    
+    #[allow(dead_code)]
     pub fn into_data<O: Version + 'static>(&self, data: &mut[u8], info: &VBuffInfo) {
         let mut offset = info.offset as usize;
         let mut off_ = 0;
@@ -2176,6 +2180,7 @@ impl IndexBuffer {
             _ => Self::U32 { vals: OrderedDataVec::from_bytes::<O>(&data[info.offset as usize..], n) },
         }
     }
+    #[allow(dead_code)]
     pub fn into_data<O: Version + 'static>(&self, data: &mut [u8]) {
         match self {
             Self::U16 { vals } => vals.to_bytes::<O>(data),

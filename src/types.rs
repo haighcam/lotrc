@@ -19,7 +19,6 @@ use lotrc_rs_proc::OrderedData;
 pub struct PC;
 pub struct XBOX;
 pub struct PS3;
-
 pub trait Version {
     fn from_bytes<T: OrderedDataImpl>(data: &[u8]) -> T;
     fn to_bytes<T: OrderedDataImpl>(val: &T, data: &mut [u8]);
@@ -260,7 +259,16 @@ lazy_static::lazy_static! {
 }
 
 pub fn update_strings(vals: &[String]) {
-    STRING_LOOKUP.lock().unwrap().extend(vals.iter().map(|x| (hash_string(x.as_bytes(), None), x.clone())));
+    let mut strings = STRING_LOOKUP.lock().unwrap();
+    let new_strings: Vec<_> = vals.iter().filter_map(|x| {
+        let key = hash_string(x.as_bytes(), None);
+        if strings.contains_key(&key) {
+            None
+        } else {
+            Some((key, x.clone()))
+        }
+    }).collect();
+    strings.extend(new_strings);
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
