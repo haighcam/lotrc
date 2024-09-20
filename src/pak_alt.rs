@@ -2,61 +2,67 @@ use std::{any::TypeId, collections::{HashMap, HashSet}, iter::zip};
 use itertools::Itertools;
 use log::warn;
 use serde::{Serialize, Deserialize};
+use serde_json::{json, Value};
+use gltf::{
+    json::{Root, Index, validation::Checked, buffer::{View, Target, Buffer, Stride}, Accessor, accessor::GenericComponentType, Node},
+    accessor::{DataType, Dimensions},
+};
+use anyhow::Result;
 use crate::types::Crc;
 
 use lotrc_rs_proc::OrderedData;
-use super::types::{OrderedData, Vector4, Matrix4x4, OrderedDataVec, OrderedDataImpl, Version, PS3};
+use super::types::{OrderedData, Vector4, Matrix4x4, OrderedDataVec, OrderedDataImpl, Version, PS3, PC};
 use super::pak::*;
 
+
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
-pub struct Mesh {
-    pub info: MeshInfo,
-    pub indices: Vec<u32>, // probably i32, parent bone
-    pub keys: Vec<Crc>, // bone names
-    pub matrices: Vec<Matrix4x4>, // relative bone transforms
-    pub vals_a: Vec<u32>, // probably f32
+pub struct Model {
+    pub info: ModelInfo,
+    pub bone_parents: Vec<i32>, // parent bone
+    pub bones: Vec<Crc>, // bone names
+    pub bone_transforms: Vec<Matrix4x4>, // relative bone transforms, used for static meshes 
+    pub vals_a: Vec<ValA>, // probably f32
     pub mat_order: Vec<u32>,
-    pub vals_c: Vec<u32>,
-    pub vals_d: Vec<u32>, // 1 per contained mesh, stores result of some absolute position calculation?
+    pub mesh_order: Vec<u32>, // order of models (mapped to lod0, lod1, lod2, lod3)
+    pub vals_d: Vec<ValA>, // 1 per contained model, stores result of some absolute position calculation?
     pub vbuff_order: Vec<u32>,
     pub ibuff_order: Vec<u32>,
-    pub vals_g: Vec<u32>, // mat4
-    pub vals_j: Vec<u32>,
+    pub skin_binds: Vec<Matrix4x4>, // mat4, bind matrices or something??
+    pub vals_j: Vec<u32>, // bows & banners, maybe for strings?
     pub val_k_header: Vec<u16>,
-    pub vals_k: Vec<u32>,
-    pub vals_i: Vec<u32>, // bone mapping for vals_g
-    pub keys2: Vec<Key2>, // attachment points
-    pub keys2_order: Vec<u32>, // attachment bone mapping
+    pub vals_k: Vec<u32>, // has to do with trees
+    pub skin_order: Vec<u32>, // bone mapping for vals_g, seems to be the mapping used for skinning
+    pub slots: Vec<Key2>, // attachment points
+    pub slot_map: Vec<u32>, // attachment bone mapping
     pub block_header: Option<u32>, // has to do with havok cloth / hair stuff
     pub block_offsets: Vec<u32>,
-    pub blocks: Vec<(mesh::BlockHeader, Vec<u32>, Vec<mesh::BlockVal>, Vec<u32>)>,
+    pub blocks: Vec<(model::BlockHeader, Vec<u32>, Vec<model::BlockVal>, Vec<u32>)>,
     pub mats: Vec<Mat>,
     pub mat_extras: Vec<Option<MatExtra>>,
     pub vbuffs: Vec<VBuffInfo>,
     pub ibuffs: Vec<IBuffInfo>,
     pub buffer_infos: Vec<BufferInfo>,
-    pub hk_constraint: Option<HkConstraint>,
+    pub hk_constraint: Option<HkConstraint>, // stores bone transforms used for ragdoll ??
     pub hk_constraint_datas: Vec<HkConstraintData>,
     pub shapes: Vec<Shape>,
     pub vertex_data: Vec<VertexBuffer>,
     pub index_data: Vec<IndexBuffer>,
 }
 
-impl Mesh {
-    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize) -> Self {
-        let info: MeshInfo = OrderedData::from_bytes::<O>(&data[offset..]);
-        let indices: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[info.indices_offset as usize..], info.keys_num as usize);
-        let keys: Vec<Crc> = if info.keys_offset != 0 {
-            OrderedDataVec::from_bytes::<O>(&data[info.keys_offset as usize..], info.keys_num as usize)
-        } else { Vec::new() };
-        let matrices: Vec<Matrix4x4> = OrderedDataVec::from_bytes::<O>(&data[info.matrices_offset as usize..], info.keys_num as usize);
-        let vals_a: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[info.vals_a_offset as usize..], info.keys_num as usize * 8);
+impl Model {
+    pub fn from_data<O: Version + 'static>(info: ModelInfo, data: &[u8]) -> Self {
+        let bone_parents: Vec<i32> = OrderedDataVec::from_bytes::<O>(&data[info.bone_parents_offset as usize..], info.bones_num as usize);
+        let bones: Vec<Crc> = if info.bones_offset != 0 {
+            OrderedDataVec::from_bytes::<O>(&data[info.bones_offset as usize..], info.bones_num as usize)
+        } else { vec![Crc::Key(0); info.bones_num as usize] };
+        let bone_transforms: Vec<Matrix4x4> = OrderedDataVec::from_bytes::<O>(&data[info.bone_transforms_offset as usize..], info.bones_num as usize);
+        let vals_a: Vec<ValA> = OrderedDataVec::from_bytes::<O>(&data[info.vals_a_offset as usize..], info.bones_num as usize);
         let mut mat_order: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[info.mat_offset as usize..], info.mat_num as usize);
-        let vals_c: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[info.vals_c_offset as usize..], info.vals_c_num as usize);
-        let vals_d: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[info.vals_d_offset as usize..], info.vals_c_num as usize * 8);
+        let mesh_order: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[info.mesh_order_offset as usize..], info.lod3.breakable_end as usize);
+        let vals_d: Vec<ValA> = OrderedDataVec::from_bytes::<O>(&data[info.vals_d_offset as usize..], info.lod3.breakable_end as usize);
         let mut vbuff_order: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[info.vbuff_offset as usize..], info.vbuff_num as usize);
         let mut ibuff_order: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[info.ibuff_offset as usize..], info.ibuff_num as usize);
-        let vals_g: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[info.vals_g_offset as usize..], info.vals_g_num as usize * 16);
+        let skin_binds: Vec<Matrix4x4> = OrderedDataVec::from_bytes::<O>(&data[info.skin_binds_offset as usize..], info.skin_binds_num as usize);
         let vals_j: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[info.vals_j_offset as usize..], info.vals_j_num as usize);
         let (val_k_header, vals_k) = if info.vals_k_offset != 0 {(
             OrderedDataVec::from_bytes::<O>(&data[info.vals_k_offset as usize..], 2), 
@@ -64,39 +70,39 @@ impl Mesh {
         )} else {(
             Vec::new(), Vec::new()
         )};
-        let vals_i = if info.vals_i_offset != 0 {
-            OrderedDataVec::from_bytes::<O>(&data[info.vals_i_offset as usize..], info.vals_g_num as usize)
+        let skin_order = if info.skin_order_offset != 0 {
+            OrderedDataVec::from_bytes::<O>(&data[info.skin_order_offset as usize..], info.skin_binds_num as usize)
         } else {
             Vec::new()
         };
-        let (keys2, keys2_order) = if info.keys2_offset != 0 {
-            assert!(info.keys2_order_offset != 0);
+        let (slots, slot_map) = if info.slots_offset != 0 {
+            assert!(info.slot_map_offset != 0);
             let mut i = 0;
             {
-                while u32::from_bytes::<O>(&data[info.keys2_offset as usize + i * 8..]) != 0 {
+                while u32::from_bytes::<O>(&data[info.slots_offset as usize + i * 8..]) != 0 {
                     i += 1;
                 }
                 i += 1;
             }
-            let keys2: Vec<Key2> = OrderedDataVec::from_bytes::<O>(&data[info.keys2_offset as usize..], i);
-            let keys2_order = OrderedDataVec::from_bytes::<O>(&data[info.keys2_order_offset as usize..], keys2.last().unwrap().val as usize);
+            let keys2: Vec<Key2> = OrderedDataVec::from_bytes::<O>(&data[info.slots_offset as usize..], i);
+            let keys2_order = OrderedDataVec::from_bytes::<O>(&data[info.slot_map_offset as usize..], keys2.last().unwrap().val as usize);
             (keys2, keys2_order)
         } else {(
             Vec::new(), Vec::new()
         )};
         let (block_header, block_offsets, blocks) = if info.block_offset != 0 {
             let block_header = OrderedData::from_bytes::<O>(&data[info.block_offset as usize..]);
-            let n = (info.block_end - info.block_start) as usize;
+            let n = (info.lod0.physics_end - info.lod0.skinned_end) as usize;
             let block_offsets: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[info.block_offset as usize + 4..], n+1);
             let mut blocks = Vec::with_capacity(n);
             for i in 0..n {
                 let size = (block_offsets[i+1] - block_offsets[i]) as usize;
                 let offset = (block_offsets[i] + info.block_offset) as usize;
-                let header: mesh::BlockHeader = OrderedData::from_bytes::<O>(&data[offset..]);
-                let mut s = mesh::BlockHeader::size::<O>();
+                let header: model::BlockHeader = OrderedData::from_bytes::<O>(&data[offset..]);
+                let mut s = model::BlockHeader::size::<O>();
                 let vals_a: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[offset+s..], (header.a + header.b) as usize * 12);
                 s += vals_a.size::<O>();
-                let vals_b: Vec<mesh::BlockVal> = OrderedDataVec::from_bytes::<O>(&data[offset+s..], (size - s)/mesh::BlockVal::size::<O>());
+                let vals_b: Vec<model::BlockVal> = OrderedDataVec::from_bytes::<O>(&data[offset+s..], (size - s)/model::BlockVal::size::<O>());
                 s += vals_b.size::<O>();
                 let extra = OrderedDataVec::from_bytes::<O>(&data[offset+s..], (size - s)/4);
                 blocks.push((header, vals_a, vals_b, extra));
@@ -106,7 +112,7 @@ impl Mesh {
             None, Vec::new(), Vec::new()
         )};
 
-        assert!(indices[0] == 0xffffffff);
+        assert!(bone_parents[0] == -1);
 
         let shapes = (0..info.shape_num as usize).map(|i| 
             Shape::from_data::<O>(data, info.shape_offset as usize + i * ShapeInfo::size::<O>())
@@ -147,22 +153,22 @@ impl Mesh {
 
         Self {
             info,
-            indices,
-            keys,
-            matrices,
+            bone_parents,
+            bones,
+            bone_transforms,
             mat_order,
             vals_a,
-            vals_c,
+            mesh_order,
             vals_d,
             vbuff_order,
             ibuff_order,
-            vals_g,
+            skin_binds,
             vals_j,
             val_k_header,
             vals_k,
-            vals_i,
-            keys2,
-            keys2_order,
+            skin_order,
+            slots,
+            slot_map,
             block_header,
             block_offsets,
             blocks,
@@ -239,9 +245,9 @@ impl Mesh {
         } else { 0 };
         infos.hk_constraint_data.extend(self.hk_constraint_datas.clone());
 
-        info.keys_offset = offset as u32;
-        info.keys_num = self.keys.len() as u32;
-        let vals = self.keys.dump_bytes::<O>();
+        info.bones_offset = offset as u32;
+        info.bones_num = self.bones.len() as u32;
+        let vals = self.bones.dump_bytes::<O>();
         offset += vals.len();
         data.extend(vals);
 
@@ -262,7 +268,7 @@ impl Mesh {
 
         if let Some(hk_constraint) = &self.hk_constraint {
             info.hk_constraint_offset = infos.header.hk_constraint_info_offset + (HkConstraintInfo::size::<O>() * infos.hk_constraint.len()) as u32;
-            let vals = hk_constraint.dump::<O>(offset, info.keys_offset, info.keys_num, infos);
+            let vals = hk_constraint.dump::<O>(offset, info.bones_offset, info.bones_num, infos);
             offset += vals.len();
             data.extend(vals);
         } else {
@@ -273,23 +279,23 @@ impl Mesh {
         data.extend(vec![0u8; off-offset]);
         offset = off;
 
-        info.vals_g_offset = offset as u32;
-        info.vals_g_num = self.vals_g.len() as u32 / 16;
-        let vals = self.vals_g.dump_bytes::<O>();
+        info.skin_binds_offset = offset as u32;
+        info.skin_binds_num = self.skin_binds.len() as u32;
+        let vals = self.skin_binds.dump_bytes::<O>();
         offset += vals.len();
         data.extend(vals);
 
-        if self.vals_i.len() != 0 {
-            info.vals_i_offset = offset as u32;
-            let vals = self.vals_i.dump_bytes::<O>();
+        if self.skin_order.len() != 0 {
+            info.skin_order_offset = offset as u32;
+            let vals = self.skin_order.dump_bytes::<O>();
             offset += vals.len();
             data.extend(vals);
         } else {
-            info.vals_i_offset = 0;
+            info.skin_order_offset = 0;
         }
 
-        info.indices_offset = offset as u32;
-        let vals = self.indices.dump_bytes::<O>();
+        info.bone_parents_offset = offset as u32;
+        let vals = self.bone_parents.dump_bytes::<O>();
         offset += vals.len();
         data.extend(vals);
 
@@ -297,8 +303,8 @@ impl Mesh {
         data.extend(vec![0u8; off-offset]);
         offset = off;
 
-        info.matrices_offset = offset as u32;
-        let vals = self.matrices.dump_bytes::<O>();
+        info.bone_transforms_offset = offset as u32;
+        let vals = self.bone_transforms.dump_bytes::<O>();
         offset += vals.len();
         data.extend(vals);
 
@@ -319,9 +325,9 @@ impl Mesh {
             data.extend(vals);    
         }
 
-        info.vals_c_offset = offset as u32;
-        info.vals_c_num = self.vals_c.len() as u32;
-        let vals = self.vals_c.dump_bytes::<O>();
+        info.mesh_order_offset = offset as u32;
+        //info.lod3.breakable_end = self.mesh_order.len() as u32;
+        let vals = self.mesh_order.dump_bytes::<O>();
         offset += vals.len();
         data.extend(vals);
 
@@ -362,13 +368,13 @@ impl Mesh {
             data.extend(vals);
         }
 
-        if self.keys2.len() != 0 {
-            info.keys2_offset = offset as u32;
-            let vals = self.keys2.dump_bytes::<O>();
+        if self.slots.len() != 0 {
+            info.slots_offset = offset as u32;
+            let vals = self.slots.dump_bytes::<O>();
             offset += vals.len();
             data.extend(vals);
-            info.keys2_order_offset = offset as u32;
-            let vals = self.keys2_order.dump_bytes::<O>();
+            info.slot_map_offset = offset as u32;
+            let vals = self.slot_map.dump_bytes::<O>();
             offset += vals.len();
             data.extend(vals);
         }
@@ -405,7 +411,7 @@ impl Mesh {
             }
         }
 
-        infos.mesh.push(info);
+        infos.model.push(info);
         data
     }
 
@@ -469,19 +475,19 @@ impl Mesh {
         } else { 0 };
         infos.hk_constraint_data.extend(self.hk_constraint_datas.clone());
 
-        info.keys_offset = 0;
-        info.keys_num = self.vals_a.len() as u32 / 8;
+        info.bones_offset = 0;
+        info.bones_num = self.vals_a.len() as u32;
 
-        info.vals_a_offset = infos.header.mesh_info_offset + (infos.mesh.len() * MeshInfo::size::<O>()) as u32 + 16;
+        info.vals_a_offset = infos.header.model_info_offset + (infos.model.len() * ModelInfo::size::<O>()) as u32 + 16;
 
-        info.vals_g_offset = indices_offset as u32;
-        info.vals_g_num = 0;
-        info.vals_i_offset = 0;
-        info.indices_offset = indices_offset as u32;
+        info.skin_binds_offset = indices_offset as u32;
+        info.skin_binds_num = 0;
+        info.skin_order_offset = 0;
+        info.bone_parents_offset = indices_offset as u32;
 
         if let Some(hk_constraint) = &self.hk_constraint {
             info.hk_constraint_offset = infos.header.hk_constraint_info_offset + (HkConstraintInfo::size::<O>() * infos.hk_constraint.len()) as u32;
-            let vals = hk_constraint.dump::<O>(offset, info.keys_offset, info.keys_num, infos);
+            let vals = hk_constraint.dump::<O>(offset, info.bones_offset, info.bones_num, infos);
             offset += vals.len();
             data.extend(vals);    
         } else {
@@ -509,8 +515,8 @@ impl Mesh {
         offset += vals.len();
         data.extend(vals);    
 
-        info.matrices_offset = offset as u32;
-        let vals = self.matrices.dump_bytes::<O>();
+        info.bone_transforms_offset = offset as u32;
+        let vals = self.bone_transforms.dump_bytes::<O>();
         offset += vals.len();
         data.extend(vals);
 
@@ -521,9 +527,9 @@ impl Mesh {
         offset += vals.len();
         data.extend(vals);
         
-        info.vals_c_offset = offset as u32;
-        info.vals_c_num = self.vals_c.len() as u32;
-        let vals = self.vals_c.dump_bytes::<O>();
+        info.mesh_order_offset = offset as u32;
+        //info.lod3.breakable_end = self.mesh_order.len() as u32;
+        let vals = self.mesh_order.dump_bytes::<O>();
         offset += vals.len();
         data.extend(vals);
 
@@ -556,13 +562,13 @@ impl Mesh {
             data.extend(vals);
         }
 
-        if self.keys2.len() != 0 {
-            info.keys2_offset = offset as u32;
-            let vals = self.keys2.dump_bytes::<O>();
+        if self.slots.len() != 0 {
+            info.slots_offset = offset as u32;
+            let vals = self.slots.dump_bytes::<O>();
             offset += vals.len();
             data.extend(vals);
-            info.keys2_order_offset = offset as u32;
-            let vals = self.keys2_order.dump_bytes::<O>();
+            info.slot_map_offset = offset as u32;
+            let vals = self.slot_map.dump_bytes::<O>();
             offset += vals.len();
             data.extend(vals);
         }
@@ -613,7 +619,7 @@ impl Mesh {
         }
 
 
-        infos.mesh.push(info);
+        infos.model.push(info);
         data
     }
 
@@ -640,6 +646,349 @@ impl Mesh {
             self.ibuffs.len() as u32,
         )
     }
+
+
+    pub fn to_gltf(&self) -> Result<gltf::Glb> {
+        let mut root = gltf::json::root::Root::default();
+        let mut bin = Vec::new();
+
+        // add index data
+        let ibuffs: Vec<_> = self.index_data.iter().map(|ibuff| match ibuff {
+            IndexBuffer::U16 { vals } => GltfAsset { data: vals.dump_bytes::<PC>(), count: vals.len(), ty: DataType::U16, dim: Dimensions::Scalar,  target: Some(Target::ElementArrayBuffer), ..Default::default() },
+            IndexBuffer::U32 { vals } => GltfAsset { data: vals.dump_bytes::<PC>(), count: vals.len(), ty: DataType::U32, dim: Dimensions::Scalar,  target: Some(Target::ElementArrayBuffer), ..Default::default() },
+        }.to_gltf(&mut root, &mut bin)).collect();
+
+        let vbuffs: Vec<HashMap<VertexUsage, Index<Accessor>>> = self.vertex_data.iter().map(|vbuff| 
+            vbuff.vals.iter().map(|val| (val.usage.clone(), GltfAsset { 
+                data: val.dump_bytes::<PC>(),
+                count: val.val.len(),
+                stride: val.stride(),
+                target: Some(Target::ArrayBuffer),
+                ty: val.component_type(),
+                dim: val.dimensions(),
+                min: val.min(),
+                max: val.max(),
+                normalized: val.normalized(),
+                extras: Some(json!(val.usage.clone())),
+            }.to_gltf(&mut root, &mut bin))).collect()
+        ).collect();
+
+        // add skeleton data if relevant
+        let mut children = self.bones.iter().map(|_| Vec::new()).collect::<Vec<_>>();
+        for (i, &parent) in self.bone_parents.iter().enumerate() {
+            if parent == -1 { continue }
+            children[parent as usize].push(Index::<Node>::new((root.nodes.len() + i) as u32));
+        }
+
+        let bones: Vec<_> = self.bones.iter().zip(self.bone_transforms.iter().zip(children)).map(|(bone, (mat, children))| {
+            let children = if children.is_empty() {
+                None 
+            } else {
+                Some(children)
+            };
+            root.push(Node {
+                name: Some(bone.to_string()),
+                children,
+                matrix: Some(mat.into()),
+                ..Default::default()
+            })
+        }).collect();
+
+        // add skin if relevant
+        let skin = if self.skin_order.len() != 0 {
+            let joints: Vec<_> = self.skin_order.iter().map(|&x| bones[x as usize]).collect();
+            let accessor = GltfAsset { 
+                data: self.skin_binds.dump_bytes::<PC>(), 
+                count: joints.len(), 
+                ty: DataType::F32,
+                dim: Dimensions::Mat4, 
+                ..Default::default()
+            }.to_gltf(&mut root, &mut bin);
+            let skeleton = bones.first().copied();
+
+            Some(root.push(gltf::json::Skin {
+                name: None,
+                extensions: None,
+                extras: Default::default(),
+                inverse_bind_matrices: Some(accessor),
+                joints,
+                skeleton,
+            }))
+        } else {
+            None
+        };
+
+        // add meshesand nodes
+
+        let mut i = 0;
+        let mut uses = vec![0u32; self.buffer_infos.len()];
+        for (lod, f) in [&self.info.lod0, &self.info.lod1, &self.info.lod2, &self.info.lod3].iter().zip(
+            [LodMeshes::LOD0, LodMeshes::LOD1, LodMeshes::LOD2, LodMeshes::LOD3]
+        ) {
+            for i in i..lod.start { 
+                uses[(self.mesh_order[i as usize] & 0x3FFFFFFF) as usize] |= f | LodMeshes::UNKNOWN; 
+            }
+            for i in lod.start..lod.static_end {
+                uses[(self.mesh_order[i as usize] & 0x3FFFFFFF) as usize] |= f | LodMeshes::STATIC;
+            }
+            for i in lod.static_end..lod.skinned_end {
+                uses[(self.mesh_order[i as usize] & 0x3FFFFFFF) as usize] |= f | LodMeshes::SKINNED;
+            }
+            for i in lod.skinned_end..lod.physics_end {
+                uses[(self.mesh_order[i as usize] & 0x3FFFFFFF) as usize] |= f | LodMeshes::PHYSICS;
+            }
+            for i in lod.physics_end..lod.breakable_end {
+                uses[(self.mesh_order[i as usize] & 0x3FFFFFFF) as usize] |= f | LodMeshes::BREAKABLE;
+            }
+            i = lod.breakable_end;
+        }
+
+        let mut nodes: Vec<_> = self.buffer_infos.iter().zip(uses).enumerate().map(|(i, (info, usage))| {
+            let vbuff = &vbuffs[info.vbuff_info_offset as usize];
+            let indices = ibuffs.get(info.ibuff_info_offset as usize).copied();
+            //let i_size = root.accessors[indices.unwrap().value()].max.as_ref().unwrap().as_u64().unwrap();
+            let mut attributes = std::collections::BTreeMap::new();
+            if let Some(positions) = vbuff.get(&VertexUsage::Position) {
+                //println!("{}, {}, {:?}", info.vbuff_size / info.v_size, info.ibuff_info_offset, i_size);
+                //assert!(root.accessors[positions.value()].count.0 >= i_size + 1);
+                attributes.insert(Checked::Valid(gltf::mesh::Semantic::Positions), positions.clone());
+            }
+            if let Some(normals) = vbuff.get(&VertexUsage::Normal) {
+                //println!("{}, {}, {:?}", info.vbuff_size / info.v_size, info.ibuff_info_offset, i_size);
+                //assert!(root.accessors[positions.value()].count.0 >= i_size + 1);
+                attributes.insert(Checked::Valid(gltf::mesh::Semantic::Normals), normals.clone());
+            }
+            let skin = if usage & LodMeshes::SKINNED != 0 {
+                if let Some(joints) = vbuff.get(&VertexUsage::BlendIndices) {
+                    //assert!(root.accessors[joints.value()].count.0 == (info.vbuff_size / info.v_size) as u64);
+                    attributes.insert(Checked::Valid(gltf::mesh::Semantic::Joints(0)), joints.clone());
+                }
+                if let Some(weights) = vbuff.get(&VertexUsage::BlendWeight) {
+                    //assert!(root.accessors[weights.value()].count.0 == (info.vbuff_size / info.v_size) as u64);
+                    attributes.insert(Checked::Valid(gltf::mesh::Semantic::Weights(0)), weights.clone());
+                }
+                skin
+            } else {
+                None
+            };
+            let mut name = String::new() + "(";
+            if usage & LodMeshes::LOD0 != 0 { name += "Lod0, "; }
+            if usage & LodMeshes::LOD1 != 0 { name += "Lod1, "; }
+            if usage & LodMeshes::LOD2 != 0 { name += "Lod2, "; }
+            if usage & LodMeshes::LOD3 != 0 { name += "Lod3, "; }
+            name.truncate(name.len() - 2);
+            name += format!(") Mesh {} [", i).as_str();
+            if usage & LodMeshes::UNKNOWN != 0 { name += "Unknown, "; }
+            if usage & LodMeshes::STATIC != 0 { name += "Static, "; }
+            if usage & LodMeshes::SKINNED != 0 { name += "Skinned, "; }
+            if usage & LodMeshes::PHYSICS != 0 { name += "Physics, "; }
+            if usage & LodMeshes::BREAKABLE != 0 { name += "Breakable, "; }
+            name.truncate(name.len() - 2);
+            name += "]";
+
+            let mesh = root.push(gltf::json::Mesh {
+                name: None,
+                extensions: None,
+                extras: Default::default(),
+                primitives: vec![gltf::json::mesh::Primitive {
+                    attributes,
+                    extensions: None,
+                    extras: Default::default(),
+                    indices, 
+                    material: None,
+                    mode: Checked::Valid(gltf::json::mesh::Mode::Triangles),
+                    targets: None,
+                }],
+                weights: None,
+            });
+
+            root.push(Node {
+                name: Some(name),
+                skin,
+                mesh: Some(mesh),
+                ..Default::default()
+            })
+        }).collect();
+
+        // construct scene
+    
+        if let Some(node) = bones.first() {
+            nodes.push(node.clone());
+        }
+        
+        root.push(gltf::json::Scene {
+            name: None,
+            extensions: None,
+            extras: Default::default(),
+            nodes
+        });
+
+        root.push(gltf::json::Buffer {
+            name: None,
+            byte_length: bin.len().into(),
+            extensions: None,
+            extras: Default::default(),
+            uri: None,
+        });
+            
+        root.extensions_used.push("KHR_mesh_quantization".into());
+        root.extensions_required.push("KHR_mesh_quantization".into());
+        root.extras = Some(serde_json::value::to_raw_value(&json!(ModelGltf {
+            info: self.info.clone(),
+            vals_a: self.vals_a.clone(),
+            mat_order: self.mat_order.clone(),
+            mesh_order: self.mesh_order.clone(),
+            vals_d: self.vals_d.clone(),
+            vbuff_order: self.vbuff_order.clone(),
+            ibuff_order: self.ibuff_order.clone(),
+            vals_j: self.vals_j.clone(),
+            val_k_header: self.val_k_header.clone(),
+            vals_k: self.vals_k.clone(),
+            slots: self.slots.clone(),
+            slot_map: self.slot_map.clone(),
+            block_header: self.block_header.clone(),
+            block_offsets: self.block_offsets.clone(),
+            blocks: self.blocks.clone(),
+            mats: self.mats.clone(),
+            mat_extras: self.mat_extras.clone(),
+            vbuffs: self.vbuffs.clone(),
+            ibuffs: self.ibuffs.clone(),
+            buffer_infos: self.buffer_infos.clone(),
+            hk_constraint: self.hk_constraint.clone(),
+            hk_constraint_datas: self.hk_constraint_datas.clone(),
+            shapes: self.shapes.iter().map(|x| x.to_gltf(&mut root, &mut bin)).collect(),
+            index_data: ibuffs,
+            vertex_data: vbuffs,
+            bones,
+        }))?);
+
+        // decode and reformat so that extras are properly formatted in the result
+        let json = serde_json::to_vec_pretty(&serde_json::from_slice::<serde_json::Value>(root.to_vec()?.as_slice())?)?;
+        let length = json.len();
+        //json.extend(vec![' ' as u8; ((json.len() + 3) & 0xFFFFFFFC) - json.len()]);
+    
+        let header = gltf::binary::Header {
+            magic: *b"GLTF",
+            version: 2,
+            length: (length + bin.len()) as u32,
+        };
+
+        Ok(gltf::Glb {
+            header,
+            bin: Some(bin.into()),
+            json: json.into(),
+        })
+    }
+
+    pub fn from_gltf(root: &Root, bin: &[u8]) -> Result<Self> {
+        let model: ModelGltf = serde_json::from_str(root.extras.as_ref().unwrap().get())?;
+
+        // get vertex / index data
+        let index_data = model.ibuffs.iter().zip(model.index_data).map(|(info, i)| match info.format {
+            0x10 => IndexBuffer::U16 { vals: GltfData::from_buffer(i, root, bin).u16().unwrap() },
+            _ => IndexBuffer::U32 { vals: GltfData::from_buffer(i, root, bin).u32().unwrap() },
+        }).collect();
+
+        let mut formats = HashMap::new();
+        let vertex_data = model.vbuffs.iter().zip(model.vertex_data).map(|(info, data)| {
+            let fmt = formats.entry((info.fmt1, info.fmt2)).or_insert_with(|| {
+                get_vertex_format::<PC>(info.fmt1, info.fmt2).0
+            });
+
+            let mut vals = fmt.clone();
+            for val in &mut vals {
+                let i = data.get(&val.usage).unwrap();
+                val.from_gltf(GltfData::from_buffer(*i, root, bin)).unwrap();
+            }
+            VertexBuffer { vals }
+        }).collect();
+
+        let mut bones = Vec::with_capacity(model.bones.len());
+        let mut bone_parents = vec![-1; model.bones.len()];
+        let mut bone_transforms = Vec::with_capacity(model.bones.len());
+        let bone_map: HashMap<Index<Node>, usize> = model.bones.iter().cloned().enumerate().map(|(x,y)| (y,x)).collect();
+        for (i, node) in model.bones.into_iter().map(|x| root.get(x).unwrap()).enumerate() {
+            if let Some(children) = &node.children {
+                for j in children {
+                    bone_parents[*bone_map.get(j).unwrap()] = i as i32;
+                }
+            }
+            bones.push(Crc::from_string(node.name.as_ref().unwrap().as_str()));
+            bone_transforms.push(node.matrix.as_ref().unwrap().into());
+        }
+        
+        let mut skin_order = Vec::new();
+        let mut skin_binds = Vec::new();
+        assert!(root.skins.len() < 2);
+        if let Some(skin) = root.skins.first() {
+            skin_order.extend(skin.joints.iter().map(|x| *bone_map.get(x).unwrap() as u32));
+            skin_binds.extend(GltfData::from_buffer(skin.inverse_bind_matrices.unwrap(), root, bin).f32().unwrap().as_slice().chunks_exact(16).map(|x| x.try_into().unwrap()));
+
+        }
+
+        Ok(Self {
+            bones,
+            bone_parents,
+            bone_transforms,
+            skin_order,
+            skin_binds,
+            vertex_data,
+            index_data,
+            info: model.info,
+            vals_a: model.vals_a,
+            mat_order: model.mat_order,
+            mesh_order: model.mesh_order,
+            vals_d: model.vals_d,
+            vbuff_order: model.vbuff_order,
+            ibuff_order: model.ibuff_order,
+            vals_j: model.vals_j,
+            val_k_header: model.val_k_header,
+            vals_k: model.vals_k,
+            slots: model.slots,
+            slot_map: model.slot_map,
+            block_header: model.block_header,
+            block_offsets: model.block_offsets,
+            blocks: model.blocks,
+            mats: model.mats,
+            mat_extras: model.mat_extras,
+            vbuffs: model.vbuffs,
+            ibuffs: model.ibuffs,
+            buffer_infos: model.buffer_infos,
+            hk_constraint: model.hk_constraint,
+            hk_constraint_datas: model.hk_constraint_datas,
+            shapes: model.shapes.into_iter().map(|x| x.parse(root, bin)).collect(),
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ModelGltf {
+    pub info: ModelInfo,
+    pub vals_a: Vec<ValA>,
+    pub mat_order: Vec<u32>,
+    pub mesh_order: Vec<u32>, // order of meshes (mapped to lod0, lod1, lod2, lod3)
+    pub vals_d: Vec<ValA>, // 1 per contained mesh, stores result of some absolute position calculation?
+    pub vbuff_order: Vec<u32>,
+    pub ibuff_order: Vec<u32>,
+    pub vals_j: Vec<u32>,
+    pub val_k_header: Vec<u16>,
+    pub vals_k: Vec<u32>,
+    pub slots: Vec<Key2>, // attachment points
+    pub slot_map: Vec<u32>, // attachment bone mapping
+    pub block_header: Option<u32>, // has to do with havok cloth / hair stuff
+    pub block_offsets: Vec<u32>,
+    pub blocks: Vec<(model::BlockHeader, Vec<u32>, Vec<model::BlockVal>, Vec<u32>)>,
+    pub mats: Vec<Mat>,
+    pub mat_extras: Vec<Option<MatExtra>>,
+    pub vbuffs: Vec<VBuffInfo>,
+    pub ibuffs: Vec<IBuffInfo>,
+    pub buffer_infos: Vec<BufferInfo>,
+    pub hk_constraint: Option<HkConstraint>,
+    pub hk_constraint_datas: Vec<HkConstraintData>,
+    pub shapes: Vec<ShapeGltf>,
+    pub index_data: Vec<Index<Accessor>>,
+    pub vertex_data: Vec<HashMap<VertexUsage, Index<Accessor>>>,
+    pub bones: Vec<Index<Node>>,
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
@@ -648,16 +997,21 @@ pub struct Key2 {
     pub val: u32,
 }
 
+#[derive(Debug, Default, Clone, Serialize, Deserialize, OrderedData)]
+pub struct TRS {
+    pub translation: Vector4,
+    pub rotation: Vector4,
+    pub scale: Vector4,
+}
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct HkConstraint {
     pub info: HkConstraintInfo,
-    pub shorts: Vec<u16>,
-    pub strings: Vec<(String, u32)>,
-    pub string_offsets: Vec<u32>, // not needed
-    pub vals: Vec<u32>, // probably f32
-    pub vals2: Vec<u32>, // probably f32
-    pub keys: Vec<Key2>, // same as parent mesh ?
+    pub bone_parents: Vec<i16>,
+    pub bone_names: Vec<(String, u32)>, // bones ?
+    pub bone_transforms: Vec<TRS>, // probably f32
+    pub vals2: Vec<f32>, // probably f32
+    pub bone_order: Vec<Key2>, // bones in order of increasing crc, number is index unsorted order
 }
 
 impl HkConstraint {
@@ -665,12 +1019,12 @@ impl HkConstraint {
         let info: HkConstraintInfo = OrderedData::from_bytes::<O>(&data[offset..]);
         if info.kind != 0 { panic!("Unknown & Unhandled HkConstraint type {} at offset {}", info.kind, offset); }
 
-        let shorts: Vec<u16> = OrderedDataVec::from_bytes::<O>(&data[info.shorts_offset as usize..], info.shorts_num as usize);
-        assert!(shorts[0] == 0xFFFF);
+        let bone_parents: Vec<i16> = OrderedDataVec::from_bytes::<O>(&data[info.bone_parents_offset as usize..], info.bone_parents_num as usize);
+        assert!(bone_parents[0] == -1);
 
         
-        let string_offsets: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[info.strings_offset as usize..], info.strings_num as usize);
-        let mut strings = Vec::with_capacity(string_offsets.len());
+        let string_offsets: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[info.bone_names_offset as usize..], info.bone_names_num as usize);
+        let mut bone_names = Vec::with_capacity(string_offsets.len());
         for offset_ in string_offsets.iter() {
             let (mut offset, val) = { 
                 let vals: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[*offset_ as usize..], 2);
@@ -679,44 +1033,44 @@ impl HkConstraint {
             let start = offset;
             while data[offset as usize] != 0 { offset += 1; }
             let string = String::from_utf8(data[start as usize..offset as usize].to_vec()).unwrap();
-            strings.push((string, val));
+            bone_names.push((string, val));
         }
-        let vals = OrderedDataVec::from_bytes::<O>(&data[info.vals_offset as usize..], info.vals_num as usize * 12);
+        let bone_transforms = OrderedDataVec::from_bytes::<O>(&data[info.bone_transforms_offset as usize..], info.bone_transforms_num as usize);
         let vals2 = OrderedDataVec::from_bytes::<O>(&data[info.vals2_offset as usize..], info.vals2_num as usize * 42);
-        let keys = OrderedDataVec::from_bytes::<O>(&data[info.keys2_offset as usize..], info.keys2_num as usize);
+        let bone_order = OrderedDataVec::from_bytes::<O>(&data[info.bone_order_offset as usize..], info.bone_order_num as usize);
         Self {
-            info, shorts, strings, string_offsets, vals, vals2, keys
+            info, bone_parents, bone_names, bone_transforms, vals2, bone_order
         }
     }
 
-    pub fn dump<O: Version + 'static>(&self, mut offset: usize, keys_offset: u32, keys_num: u32, infos: &mut DumpInfos) -> Vec<u8> {
+    pub fn dump<O: Version + 'static>(&self, mut offset: usize, bones_offset: u32, bones_num: u32, infos: &mut DumpInfos) -> Vec<u8> {
         let mut info = self.info.clone();
-        info.keys_num = keys_num as u16;
-        info.keys_offset = keys_offset;
+        info.bones_num = bones_num as u16;
+        info.bones_offset = bones_offset;
         let mut data = vec![];
 
-        info.strings_offset = offset as u32;
-        info.strings_num = self.strings.len() as u32;
-        offset += 12 * self.strings.len();
+        info.bone_names_offset = offset as u32;
+        info.bone_names_num = self.bone_names.len() as u32;
+        offset += 12 * self.bone_names.len();
         let off = (offset + 15) & 0xFFFFFFF0;
         data.extend(vec![0u8; off-offset]);
         offset = off;
 
-        info.vals_offset = offset as u32;
-        info.vals_num = self.vals.len() as u32 / 12;
-        let vals = self.vals.dump_bytes::<O>();
+        info.bone_transforms_offset = offset as u32;
+        info.bone_transforms_num = self.bone_transforms.len() as u32;
+        let vals = self.bone_transforms.dump_bytes::<O>();
         offset += vals.len();
         data.extend(vals);
 
-        info.keys2_offset = offset as u32;
-        info.keys2_num = self.keys.len() as u16;
-        let vals = self.keys.dump_bytes::<O>();
+        info.bone_order_offset = offset as u32;
+        info.bone_order_num = self.bone_order.len() as u16;
+        let vals = self.bone_order.dump_bytes::<O>();
         offset += vals.len();
         data.extend(vals);
 
-        info.shorts_offset = offset as u32;
-        info.shorts_num = self.shorts.len() as u32;
-        let vals = self.shorts.dump_bytes::<O>();
+        info.bone_parents_offset = offset as u32;
+        info.bone_parents_num = self.bone_parents.len() as u32;
+        let vals = self.bone_parents.dump_bytes::<O>();
         offset += vals.len();
         data.extend(vals);
 
@@ -726,9 +1080,9 @@ impl HkConstraint {
 
         let mut offsets = vec![];
         let mut string_offsets = vec![];
-        let mut block2_off = info.strings_offset;
-        let mut offset_off = info.strings_offset + 4 * self.strings.len() as u32;
-        for (string, val) in &self.strings {
+        let mut block2_off = info.bone_names_offset;
+        let mut offset_off = info.bone_names_offset + 4 * self.bone_names.len() as u32;
+        for (string, val) in &self.bone_names {
             let string = string.as_bytes();
             string_offsets.push([offset as u32, *val]);
             offset += string.len();
@@ -823,6 +1177,7 @@ impl Shape {
             hk_shapes,
         }
     }
+
     pub fn dump<O: Version + 'static>(&self, mut offset: usize, extra_offset: Option<u32>, infos: &mut DumpInfos) -> Vec<u8> {
         let mut info = self.info.clone();
         if let Some(extra_offset) = extra_offset {
@@ -839,6 +1194,31 @@ impl Shape {
 
         infos.shape.push(info);
         data
+    }
+
+    pub fn to_gltf(&self, root: &mut Root, bin: &mut Vec<u8>) -> ShapeGltf {
+        ShapeGltf {
+            info: self.info.clone(),
+            extra: self.extra.as_ref().map(|x| x.to_gltf(root, bin)),
+            hk_shapes: self.hk_shapes.iter().map(|x| x.to_gltf(root, bin)).collect()
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShapeGltf {
+    info: ShapeInfo,
+    extra: Option<ShapeExtraGltf>,
+    hk_shapes: Vec<HkShapeGltf>,
+}
+
+impl ShapeGltf {
+    pub fn parse(self, root: &Root, bin: &[u8]) -> Shape {
+        Shape {
+            info: self.info,
+            extra: self.extra.map(|x| x.parse(root, bin)),
+            hk_shapes: self.hk_shapes.into_iter().map(|x| x.parse(root, bin)).collect(),
+        }
     }
 }
 
@@ -871,126 +1251,192 @@ impl ShapeExtra {
     pub fn dump<O: Version + 'static>(&self) -> Vec<u8> {
         self.info.dump_bytes::<O>().into_iter().chain(self.offs.dump_bytes::<O>()).chain(self.data.clone()).collect()
     }
+
+    pub fn to_gltf(&self, root: &mut gltf::json::Root, bin: &mut Vec<u8>) -> ShapeExtraGltf {
+        let info = self.info.clone();
+        let offs = GltfAsset { 
+            data: self.offs.dump_bytes::<PC>(),
+            count: self.offs.len(),
+            ty: DataType::U32,
+            dim: Dimensions::Scalar,
+            ..Default::default()
+        }.to_gltf(root, bin);
+        let data = GltfAsset { 
+            data: self.data.clone(),
+            count: self.data.len(),
+            ty: DataType::U8,
+            dim: Dimensions::Scalar,
+            ..Default::default()
+        }.to_gltf(root, bin);
+        ShapeExtraGltf { info, offs, data }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShapeExtraGltf {
+    #[serde(flatten)]
+    info: ShapeExtraInfo,
+    offs: Index<Accessor>,
+    data: Index<Accessor>,
+}
+
+impl ShapeExtraGltf {
+    pub fn parse(self, root: &Root, bin: &[u8]) -> ShapeExtra {
+        ShapeExtra {
+            info: self.info,
+            offs: GltfData::from_buffer(self.offs, root, bin).u32().unwrap(),
+            data: GltfData::from_buffer(self.data, root, bin).u8().unwrap(),
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct HkShape0 {
     pub unk_0: Vector4,
     pub unk_4: Vector4,
+    #[serde(skip, default="HkShape::t0")]
     pub kind: u32,
     pub unk_9: u32,
-    pub a_num: u32,
-    pub a_offset: u32,
-    pub b_num: u32,
-    pub b_offset: u32,
-    pub c_num: u32,
-    pub c_offset: u32,
-    pub d_num: u32,
-    pub d_offset: u32,
-    pub e_num: u32,
-    pub e_offset: u32,
+    pub unk_10: u32,
+    pub unk_11: u32,
+    pub unk_12: u32,
+    pub unk_13: u32,
+    pub unk_14: u32,
+    pub unk_15: u32,
+    pub unk_16: u32,
+    pub unk_17: u32,
+    pub unk_18: u32,
+    pub unk_19: u32,
 }
+
+// BoxShape / ConvexTransformShape / ConvexTranslateShape
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct HkShape1 {
     pub unk_0: Vector4,
     pub unk_4: Vector4,
+    #[serde(skip, default="HkShape::t1")]
     pub kind: u32,
-    pub unk_9: u32,
-    pub a_num: u32,
-    pub a_offset: u32,
-    pub b_num: u32,
-    pub b_offset: u32,
-    pub c_num: u32,
-    pub c_offset: u32,
-    pub d_num: u32,
-    pub d_offset: u32,
-    pub e_num: u32,
-    pub e_offset: u32,
+    pub unk_9: f32,
+    pub unk_10: f32,
+    pub unk_11: f32,
+    pub unk_12: f32,
+    pub unk_13: f32,
+    pub unk_14: f32,
+    pub unk_15: f32,
+    pub unk_16: f32,
+    pub unk_17: f32,
+    pub unk_18: f32,
+    pub unk_19: f32,
 }
+
+// SphereShape / ConvexTranslateShape
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct HkShape2 {
     pub unk_0: Vector4,
     pub unk_4: Vector4,
+    #[serde(skip, default="HkShape::t2")]
     pub kind: u32,
-    pub unk_9: u32,
-    pub a_num: u32,
-    pub a_offset: u32,
-    pub b_num: u32,
-    pub b_offset: u32,
-    pub c_num: u32,
-    pub c_offset: u32,
-    pub d_num: u32,
-    pub d_offset: u32,
-    pub e_num: u32,
-    pub e_offset: u32,
+    pub unk_9: f32,
+    pub unk_10: f32,
+    pub unk_11: f32,
+    pub unk_12: f32,
+    pub unk_13: f32,
+    pub unk_14: f32,
+    pub unk_15: f32,
+    pub unk_16: f32,
+    pub unk_17: f32,
+    pub unk_18: f32,
+    pub unk_19: f32,
 }
+
+// CapsuleShape
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct HkShape3 {
     pub unk_0: Vector4,
     pub unk_4: Vector4,
+    #[serde(skip, default="HkShape::t3")]
     pub kind: u32,
-    pub unk_9: u32,
-    pub a_num: u32,
-    pub a_offset: u32,
-    pub b_num: u32,
-    pub b_offset: u32,
-    pub c_num: u32,
-    pub c_offset: u32,
-    pub d_num: u32,
-    pub d_offset: u32,
-    pub e_num: u32,
-    pub e_offset: u32,
+    pub unk_9: f32,
+    pub unk_10: f32,
+    pub unk_11: f32,
+    pub unk_12: f32,
+    pub unk_13: f32,
+    pub unk_14: f32,
+    pub unk_15: f32,
+    pub unk_16: f32,
+    pub unk_17: f32,
+    pub unk_18: f32,
+    pub unk_19: f32,
 }
+
+// CylinderShape
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct HkShape4 {
     pub unk_0: Vector4,
     pub unk_4: Vector4,
+    #[serde(skip, default="HkShape::t4")]
     pub kind: u32,
-    pub unk_9: u32,
-    pub a_num: u32,
-    pub a_offset: u32,
-    pub b_num: u32,
-    pub b_offset: u32,
-    pub c_num: u32,
-    pub c_offset: u32,
-    pub d_num: u32,
-    pub d_offset: u32,
-    pub e_num: u32,
-    pub e_offset: u32,
+    pub unk_9: f32,
+    pub unk_10: f32,
+    pub unk_11: f32,
+    pub unk_12: f32,
+    pub unk_13: f32,
+    pub unk_14: f32,
+    pub unk_15: f32,
+    pub unk_16: f32,
+    pub unk_17: f32,
+    pub unk_18: f32,
+    pub unk_19: f32,
 }
+
+// ConvexVerticesShape
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct HkShape5 {
     pub unk_0: Vector4,
     pub unk_4: Vector4,
+    #[serde(skip, default="HkShape::t5")]
     pub kind: u32,
-    pub unk_9: u32,
+    pub unk_9: f32,
+    #[serde(skip)]
     pub a_num: u32,
+    #[serde(skip)]
     pub a_offset: u32,
+    #[serde(skip)]
     pub b_num: u32,
+    #[serde(skip)]
     pub b_offset: u32,
-    pub c_num: u32,
-    pub c_offset: u32,
-    pub d_num: u32,
-    pub d_offset: u32,
-    pub e_num: u32,
-    pub e_offset: u32,
+    pub unk_14: f32,
+    pub unk_15: f32,
+    pub unk_16: f32,
+    pub unk_17: f32,
+    pub unk_18: f32,
+    pub unk_19: f32,
 }
+
+// ExtendedMeshShape / MoppBVTreeShape
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct HkShape6 {
     pub unk_0: Vector4,
     pub unk_4: Vector4,
+    #[serde(skip, default="HkShape::t6")]
     pub kind: u32,
-    pub unk_9: u32,
-    pub a_num: u32,
-    pub a_offset: u32,
-    pub b_num: u32,
-    pub b_offset: u32,
+    pub unk_9: f32,
+    pub unk_10: f32,
+    pub unk_11: f32,
+    pub unk_12: f32,
+    pub unk_13: f32,
+    #[serde(skip)]
     pub c_num: u32,
-    pub c_offset: u32,
-    pub d_num: u32,
-    pub d_offset: u32,
-    pub e_num: u32,
-    pub e_offset: u32,
+    #[serde(skip)]
+    pub c_offset: u32, // u8
+    #[serde(skip)]
+    pub d_num: u32, 
+    #[serde(skip)]
+    pub d_offset: u32, // vec3 f32
+    #[serde(skip)]
+    pub e_num: u32,  
+    #[serde(skip)]
+    pub e_offset: u32, // vec3 u16
 }
 
 use serde_with::serde_as;
@@ -1004,17 +1450,28 @@ pub enum HkShape {
     HkShape4(HkShape4),
     HkShape5 {
         info: HkShape5,
-        a: Vec<u32>,
-        b: Vec<u32>,
+        a: Vec<f32>, // vec4 f32
+        b: Vec<f32>, // vec3 f32
         b_extra: usize,
     },
     HkShape6 {
         info: HkShape6,
         #[serde_as(as = "serde_with::hex::Hex")]
         c: Vec<u8>,
-        d: Vec<u32>,
-        e: Vec<u16>,
+        d: Vec<f32>, // vec3 f32
+        e: Vec<u16>, // vec3 u16
     },
+}
+
+impl HkShape {
+    fn t0() -> u32 { 0 }
+    fn t1() -> u32 { 1 }
+    fn t2() -> u32 { 2 }
+    fn t3() -> u32 { 3 }
+    fn t4() -> u32 { 4 }
+    fn t5() -> u32 { 5 }
+    fn t6() -> u32 { 6 }
+
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1151,7 +1608,109 @@ impl HkShape {
             }
         }
     }
+
+    pub fn to_gltf(&self, root: &mut gltf::json::Root, bin: &mut Vec<u8>) -> HkShapeGltf {
+        match self {
+            Self::HkShape0(val) => HkShapeGltf::HkShape0(val.clone()),
+            Self::HkShape1(val) => HkShapeGltf::HkShape1(val.clone()),
+            Self::HkShape2(val) => HkShapeGltf::HkShape2(val.clone()),
+            Self::HkShape3(val) => HkShapeGltf::HkShape3(val.clone()),
+            Self::HkShape4(val) => HkShapeGltf::HkShape4(val.clone()),
+            Self::HkShape5 { info, a, b, b_extra } => {
+                let info = info.clone();
+                let b_extra = *b_extra;
+                let a = GltfAsset { 
+                    data: a.dump_bytes::<PC>(),
+                    count: a.len() / 4,
+                    ty: DataType::F32,
+                    dim: Dimensions::Vec4,
+                    ..Default::default()
+                }.to_gltf(root, bin);
+                let b = GltfAsset { 
+                    data: b.dump_bytes::<PC>(),
+                    count: b.len() / 3,
+                    ty: DataType::F32,
+                    dim: Dimensions::Vec3,
+                    ..Default::default()
+                }.to_gltf(root, bin);
+                HkShapeGltf::HkShape5 { info, a, b, b_extra }
+            },
+            Self::HkShape6 { info, c, d, e } => {
+                let info = info.clone();
+                let c = GltfAsset { 
+                    data: c.clone(),
+                    count: c.len(),
+                    ty: DataType::U8,
+                    dim: Dimensions::Scalar,
+                    ..Default::default()
+                }.to_gltf(root, bin);
+                let d = GltfAsset { 
+                    data: d.dump_bytes::<PC>(),
+                    count: d.len() / 3,
+                    ty: DataType::F32,
+                    dim: Dimensions::Vec3,
+                    ..Default::default()
+                }.to_gltf(root, bin);
+                let e = GltfAsset { 
+                    data: e.dump_bytes::<PC>(),
+                    count: e.len() / 3,
+                    ty: DataType::U16,
+                    dim: Dimensions::Vec3,
+                    ..Default::default()
+                }.to_gltf(root, bin);
+
+                HkShapeGltf::HkShape6 { info, c, d, e }
+            }
+        }
+    }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum HkShapeGltf {
+    HkShape0(HkShape0),
+    HkShape1(HkShape1),
+    HkShape2(HkShape2),
+    HkShape3(HkShape3),
+    HkShape4(HkShape4),
+    HkShape5 {
+        #[serde(flatten)]
+        info: HkShape5,
+        a: gltf::json::Index<gltf::json::Accessor>,
+        b: gltf::json::Index<gltf::json::Accessor>,
+        b_extra: usize,
+    },
+    HkShape6 {
+        #[serde(flatten)]
+        info: HkShape6,
+        c: gltf::json::Index<gltf::json::Accessor>,
+        d: gltf::json::Index<gltf::json::Accessor>,
+        e: gltf::json::Index<gltf::json::Accessor>,
+    },
+}
+
+impl HkShapeGltf {
+    pub fn parse(self, root: &Root, bin: &[u8]) -> HkShape {
+        match self {
+            Self::HkShape0(val) => HkShape::HkShape0(val),
+            Self::HkShape1(val) => HkShape::HkShape1(val),
+            Self::HkShape2(val) => HkShape::HkShape2(val),
+            Self::HkShape3(val) => HkShape::HkShape3(val),
+            Self::HkShape4(val) => HkShape::HkShape4(val),
+            Self::HkShape5 { info, a, b, b_extra } => {
+                let a = GltfData::from_buffer(a, root, bin).f32().unwrap();
+                let b = GltfData::from_buffer(b, root, bin).f32().unwrap();
+                HkShape::HkShape5 { info, a, b, b_extra }
+            },
+            Self::HkShape6 { info, c, d, e } => {
+                let c = GltfData::from_buffer(c, root, bin).u8().unwrap();
+                let d = GltfData::from_buffer(d, root, bin).f32().unwrap();
+                let e = GltfData::from_buffer(e, root, bin).u16().unwrap();
+                HkShape::HkShape6 { info, c, d, e }
+            }
+        }
+    }
+}
+
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Animation {
@@ -1167,8 +1726,7 @@ pub struct Animation {
 }
 
 impl Animation {
-    pub fn from_data<O: Version + 'static>(data: &[u8], offsets: &mut Vec<usize>, blocks: & Vec<Vec<u8>>) -> Self {
-        let info: AnimationInfo = OrderedData::from_bytes::<O>(data);
+    pub fn from_data<O: Version + 'static>(info: AnimationInfo, offsets: &mut Vec<usize>, blocks: & Vec<Vec<u8>>) -> Self {
         let (_, (offset, block)) = zip(offsets.iter().cloned(), blocks.iter()).enumerate().find(|(i, _)| {
             info.gamemodemask & (1 << i) != 0
         }).unwrap();
@@ -1224,7 +1782,7 @@ pub struct DumpInfos {
     pub animation: Vec<AnimationInfo>,
     pub hk_shape: Vec<HkShapeInfo>,
     pub shape: Vec<ShapeInfo>,
-    pub mesh: Vec<MeshInfo>,
+    pub model: Vec<ModelInfo>,
     pub mat1: Vec<MatBase>,
     pub mat2: Vec<Mat2>,
     pub mat3: Vec<Mat3>,
@@ -1236,4 +1794,142 @@ pub struct DumpInfos {
     pub ibuff: Vec<IBuffInfo>,
     pub buffer: Vec<BufferInfo>,
     pub block2_offsets: Vec<u32>,
+}
+
+pub struct GltfAsset {
+    pub data: Vec<u8>,
+    pub count: usize,
+    pub stride: Option<usize>,
+    pub target: Option<Target>,
+    pub ty: DataType,
+    pub dim: Dimensions,
+    pub min: Option<Value>,
+    pub max: Option<Value>,
+    pub normalized: bool,
+    pub extras: Option<Value>,
+}
+
+impl Default for GltfAsset {
+    fn default() -> Self {
+        Self {
+            data: vec![],
+            count: 0,
+            stride: None,
+            target: None,
+            ty: DataType::U32,
+            dim: Dimensions::Scalar,
+            min: None,
+            max: None,
+            normalized: false,
+            extras: None,
+        }
+    }
+}
+
+impl GltfAsset {
+    pub fn to_gltf(self, root: &mut Root, bin: &mut Vec<u8>) -> Index<Accessor> {
+        assert!(self.data.len() % self.count == 0);
+        let s = match self.ty {
+            DataType::I8 | DataType::U8 => 1,
+            DataType::I16 | DataType::U16 => 2,
+            _ => 4
+        };
+        bin.extend(vec![0u8; ((bin.len() + s - 1) & (0xFFFFFFFF - s + 1)) - bin.len()]);
+
+        let buffer_view = root.push(View {
+            name: None,
+            buffer: Index::<Buffer>::new(0),
+            byte_length: self.data.len().into(),
+            byte_offset: Some(bin.len().into()),
+            byte_stride: self.stride.map(|x| Stride(x)),
+            target: self.target.map(|x| Checked::Valid(x)),
+            extensions: None,
+            extras: Default::default(),
+        });
+        bin.extend(self.data);
+
+        root.push(gltf::json::Accessor {
+            name: None,
+            buffer_view: Some(buffer_view),
+            byte_offset: None,
+            count: self.count.into(),
+            component_type: Checked::Valid(GenericComponentType(self.ty)),
+            extensions: None,
+            extras: self.extras.map(|x| serde_json::value::to_raw_value(&x).unwrap()),
+            type_: Checked::Valid(self.dim),
+            min: self.min,
+            max: self.max,
+            normalized: self.normalized,
+            sparse: None,
+        })
+    }
+}
+
+pub struct GltfData<'a> {
+    pub ty: DataType,
+    pub m: usize,
+    pub n: usize,
+    pub stride: usize,
+    pub bin: &'a [u8],
+}
+
+impl <'a> GltfData<'a> {
+    pub fn from_buffer(i: Index<Accessor>, root: &Root, bin: &'a [u8]) -> Self {
+        let accessor = root.get(i).unwrap();
+        let buffer_view = root.get(accessor.buffer_view.unwrap()).unwrap();
+
+        let ty = accessor.component_type.unwrap().0;
+        let dim = accessor.type_.unwrap();
+        let n = accessor.count.0 as usize;
+        let m = dim.multiplicity();
+        let stride = buffer_view.byte_stride.map(|x| x.0).unwrap_or_else(|| ty.size() * m);
+        let off = (buffer_view.byte_offset.map(|x| x.0).unwrap_or(0) + accessor.byte_offset.map(|x| x.0).unwrap_or(0)) as usize;
+        Self {
+            ty, m, n, stride, bin: &bin[off..]
+        }
+    }
+
+    pub fn u8(self) -> Option<Vec<u8>> {
+        match self.ty {
+            DataType::U8 => Some((0..self.n).flat_map(|x| Vec::<u8>::from_bytes::<PC>(&self.bin[x * self.stride..], self.m)).collect()),
+            _ => None
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn i8(self) -> Option<Vec<i8>> {
+        match self.ty {
+            DataType::I8 => Some((0..self.n).flat_map(|x| Vec::<i8>::from_bytes::<PC>(&self.bin[x * self.stride..], self.m)).collect()),
+            _ => None
+        }
+    }
+
+    pub fn u16(self) -> Option<Vec<u16>> {
+        match self.ty {
+            DataType::U16 => Some((0..self.n).flat_map(|x| Vec::<u16>::from_bytes::<PC>(&self.bin[x * self.stride..], self.m)).collect()),
+            _ => None
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn i16(self) -> Option<Vec<i16>> {
+        match self.ty {
+            DataType::I16 => Some((0..self.n).flat_map(|x| Vec::<i16>::from_bytes::<PC>(&self.bin[x * self.stride..], self.m)).collect()),
+            _ => None
+        }
+    }
+
+    pub fn u32(self) -> Option<Vec<u32>> {
+        match self.ty {
+            DataType::U32 => Some((0..self.n).flat_map(|x| Vec::<u32>::from_bytes::<PC>(&self.bin[x * self.stride..], self.m)).collect()),
+            _ => None
+        }
+    }
+
+    pub fn f32(self) -> Option<Vec<f32>> {
+        match self.ty {
+            DataType::F32 => Some((0..self.n).flat_map(|x| Vec::<f32>::from_bytes::<PC>(&self.bin[x * self.stride..], self.m)).collect()),
+            _ => None
+        }
+    }
 }

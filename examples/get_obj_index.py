@@ -13,7 +13,7 @@ dst = "DumpedLevels/index.json"
 files = [i for i in os.listdir(src_dir) if i.endswith('.zip') and not i.startswith('level_info')]
 animations = {}
 effects = {}
-meshes = {}
+models = {}
 scripts = {}
 for file in files:
     with zipfile.ZipFile(Path(src_dir).joinpath(file), "r") as f:
@@ -29,8 +29,8 @@ for file in files:
                 obj = effects.get(name, [])
                 obj.append((file, str(i)))
                 effects[name] = obj
-            if kind == 'meshes':
-                obj = meshes.get(name, [])
+            if kind == 'models':
+                obj = models.get(name, [])
                 obj.append((file, str(i)))
                 meshes[name] = obj
             if kind == 'scripts':
@@ -41,6 +41,6 @@ with open(dst, "w") as f:
     json.dump({
         'animations': animations,
         'effects': effects,
-        'meshes': meshes,
+        'models': models,
         'scripts': scripts,
     }, f, indent=1)

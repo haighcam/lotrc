@@ -27,7 +27,7 @@ pub struct Level {
 
     pub objas: Vec<pak::ObjA>,
     pub obj0s: Vec<pak::Obj0>,
-    pub mesh_infos: Vec<pak::MeshInfo>,
+    pub model_infos: Vec<pak::ModelInfo>,
     pub buffer_infos: Vec<pak::BufferInfo>,
     pub mat1s: Vec<pak::Mat1>,
     pub mat2s: Vec<pak::Mat2>,
@@ -50,7 +50,7 @@ pub struct Level {
     pub animation_block_infos: Vec<pak::AnimationBlockInfo>,
     pub dump_animation_block_infos: Vec<pak::AnimationBlockInfo>,
 
-    pub meshes: Vec<pak::Mesh>,
+    pub models: Vec<pak::Model>,
     pub shapes: Vec<pak::Shape>,
     pub hk_shapes: Vec<pak::HkShape>,
     pub hk_constraints: Vec<pak::HkConstraint>,
@@ -73,7 +73,7 @@ pub struct Level {
 
     pub ibuff_info_map: HashMap<u32, usize>,
     pub vbuff_info_map: HashMap<u32, usize>,
-    pub vertex_formats: HashMap<(u32, u32), (Vec<(u32, pak::VertexUsage)>, usize)>,
+    pub vertex_formats: HashMap<(u32, u32), (Vec<pak::VertexData>, usize)>,
     pub vbuffs: Vec<Vec<pak::VertexBuffer>>,
     pub ibuffs: Vec<Vec<pak::IndexBuffer>>,
 
@@ -134,7 +134,7 @@ impl Level {
 
         val.objas = OrderedDataVec::from_bytes::<O>(&val.block1.data[val.pak_header.obja_offset as usize..], val.pak_header.obja_num as usize);
         val.obj0s = OrderedDataVec::from_bytes::<O>(&val.block1.data[val.pak_header.obj0_offset as usize..], val.pak_header.obj0_num as usize);
-        val.mesh_infos = OrderedDataVec::from_bytes::<O>(&val.block1.data[val.pak_header.mesh_info_offset as usize..], val.pak_header.mesh_info_num as usize);
+        val.model_infos = OrderedDataVec::from_bytes::<O>(&val.block1.data[val.pak_header.model_info_offset as usize..], val.pak_header.model_info_num as usize);
         val.buffer_infos = OrderedDataVec::from_bytes::<O>(&val.block1.data[val.pak_header.buffer_info_offset as usize..], val.pak_header.buffer_info_num as usize);
         val.mat1s = OrderedDataVec::from_bytes::<O>(&val.block1.data[val.pak_header.mat1_offset as usize..], val.pak_header.mat1_num as usize);
         val.mat2s = OrderedDataVec::from_bytes::<O>(&val.block1.data[val.pak_header.mat2_offset as usize..], val.pak_header.mat2_num as usize);
@@ -157,7 +157,7 @@ impl Level {
         val.animation_block_infos = OrderedDataVec::from_bytes::<O>(&val.block1.data[val.pak_header.animation_block_info_offset as usize..], val.pak_header.animation_block_info_num as usize);
         info!("packed items extracted in {:?}", time.elapsed());
 
-        val.meshes = val.mesh_infos.iter().map(|info| pak::Mesh::from_data::<O>(val.block1.data.as_slice(), info)).collect();
+        val.models = val.model_infos.iter().map(|info| pak::Model::from_data::<O>(val.block1.data.as_slice(), info)).collect();
         val.shapes = val.shape_infos.iter().map(|info| pak::Shape::from_data::<O>(val.block1.data.as_slice(), info)).collect();
         val.hk_shapes = val.hk_shape_infos.iter().map(|info| pak::HkShape::from_data::<O>(val.block1.data.as_slice(), info)).collect();
         val.hk_constraints = val.hk_constraint_infos.iter().map(|info| pak::HkConstraint::from_data::<O>(val.block1.data.as_slice(), info)).collect();
@@ -175,8 +175,8 @@ impl Level {
         info!("animations extracted in {:?}", time.elapsed());
 
         val.string_keys = types::StringKeys::from_data::<O>(&val.block1.data[..], val.pak_header.string_keys_offset as usize);
-        val.sub_blocks1 = types::SubBlocks::from_data::<O>(&val.block1.data[..], val.pak_header.sub_blocks1_offset as usize, &lua);
-        val.sub_blocks2 = types::SubBlocks::from_data::<O>(&val.block2.data[..], val.pak_header.sub_blocks2_offset as usize, &lua);
+        val.sub_blocks1 = types::SubBlocks::from_data::<O>(&val.block1.data[..], val.pak_header.sub_blocks1_offset as usize, &lua, None);
+        val.sub_blocks2 = types::SubBlocks::from_data::<O>(&val.block2.data[..], val.pak_header.sub_blocks2_offset as usize, &lua, None);
         val.block2_offsets = OrderedDataVec::from_bytes::<O>(&val.block2.data[val.pak_header.block2_offsets_offset as usize..], val.pak_header.block2_offsets_num as usize);
         info!("sub blocks extracted in {:?}", time.elapsed());
 
@@ -202,14 +202,14 @@ impl Level {
         val.ibuff_info_map = (0..val.pak_header.ibuff_info_num).map(|i| (val.pak_header.ibuff_info_offset + pak::IBuffInfo::size::<O>() as u32 * i, i as usize)).collect();
         val.vbuff_info_map = (0..val.pak_header.vbuff_info_num).map(|i| (val.pak_header.vbuff_info_offset + pak::VBuffInfo::size::<O>() as u32 * i, i as usize)).collect();
 
-        for (mesh, info) in std::iter::zip(&val.meshes, &val.mesh_infos) {
+        for (model, info) in std::iter::zip(&val.models, &val.model_infos) {
             if info.vbuff_num == 0 && info.ibuff_num == 0 { // no buffer
                 val.vbuffs.push(vec![]);
                 val.ibuffs.push(vec![]);
             } else {
                 let buffer = &val.asset_data.get(&(info.asset_key.key(), info.asset_type)).unwrap().data;
-                val.vbuffs.push(mesh.vbuffs.iter().map(|info| pak::VertexBuffer::from_data::<O>(&buffer[..], &mut val.vbuff_infos[*val.vbuff_info_map.get(&info).unwrap()], &mut val.vertex_formats)).collect());
-                val.ibuffs.push(mesh.ibuffs.iter().map(|info| pak::IndexBuffer::from_data::<O>(&buffer[..], &val.ibuff_infos[*val.ibuff_info_map.get(&info).unwrap()])).collect());    
+                val.vbuffs.push(model.vbuffs.iter().map(|info| pak::VertexBuffer::from_data::<O>(&buffer[..], &mut val.vbuff_infos[*val.vbuff_info_map.get(&info).unwrap()], &mut val.vertex_formats)).collect());
+                val.ibuffs.push(model.ibuffs.iter().map(|info| pak::IndexBuffer::from_data::<O>(&buffer[..], &val.ibuff_infos[*val.ibuff_info_map.get(&info).unwrap()])).collect());    
             }
         }
 
@@ -245,24 +245,24 @@ impl Level {
 
         let off = (bin_data.len() + 2048) & 0xfffff800;
         bin_data.extend(vec![0u8; off-bin_data.len()]);
-        for ((mesh, info), (vbuffs, ibuffs)) in zip(zip(&self.meshes, &self.mesh_infos), zip(&self.vbuffs, &self.ibuffs)) {
+        for ((model, info), (vbuffs, ibuffs)) in zip(zip(&self.models, &self.model_infos), zip(&self.vbuffs, &self.ibuffs)) {
             let key = (info.asset_key.key(), info.asset_type);
             if (info.vbuff_num != 0) || (info.ibuff_num != 0) {
                 let i = *self.asset_handle_lookup.get(&key).unwrap();
                 let asset_handle = dump_asset_handles.get_mut(i).unwrap();
 
                 // let mut data = vec![0u8; self.asset_handles[i].size as usize];
-                // for (vbuff, info) in zip(vbuffs, &mesh.vbuffs) {
+                // for (vbuff, info) in zip(vbuffs, &model.vbuffs) {
                 //     vbuff.into_data::<O>(&mut data, &self.vbuff_infos[*self.vbuff_info_map.get(&info).unwrap()]);
                 // }
-                // for (ibuff, info) in zip(ibuffs, &mesh.ibuffs) {
+                // for (ibuff, info) in zip(ibuffs, &model.ibuffs) {
                 //     ibuff.into_data::<O>(&mut data[self.ibuff_infos[*self.ibuff_info_map.get(&info).unwrap()].offset as usize..]);
                 // }
 
                 let mut data = Vec::with_capacity(self.asset_handles[i].size as usize);
                 for i in 0..(vbuffs.len().max(ibuffs.len())) {
                     if i < vbuffs.len() {
-                        let off = mesh.vbuffs[i];
+                        let off = model.vbuffs[i];
                         let info = &mut self.vbuff_infos[*self.vbuff_info_map.get(&off).unwrap()];
                         let vals = vbuffs[i].dump::<O>();
                         info.offset = data.len() as u32;
@@ -270,21 +270,21 @@ impl Level {
                         data.extend(vals);
                         for buffer_info in &mut self.buffer_infos {
                             if buffer_info.vbuff_info_offset == off {
-                                buffer_info.v_size = vbuffs[i].vals.iter().map(|(_, x)| x.size()).sum::<usize>() as u32;
+                                buffer_info.v_size = vbuffs[i].vals.iter().map(|x| x.val.size()).sum::<usize>() as u32;
                                 buffer_info.vbuff_size = info.size;
                             }
                             if buffer_info.vbuff_info_offset_2 == off {
-                                buffer_info.v_size_2 = vbuffs[i].vals.iter().map(|(_, x)| x.size()).sum::<usize>() as u32;
+                                buffer_info.v_size_2 = vbuffs[i].vals.iter().map(|x| x.val.size()).sum::<usize>() as u32;
                                 buffer_info.vbuff_size_2 = info.size;
                             }
                             if buffer_info.vbuff_info_offset_3 == off {
-                                buffer_info.v_size_3 = vbuffs[i].vals.iter().map(|(_, x)| x.size()).sum::<usize>() as u32;
+                                buffer_info.v_size_3 = vbuffs[i].vals.iter().map(|x| x.val.size()).sum::<usize>() as u32;
                                 buffer_info.vbuff_size_3 = info.size;
                             }
                         }
                     }
                     if i < ibuffs.len() {
-                        let info = &mut self.ibuff_infos[*self.ibuff_info_map.get(&mesh.ibuffs[i]).unwrap()];
+                        let info = &mut self.ibuff_infos[*self.ibuff_info_map.get(&model.ibuffs[i]).unwrap()];
                         let vals = ibuffs[i].dump::<O>();
                         info.offset = data.len() as u32;
                         info.size = vals.len() as u32;
@@ -403,8 +403,8 @@ impl Level {
             gfx_block.into_data(&mut dump_block1, info.offset as usize);
         }
 
-        for (mesh, info) in zip(&self.meshes, &self.mesh_infos) {
-            mesh.into_data::<O>(&mut dump_block1, info);
+        for (model, info) in zip(&self.models, &self.model_infos) {
+            model.into_data::<O>(&mut dump_block1, info);
         }
         for (shape, info) in zip(&self.shapes, &self.shape_infos) {
             shape.into_data::<O>(&mut dump_block1, info);
@@ -422,7 +422,7 @@ impl Level {
 
         self.objas.to_bytes::<O>(&mut dump_block1[dump_pak_header.obja_offset as usize..]);
         self.obj0s.to_bytes::<O>(&mut dump_block1[dump_pak_header.obj0_offset as usize..]);
-        self.mesh_infos.to_bytes::<O>(&mut dump_block1[dump_pak_header.mesh_info_offset as usize..]);
+        self.model_infos.to_bytes::<O>(&mut dump_block1[dump_pak_header.model_info_offset as usize..]);
         self.buffer_infos.to_bytes::<O>(&mut dump_block1[dump_pak_header.buffer_info_offset as usize..]);
         self.mat1s.to_bytes::<O>(&mut dump_block1[dump_pak_header.mat1_offset as usize..]);
         self.mat2s.to_bytes::<O>(&mut dump_block1[dump_pak_header.mat2_offset as usize..]);
@@ -460,7 +460,7 @@ impl Level {
         let off = (dump_block1.len() + 15) & 0xfffffff0;
         dump_block1.extend(vec![0u8; off-dump_block1.len()]);
         dump_pak_header.sub_blocks1_offset = dump_block1.len() as u32;
-        dump_block1.extend(self.sub_blocks1.dump::<O>(&lua));
+        dump_block1.extend(self.sub_blocks1.dump::<O>(&lua, None));
 
         let off = (dump_block1.len() + 31) & 0xffffffe0;
         dump_block1.extend(vec![0u8; off-dump_block1.len()]);
@@ -468,7 +468,7 @@ impl Level {
         dump_block1.extend(self.string_keys.dump::<O>());
 
         dump_pak_header.sub_blocks2_offset = 0;
-        let mut dump_block2 = self.sub_blocks2.dump::<O>(&lua);
+        let mut dump_block2 = self.sub_blocks2.dump::<O>(&lua, None);
         dump_pak_header.block2_offsets_offset = dump_block2.len() as u32;
         dump_pak_header.block2_offsets_num = self.block2_offsets.len() as u32;
         dump_block2.extend(self.block2_offsets.dump_bytes::<O>());

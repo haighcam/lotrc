@@ -118,7 +118,7 @@ impl LevelInfo {
         let strings = types::Strings::from_data::<O>(data, header.strings_offset as usize, header.strings_num as usize);
         types::update_strings(&strings.strings);
         let string_keys = types::StringKeys::from_data::<O>(data, header.string_keys_offset as usize);
-        let locale_strings = types::SubBlocks::from_data::<O>(data, header.locale_strings_offset as usize, &lua);
+        let locale_strings = types::SubBlocks::from_data::<O>(data, header.locale_strings_offset as usize, &lua, None);
         let gamemodes = OrderedDataVec::from_bytes::<O>(&data[header.gamemodes_offset as usize..], header.gamemodes_num as usize);
         let levels = OrderedDataVec::from_bytes::<O>(&data[header.levels_offset as usize..], header.levels_num as usize);
         let extra = data[0x38..0x13c].to_vec();
@@ -157,7 +157,7 @@ impl LevelInfo {
         self.string_keys.into_data::<O>(&mut data[..], dump_header.string_keys_offset as usize);
         data[
             dump_header.locale_strings_offset as usize..(dump_header.locale_strings_offset + dump_header.locale_strings_size) as usize
-        ].copy_from_slice(self.locale_strings.dump::<O>(&lua).as_slice());
+        ].copy_from_slice(self.locale_strings.dump::<O>(&lua, None).as_slice());
         self.gamemodes.to_bytes::<O>(&mut data[dump_header.gamemodes_offset as usize..]);
         self.levels.to_bytes::<O>(&mut data[dump_header.levels_offset as usize..]);
         data[0x38..0x13c].copy_from_slice(&self.extra[..]);
@@ -168,7 +168,7 @@ impl LevelInfo {
         writer.join("index.json").write(&serde_json::to_vec_pretty(self)?)?;
         self.strings.to_file(writer.join("debug_strings"))?;
         self.string_keys.to_file(writer.join("string_keys"))?;
-        self.locale_strings.to_file(writer.join("locale_strings"), &self.string_keys)?;
+        self.locale_strings.to_file(writer.join("locale_strings"), &self.string_keys, None)?;
         Ok(())
     }
 
@@ -178,7 +178,7 @@ impl LevelInfo {
         let mut val = serde_json::from_slice::<Self>(&reader.join("index.json").read()?)?;
         val.strings = types::Strings::from_file(reader.join("debug_strings"))?;
         val.string_keys = types::StringKeys::from_file(reader.join("string_keys"))?;
-        val.locale_strings = types::SubBlocks::from_file(reader.join("locale_strings"), &lua)?;
+        val.locale_strings = types::SubBlocks::from_file(reader.join("locale_strings"), &lua, None)?;
         Ok(val)
     }
 }

@@ -1,6 +1,7 @@
 use std::{any::TypeId, collections::HashMap, fmt::Display, iter::zip, num::ParseIntError, ops::Div, str::FromStr};
 use log::warn;
 use serde::{Serialize, Deserialize};
+use serde_with::{SerializeDisplay, DeserializeFromStr};
 
 use lotrc_rs_proc::OrderedData;
 use super::types::{BaseTypes, OrderedData, Vector4, Matrix4x4, OrderedDataVec, Vector2, Crc, Vector3, OrderedDataImpl, Version, XBOX, PS3};
@@ -26,34 +27,34 @@ pub struct Header {
     pub sub_blocks2_offset: u32, 
     pub string_keys_offset: u32, 
     pub unk_16: u32, 
-    pub unk_17: u32, 
-    pub unk_18: u32, 
-    pub unk_19: u32, 
-    pub unk_20: u32, 
-    pub unk_21: u32, 
-    pub unk_22: u32, 
-    pub unk_23: u32, 
-    pub unk_24: u32, 
-    pub unk_25: u32, 
+    pub obja_size: u32, 
+    pub obj0_size: u32, 
+    pub model_info_size: u32, 
+    pub buffer_info_size: u32, 
+    pub mat1_size: u32, 
+    pub mat2_size: u32, 
+    pub mat3_size: u32, 
+    pub mat4_size: u32, 
+    pub mat_extra_size: u32, 
     pub unk_26: u32, 
-    pub unk_27: u32, 
-    pub unk_28: u32, 
-    pub unk_29: u32, 
-    pub unk_30: u32, 
-    pub unk_31: u32, 
-    pub unk_32: u32, 
-    pub unk_33: u32, 
-    pub unk_34: u32, 
-    pub unk_35: u32, 
-    pub unk_36: u32, 
-    pub unk_37: u32, 
-    pub unk_38: u32, 
-    pub unk_39: u32, 
-    pub unk_40: u32, 
+    pub shape_info_size: u32, 
+    pub hk_shape_info_size: u32, 
+    pub hk_constraint_data_size: u32, 
+    pub vbuff_info_size: u32, 
+    pub ibuff_info_size: u32, 
+    pub texture_info_size: u32, 
+    pub animation_info_size: u32,
+    pub hk_constraint_info_size: u32,
+    pub effect_info_size: u32,
+    pub pfield_info_size: u32,
+    pub gfx_block_info_size: u32,
+    pub animation_block_info_size: u32, 
+    pub foliage_info_size: u32, 
+    pub illumination_info_size: u32, 
     pub unk_41: u32, 
     pub obja_num: u32, 
     pub obj0_num: u32, 
-    pub mesh_info_num: u32,
+    pub model_info_num: u32,
     pub buffer_info_num: u32,
     pub mat1_num: u32, 
     pub mat2_num: u32, 
@@ -78,7 +79,7 @@ pub struct Header {
     pub unk_66: u32, 
     pub obja_offset: u32,
     pub obj0_offset: u32, 
-    pub mesh_info_offset: u32,  // max loaded is 0x400
+    pub model_info_offset: u32,  // max loaded is 0x400
     pub buffer_info_offset: u32, 
     pub mat1_offset: u32, 
     pub mat2_offset: u32, 
@@ -146,7 +147,7 @@ pub struct ObjA {
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
-pub struct Obj0{
+pub struct Obj0 {
     #[ordered_data(PC)]
     pub unk_0: u32,
     #[ordered_data(PC)]
@@ -154,48 +155,49 @@ pub struct Obj0{
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
-pub struct MeshInfo {
+pub struct LodMeshes {
+    pub start: u32,
+    pub static_end: u32,
+    pub skinned_end: u32,
+    pub physics_end: u32,
+    pub breakable_end: u32,
+}
+
+impl LodMeshes {
+    pub const UNKNOWN: u32 = 1;
+    pub const STATIC: u32 = 2;
+    pub const SKINNED: u32 = 4;
+    pub const PHYSICS: u32 = 8;
+    pub const BREAKABLE: u32 = 16;
+    pub const LOD0: u32 = 32;
+    pub const LOD1: u32 = 64;
+    pub const LOD2: u32 = 128;
+    pub const LOD3: u32 = 256;
+}
+
+#[derive(Default, Debug, Clone, Serialize, Deserialize, OrderedData)]
+pub struct ValA(f32, f32, f32, f32, f32, f32, f32, f32);
+
+#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
+pub struct ModelInfo {
     pub key: Crc,
     pub gamemodemask: i32,
     pub mat_offset: u32,
     pub buffer_info_offset: u32, // pointer to obj2, uses mat_num of sequential objects
-    pub unk_4: u32,
-    pub unk_5: u32,
-    pub unk_6: u32,
-    pub unk_7: u32,
-    pub unk_8: u32,
-    pub unk_9: u32,
-    pub unk_10: u32,
-    pub unk_11: u32,
-    pub vals_c_offset: u32, // ints (c & 0x3fffffff is an index into the obj2s referenced by this object) (1 for each mesh)
-    pub unk_13: u32, // (v1, v2, v3, v4, v5) * 4 (up to unk_23), v1 is a starting offset to obj2s, v2 is the end offset
-    pub unk_14: u32,
-    pub block_start: u32,
-    pub block_end: u32,
-    pub unk_17: u32,
-    pub unk_18: u32,
-    pub unk_19: u32,
-    pub unk_20: u32,
-    pub unk_21: u32,
-    pub unk_22: u32,
-    pub unk_23: u32,
-    pub unk_24: u32,
-    pub unk_25: u32,
-    pub unk_26: u32,
-    pub unk_27: u32,
-    pub unk_28: u32,
-    pub unk_29: u32,
-    pub unk_30: u32,
-    pub unk_31: u32,
-    pub vals_c_num: u32,
+    pub unk_4: ValA,
+    pub mesh_order_offset: u32, // ints (c & 0x3fffffff is an index into the obj2s referenced by this object) (1 for each mesh)
+    pub lod0: LodMeshes,
+    pub lod1: LodMeshes,
+    pub lod2: LodMeshes,
+    pub lod3: LodMeshes,
     pub mat_num: u32,
-    pub keys_offset: u32, // ints
-    pub indices_offset: u32,
-    pub matrices_offset: u32, // 16 ints (matrix?) for keys_num
-    pub keys_num: u32,
-    pub vals_g_offset: u32,
-    pub vals_g_num: u32,
-    pub vals_i_offset: u32,
+    pub bones_offset: u32, // ints
+    pub bone_parents_offset: u32,
+    pub bone_transforms_offset: u32, // 16 ints (matrix?) for keys_num
+    pub bones_num: u32,
+    pub skin_binds_offset: u32,
+    pub skin_binds_num: u32,
+    pub skin_order_offset: u32,
     pub vbuff_offset: u32,
     pub vbuff_num: u32,
     pub ibuff_offset: u32,
@@ -220,12 +222,12 @@ pub struct MeshInfo {
     pub hk_constraint_data_offset: u32, // optional pointer to obje
     #[name_ps3(hk_constraint_offset)]
     pub hk_constraint_data_num: u32,
-    #[name_ps3(keys2_offset)]
+    #[name_ps3(slots_offset)]
     pub hk_constraint_offset: u32, // optional pointer to hkConstraint
-    #[name_ps3(keys2_order_offset)]
-    pub keys2_offset: u32,
+    #[name_ps3(slot_map_offset)]
+    pub slots_offset: u32,
     #[name_ps3(vals_a_offset)]
-    pub keys2_order_offset: u32,
+    pub slot_map_offset: u32,
     #[name_ps3(unk_55)]
     pub vals_a_offset: u32, // 8 ints
 }
@@ -357,7 +359,7 @@ pub struct BufferInfo {
     #[ordered_data(skipPS3)]
     pub tri_num: u32, // number of objects(triangles) in ibufffer
     #[ordered_data(skipPS3)]
-    pub unk_72: u32,
+    pub unk_72: u32, // possibly index to bone_transform used for mesh
     #[ordered_data(skipPS3)]
     pub unk_73: u32,
     #[ordered_data(skipPS3)]
@@ -927,21 +929,21 @@ pub struct AnimationInfo {
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct HkConstraintInfo {
     pub kind: u32,
-    pub shorts_offset: u32, 
-    pub shorts_num: u32,
-    pub strings_offset: u32,
-    pub strings_num: u32,
-    pub vals_offset: u32,
-    pub vals_num: u32,
+    pub bone_parents_offset: u32, 
+    pub bone_parents_num: u32,
+    pub bone_names_offset: u32,
+    pub bone_names_num: u32,
+    pub bone_transforms_offset: u32,
+    pub bone_transforms_num: u32,
     pub unk_7: u32,
     pub unk_8: u32,
     pub unk_9: u32,
-    pub keys_offset: u32,
-    pub keys_num: u16,
-    pub keys2_num: u16,
-    pub keys2_offset: u32,
+    pub bones_offset: u32,
+    pub bones_num: u16,
+    pub bone_order_num: u16,
+    pub bone_order_offset: u32,
     pub unk_13: u32,
-    pub unk_14: f32, //f',
+    pub unk_14: f32,
     pub vals2_num: u32,
     pub vals2_offset: u32,
     pub unk_17: u32,
@@ -1003,7 +1005,7 @@ pub struct FoliageInfo {
     pub unk_12: u32, 
     pub unk_13: u32, 
     pub unk_14: u32, 
-    pub unk_15: u32, 
+    pub unk_15: u32,
     pub unk_16: u32, 
     pub unk_17: u32, 
     pub unk_18: u32, 
@@ -1029,7 +1031,7 @@ pub struct BlockAVal {
     pub unk_6: u32,
 }
 
-pub mod mesh {
+pub mod model {
     use super::*;
     #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
     pub struct BlockHeader {
@@ -1051,7 +1053,7 @@ pub mod mesh {
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct Mesh {
+pub struct Model{
     pub indices: Vec<u32>,
     pub keys: Vec<u32>,
     pub matrices: Vec<Matrix4x4>,
@@ -1072,26 +1074,26 @@ pub struct Mesh {
     pub keys2_order: Vec<u32>,
     pub block_header: u32,
     pub block_offsets: Vec<u32>,
-    pub blocks: Vec<(mesh::BlockHeader, Vec<u32>, Vec<mesh::BlockVal>, Vec<u32>)>,
+    pub blocks: Vec<(model::BlockHeader, Vec<u32>, Vec<model::BlockVal>, Vec<u32>)>,
     pub val: Vec<u32>,
 }
 
-impl Mesh {
-    pub fn from_data<O: Version + 'static>(data: &[u8], info: &MeshInfo) -> Self {
+impl Model {
+    pub fn from_data<O: Version + 'static>(data: &[u8], info: &ModelInfo) -> Self {
         let mut val = Self::default();
 
-        val.indices = OrderedDataVec::from_bytes::<O>(&data[info.indices_offset as usize..], info.keys_num.max(4) as usize);
+        val.indices = OrderedDataVec::from_bytes::<O>(&data[info.bone_parents_offset as usize..], info.bones_num.max(4) as usize);
         assert!(val.indices[0] == 0xffffffff);
-        val.keys = OrderedDataVec::from_bytes::<O>(&data[info.keys_offset as usize..], info.keys_num as usize);
-        val.matrices = OrderedDataVec::from_bytes::<O>(&data[info.matrices_offset as usize..], info.keys_num as usize);
-        val.vals_a = OrderedDataVec::from_bytes::<O>(&data[info.vals_a_offset as usize..], info.keys_num as usize * 8);
+        val.keys = OrderedDataVec::from_bytes::<O>(&data[info.bones_offset as usize..], info.bones_num as usize);
+        val.matrices = OrderedDataVec::from_bytes::<O>(&data[info.bone_transforms_offset as usize..], info.bones_num as usize);
+        val.vals_a = OrderedDataVec::from_bytes::<O>(&data[info.vals_a_offset as usize..], info.bones_num as usize * 8);
         val.mats = OrderedDataVec::from_bytes::<O>(&data[info.mat_offset as usize..], info.mat_num as usize);
-        val.vals_c = OrderedDataVec::from_bytes::<O>(&data[info.vals_c_offset as usize..], info.vals_c_num as usize);
-        val.vals_d = OrderedDataVec::from_bytes::<O>(&data[info.vals_d_offset as usize..], info.vals_c_num as usize * 8);
+        val.vals_c = OrderedDataVec::from_bytes::<O>(&data[info.mesh_order_offset as usize..], info.lod3.breakable_end as usize);
+        val.vals_d = OrderedDataVec::from_bytes::<O>(&data[info.vals_d_offset as usize..], info.lod3.breakable_end as usize * 8);
         val.vbuffs = OrderedDataVec::from_bytes::<O>(&data[info.vbuff_offset as usize..], info.vbuff_num as usize);
         val.ibuffs = OrderedDataVec::from_bytes::<O>(&data[info.ibuff_offset as usize..], info.ibuff_num as usize);
-        val.vals_g = OrderedDataVec::from_bytes::<O>(&data[info.vals_g_offset as usize..], info.vals_g_num as usize * 16);
-        if (info.vals_j_num == 0) && (info.vals_j_offset != 0) && (info.vals_j_offset != info.vals_g_offset) {
+        val.vals_g = OrderedDataVec::from_bytes::<O>(&data[info.skin_binds_offset as usize..], info.skin_binds_num as usize * 16);
+        if (info.vals_j_num == 0) && (info.vals_j_offset != 0) && (info.vals_j_offset != info.skin_binds_offset) {
             // val.vals_j = OrderedDataVec::from_bytes::<O>(&data[info.vals_j_offset as usize..], info.keys_num as usize);
             // for v in &val.vals_j {
             //     let mut offset: u32 = OrderedData::from_bytes::<O>(&data[*v as usize..]);
@@ -1111,57 +1113,57 @@ impl Mesh {
             // }
             val.vals_k = OrderedDataVec::from_bytes::<O>(&data[info.vals_k_offset as usize + 4..], 35);
         }
-        if info.vals_i_offset != 0 {
-            val.vals_i = OrderedDataVec::from_bytes::<O>(&data[info.vals_i_offset as usize..], info.vals_g_num as usize);
+        if info.skin_order_offset != 0 {
+            val.vals_i = OrderedDataVec::from_bytes::<O>(&data[info.skin_order_offset as usize..], info.skin_binds_num as usize);
         }
-        if info.keys2_offset != 0 {
-            assert!(info.keys2_order_offset != 0);
+        if info.slots_offset != 0 {
+            assert!(info.slot_map_offset != 0);
             let mut i = 0;
             {
-                while u32::from_bytes::<O>(&data[info.keys2_offset as usize + i * 8..]) != 0 {
+                while u32::from_bytes::<O>(&data[info.slots_offset as usize + i * 8..]) != 0 {
                     i += 1;
                 }
                 i += 1;
             }
-            val.keys2 = OrderedDataVec::from_bytes::<O>(&data[info.keys2_offset as usize..], i * 2);
-            val.keys2_order = OrderedDataVec::from_bytes::<O>(&data[info.keys2_order_offset as usize..], *val.keys2.last().unwrap() as usize);
+            val.keys2 = OrderedDataVec::from_bytes::<O>(&data[info.slots_offset as usize..], i * 2);
+            val.keys2_order = OrderedDataVec::from_bytes::<O>(&data[info.slot_map_offset as usize..], *val.keys2.last().unwrap() as usize);
         }
         if info.block_offset != 0 {
             val.block_header = OrderedData::from_bytes::<O>(&data[info.block_offset as usize..]);
-            let n = (info.block_end - info.block_start) as usize;
+            let n = (info.lod0.physics_end - info.lod0.skinned_end) as usize;
             val.block_offsets = OrderedDataVec::from_bytes::<O>(&data[info.block_offset as usize + 4..], n+1);
             for i in 0..n {
                 let size = (val.block_offsets[i+1] - val.block_offsets[i]) as usize;
                 let offset = (val.block_offsets[i] + info.block_offset) as usize;
-                let header: mesh::BlockHeader = OrderedData::from_bytes::<O>(&data[offset..]);
-                let mut s = mesh::BlockHeader::size::<O>();
+                let header: model::BlockHeader = OrderedData::from_bytes::<O>(&data[offset..]);
+                let mut s = model::BlockHeader::size::<O>();
                 let vals_a: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[offset+s..], (header.a + header.b) as usize * 12);
                 s += vals_a.size::<O>();
-                let vals_b: Vec<mesh::BlockVal> = OrderedDataVec::from_bytes::<O>(&data[offset+s..], (size - s)/mesh::BlockVal::size::<O>());
+                let vals_b: Vec<model::BlockVal> = OrderedDataVec::from_bytes::<O>(&data[offset+s..], (size - s)/model::BlockVal::size::<O>());
                 s += vals_b.size::<O>();
                 let extra = OrderedDataVec::from_bytes::<O>(&data[offset+s..], (size - s)/4);
                 val.blocks.push((header, vals_a, vals_b, extra));
             }
         }
         // not sure why this pops up once, maybe it is padding between items?
-        if (info.vals_c_offset == info.vbuff_offset) && (info.vals_c_offset == info.ibuff_offset) && (info.vals_c_offset == info.vals_d_offset) {
-            val.val = OrderedDataVec::from_bytes::<O>(&data[info.vals_c_offset as usize..], 4);
+        if (info.mesh_order_offset == info.vbuff_offset) && (info.mesh_order_offset == info.ibuff_offset) && (info.mesh_order_offset == info.vals_d_offset) {
+            val.val = OrderedDataVec::from_bytes::<O>(&data[info.mesh_order_offset as usize..], 4);
         }
         val
     }
 
-    pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], info: &MeshInfo) {
-        self.indices.to_bytes::<O>(&mut data[info.indices_offset as usize..]);
-        self.keys.to_bytes::<O>(&mut data[info.keys_offset as usize..]);
-        self.matrices.to_bytes::<O>(&mut data[info.matrices_offset as usize..]);
+    pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], info: &ModelInfo) {
+        self.indices.to_bytes::<O>(&mut data[info.bone_parents_offset as usize..]);
+        self.keys.to_bytes::<O>(&mut data[info.bones_offset as usize..]);
+        self.matrices.to_bytes::<O>(&mut data[info.bone_transforms_offset as usize..]);
         self.vals_a.to_bytes::<O>(&mut data[info.vals_a_offset as usize..]);
         self.mats.to_bytes::<O>(&mut data[info.mat_offset as usize..]);
-        self.vals_c.to_bytes::<O>(&mut data[info.vals_c_offset as usize..]);
+        self.vals_c.to_bytes::<O>(&mut data[info.mesh_order_offset as usize..]);
         self.vals_d.to_bytes::<O>(&mut data[info.vals_d_offset as usize..]);
         self.vbuffs.to_bytes::<O>(&mut data[info.vbuff_offset as usize..]);
         self.ibuffs.to_bytes::<O>(&mut data[info.ibuff_offset as usize..]);
-        self.vals_g.to_bytes::<O>(&mut data[info.vals_g_offset as usize..]);
-        if (info.vals_j_num) == 0 && (info.vals_j_offset != 0) && (info.vals_j_offset != info.vals_g_offset) {
+        self.vals_g.to_bytes::<O>(&mut data[info.skin_binds_offset as usize..]);
+        if (info.vals_j_num) == 0 && (info.vals_j_offset != 0) && (info.vals_j_offset != info.skin_binds_offset) {
             self.vals_j.to_bytes::<O>(&mut data[info.vals_j_offset as usize..]);
             for (v, (off, string)) in zip(&self.vals_j, zip(&self.string_offsets,& self.strings)) {
                 off.to_bytes::<O>(&mut data[*v as usize..]);
@@ -1174,12 +1176,12 @@ impl Mesh {
             self.val_k_header.to_bytes::<O>(&mut data[info.vals_k_offset as usize..]);
             self.vals_k.to_bytes::<O>(&mut data[info.vals_k_offset as usize + 4..])
         }
-        if info.vals_i_offset != 0 {
-            self.vals_i.to_bytes::<O>(&mut data[info.vals_i_offset as usize..]);
+        if info.skin_order_offset != 0 {
+            self.vals_i.to_bytes::<O>(&mut data[info.skin_order_offset as usize..]);
         }
-        if info.keys2_offset != 0 {
-            self.keys2.to_bytes::<O>(&mut data[info.keys2_offset as usize..]);
-            self.keys2_order.to_bytes::<O>(&mut data[info.keys2_order_offset as usize..]);
+        if info.slots_offset != 0 {
+            self.keys2.to_bytes::<O>(&mut data[info.slots_offset as usize..]);
+            self.keys2_order.to_bytes::<O>(&mut data[info.slot_map_offset as usize..]);
         }
         if info.block_offset != 0 {
             self.block_header.to_bytes::<O>(&mut data[info.block_offset as usize..]);
@@ -1187,7 +1189,7 @@ impl Mesh {
             for (i, (header, vals_a, vals_b, extra)) in self.blocks.iter().enumerate() {
                 let offset = (self.block_offsets[i] + info.block_offset) as usize;
                 header.to_bytes::<O>(&mut data[offset..]);
-                let mut s = mesh::BlockHeader::size::<O>();
+                let mut s = model::BlockHeader::size::<O>();
                 vals_a.to_bytes::<O>(&mut data[offset + s..]);
                 s += vals_a.size::<O>();
                 vals_b.to_bytes::<O>(&mut data[offset + s..]);
@@ -1195,8 +1197,8 @@ impl Mesh {
                 extra.to_bytes::<O>(&mut data[offset + s..]);
             }
         }
-        if (info.vals_c_offset == info.vbuff_offset) && (info.vals_c_offset == info.ibuff_offset) && (info.vals_c_offset == info.vals_d_offset) {
-            self.val.to_bytes::<O>(&mut data[info.vals_c_offset as usize..]);
+        if (info.mesh_order_offset == info.vbuff_offset) && (info.mesh_order_offset == info.ibuff_offset) && (info.mesh_order_offset == info.vals_d_offset) {
+            self.val.to_bytes::<O>(&mut data[info.mesh_order_offset as usize..]);
         }
     }
 }
@@ -1301,10 +1303,10 @@ impl HkConstraint {
         let mut val = Self::default();
         if info.kind != 0 { warn!("Unknown & Unhandled HkConstraint type {}", info.kind); }
 
-        val.shorts = OrderedDataVec::from_bytes::<O>(&data[info.shorts_offset as usize..], info.shorts_num as usize);
+        val.shorts = OrderedDataVec::from_bytes::<O>(&data[info.bone_parents_offset as usize..], info.bone_parents_num as usize);
         assert!(val.shorts[0] == 0xFFFF);
 
-        val.string_offsets = OrderedDataVec::from_bytes::<O>(&data[info.strings_offset as usize..], info.strings_num as usize);
+        val.string_offsets = OrderedDataVec::from_bytes::<O>(&data[info.bone_names_offset as usize..], info.bone_names_num as usize);
         for offset_ in val.string_offsets.iter() {
             let (mut offset, val_) = { 
                 let vals: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[*offset_ as usize..], 2);
@@ -1316,23 +1318,23 @@ impl HkConstraint {
             let string = String::from_utf8(data[start as usize..offset as usize].to_vec()).unwrap();
             val.strings.push((string, start, val_));
         }
-        val.vals = OrderedDataVec::from_bytes::<O>(&data[info.vals_offset as usize..], info.vals_num as usize * 12);
-        val.keys = OrderedDataVec::from_bytes::<O>(&data[info.keys_offset as usize..], info.keys_num as usize);
-        val.keys2 = OrderedDataVec::from_bytes::<O>(&data[info.keys2_offset as usize..], info.keys2_num as usize * 2);
+        val.vals = OrderedDataVec::from_bytes::<O>(&data[info.bone_transforms_offset as usize..], info.bone_transforms_num as usize * 12);
+        val.keys = OrderedDataVec::from_bytes::<O>(&data[info.bones_offset as usize..], info.bones_num as usize);
+        val.keys2 = OrderedDataVec::from_bytes::<O>(&data[info.bone_order_offset as usize..], info.bone_order_num as usize * 2);
         val
     }
 
     pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], info: &HkConstraintInfo) {
-        self.shorts.to_bytes::<O>(&mut data[info.shorts_offset as usize..]);
-        self.string_offsets.to_bytes::<O>(&mut data[info.strings_offset as usize..]);
+        self.shorts.to_bytes::<O>(&mut data[info.bone_parents_offset as usize..]);
+        self.string_offsets.to_bytes::<O>(&mut data[info.bone_names_offset as usize..]);
         for (offset_, (string, offset, val)) in zip(&self.string_offsets, &self.strings) {
             offset.to_bytes::<O>(&mut data[*offset_ as usize..]);
             val.to_bytes::<O>(&mut data[*offset_ as usize + u32::size::<O>()..]);
             data[*offset as usize..*offset as usize+string.len()].copy_from_slice(string.as_bytes());
         }
-        self.vals.to_bytes::<O>(&mut data[info.vals_offset as usize..]);
-        self.keys.to_bytes::<O>(&mut data[info.keys_offset as usize..]);
-        self.keys2.to_bytes::<O>(&mut data[info.keys2_offset as usize..]);
+        self.vals.to_bytes::<O>(&mut data[info.bone_transforms_offset as usize..]);
+        self.keys.to_bytes::<O>(&mut data[info.bones_offset as usize..]);
+        self.keys2.to_bytes::<O>(&mut data[info.bone_order_offset as usize..]);
     }
 }
 
@@ -1760,18 +1762,21 @@ impl Animation {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, SerializeDisplay, DeserializeFromStr, PartialEq, Hash)]
 pub enum VertexUsage {
     Position,
     Normal,
     Tangent,
     BiNormal,
     BlendWeight,
-    BlendIndices(usize),
+    BlendIndices,
     TextureCoord(usize),
+    Unknown(usize),
     PSize,
-    Pad,
+    Pad(usize),
 }
+
+impl Eq for VertexUsage {}
 
 impl Display for VertexUsage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1781,10 +1786,11 @@ impl Display for VertexUsage {
             Self::Tangent => write!(f, "Tangent"),
             Self::BiNormal => write!(f, "BiNormal"),
             Self::BlendWeight => write!(f, "BlendWeight"),
-            Self::BlendIndices(i) => write!(f, "BlendIndices({})", i),
+            Self::BlendIndices => write!(f, "BlendIndices"),
             Self::TextureCoord(i) => write!(f, "TextureCoord({})", i),
+            Self::Unknown(i) => write!(f, "Unknown({})", i),
             Self::PSize => write!(f, "PSize"),
-            Self::Pad => write!(f, "Pad"),
+            Self::Pad(i) => write!(f, "Pad({})", i),
         }
     }
 }
@@ -1813,13 +1819,15 @@ impl FromStr for VertexUsage {
             "Tangent" => Ok(Self::Tangent),
             "BiNormal" => Ok(Self::BiNormal),
             "BlendWeight" => Ok(Self::BlendWeight),
+            "BlendIndices" => Ok(Self::BlendIndices),
             "PSize" => Ok(Self::PSize),
-            "Pad" => Ok(Self::Pad),
             s => {
-                if s.starts_with("BlendIndices(") {
-                    Ok(s[13..].split(')').next().unwrap().parse::<usize>().map(|i| Self::BlendIndices(i))?)
-                } else if s.starts_with("TextureCoord(") {
+                if s.starts_with("TextureCoord(") {
                     Ok(s[13..].split(')').next().unwrap().parse::<usize>().map(|i| Self::TextureCoord(i))?)
+                } else if s.starts_with("Unknown(") {
+                    Ok(s[8..].split(')').next().unwrap().parse::<usize>().map(|i| Self::Unknown(i))?)
+                } else if s.starts_with("Pad(") {
+                    Ok(s[4..].split(')').next().unwrap().parse::<usize>().map(|i| Self::Pad(i))?)
                 } else {
                     Err(VertexUsageParseError)
                 }
@@ -1833,8 +1841,8 @@ pub enum VertexTypes {
     Vector2(Vec<f32>,Vec<f32>),
     Vector3(Vec<f32>,Vec<f32>,Vec<f32>),
     Vector4(Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>),
-    Unorm4x8 (Vec<u32>),
-    Pad (Vec<u32>),
+    Unorm4x8(Vec<u32>),
+    Pad(Vec<u32>),
     None,
 }
 
@@ -1847,6 +1855,17 @@ impl VertexTypes {
             BaseTypes::VECTOR3_KEY => Self::Vector3(vec![], vec![], vec![]),
             BaseTypes::VECTOR4_KEY => Self::Vector4(vec![], vec![], vec![], vec![]),
             _ => Self::None
+        }
+    }
+
+    pub fn ty(&self) -> u32 {
+        match self {
+            Self::Pad(..) => BaseTypes::INT_KEY,
+            Self::Unorm4x8(..) => BaseTypes::COLOR_KEY,
+            Self::Vector2(..) => BaseTypes::VECTOR2_KEY,
+            Self::Vector3(..) => BaseTypes::VECTOR3_KEY,
+            Self::Vector4(..) => BaseTypes::VECTOR4_KEY,
+            Self::None => 0,
         }
     }
 
@@ -1887,130 +1906,298 @@ impl VertexTypes {
         match self {
             Self::Pad(vals) => if let BaseTypes::Color(val) = val {
                 vals.push(val);
-            },
+            } else { panic!("VertexTypes Mismatch") },
             Self::Unorm4x8(vals) => if let BaseTypes::Color(val) = val {
                 vals.push(val);
-            },
+            } else { panic!("VertexTypes Mismatch") },
             Self::Vector2(x, y)=> if let BaseTypes::Vector2(val) = val {
                 x.push(val.x); y.push(val.y);
-            },
+            } else { panic!("VertexTypes Mismatch") },
             Self::Vector3(x, y, z)=> if let BaseTypes::Vector3(val) = val {
                 x.push(val.x); y.push(val.y); z.push(val.z);
-            },
+            } else { panic!("VertexTypes Mismatch") },
             Self::Vector4(x, y, z, w) => if let BaseTypes::Vector4(val) = val {
                 x.push(val.x); y.push(val.y); z.push(val.z); w.push(val.w);
-            },
+            } else { panic!("VertexTypes Mismatch") },
             Self::None => ()
         }
     }
 }
 
-fn get_vertex_format<O: Version + 'static>(fmt1: u32, fmt2: u32) -> (Vec<(u32, VertexUsage)>, usize) {
+//#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VertexData {
+    #[serde(rename="$key$")]
+    //#[serde_as(as="serde_with::DisplayFromStr")]
+    pub usage: VertexUsage,
+    pub val: VertexTypes,
+}
+
+#[derive(Debug)]
+pub struct VertexDataParseError;
+impl Display for VertexDataParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "VertexDataParseError")
+    }
+}
+
+impl VertexData {
+    pub fn new(format: u32, usage: VertexUsage) -> Self {
+        Self {
+            usage,
+            val: VertexTypes::new(format)
+        }
+    }
+
+    pub fn dump_bytes<O: Version + 'static>(&self) -> Vec<u8> {
+        match self {
+            Self { usage: VertexUsage::BlendWeight, val: VertexTypes::Unorm4x8(vals) } => vals.iter().map(|x| ((x & 0xFF0000) >> 16) | ((x & 0xFF) << 16) | (x & 0xFF00FF00)).collect::<Vec<_>>().dump_bytes::<O>(),
+            Self { val: VertexTypes::Pad(vals), .. } => vals.dump_bytes::<O>(),
+            Self { val: VertexTypes::Unorm4x8(vals), .. } => vals.dump_bytes::<O>(),
+            Self { val: VertexTypes::Vector2(x, y), .. } => x.iter().zip(y).map(|(&x, &y)| Vector2{x,y}).collect::<Vec<_>>().dump_bytes::<O>(),
+            Self { val: VertexTypes::Vector3(x, y, z), .. } => x.iter().zip(y.iter().zip(z)).map(|(&x, (&y, &z))| Vector3{x,y,z}).collect::<Vec<_>>().dump_bytes::<O>(),
+            Self { val: VertexTypes::Vector4(x, y, z, w), .. } => x.iter().zip(y.iter().zip(z.iter().zip(w))).map(|(&x, (&y, (&z, &w)))| Vector4{x,y,z,w}).collect::<Vec<_>>().dump_bytes::<O>(),
+            Self { val: VertexTypes::None, .. } => vec![],
+        }
+    }
+    
+    pub fn from_gltf(&mut self, mut data: crate::pak_alt::GltfData) -> Result<(), VertexDataParseError> {
+        use gltf::accessor::DataType;
+        
+        match self {
+            Self { usage: VertexUsage::BlendWeight, val: VertexTypes::Unorm4x8(vals) } => {
+                assert!(data.ty == DataType::U8);
+                assert!(data.m == 4);
+                data.ty = DataType::U32;
+                data.m = 1;
+                vals.extend(data.u32().unwrap()
+                    .into_iter().map(|x| ((x & 0xFF0000) >> 16) | ((x & 0xFF) << 16) | (x & 0xFF00FF00))
+                );
+            },
+            Self { usage: VertexUsage::Normal, val: VertexTypes::Unorm4x8(vals) } => {
+                assert!(data.ty == DataType::I8);
+                assert!(data.m == 3);
+                data.ty = DataType::U32;
+                data.m = 1;
+                vals.extend(data.u32().unwrap());
+            },
+            Self { usage: VertexUsage::Normal | VertexUsage::Position, val: VertexTypes::Vector4(x,y,z,w) } => {
+                assert!(data.ty == DataType::F32);
+                assert!(data.m == 3);
+                data.m = 4;
+                data.f32().unwrap().as_slice().chunks_exact(4).for_each(|val| {
+                    x.push(val[0]); y.push(val[1]); z.push(val[2]); w.push(val[3]); 
+                });
+            },
+            Self { val: VertexTypes::Pad(vals), .. } => vals.extend(data.u32().unwrap()),
+            Self { val: VertexTypes::Unorm4x8(vals), .. } => {
+                assert!(data.ty == DataType::U8);
+                assert!(data.m == 4);
+                data.ty = DataType::U32;
+                data.m = 1;
+                vals.extend(data.u32().unwrap());
+            }
+            Self { val: VertexTypes::Vector2(x,y), .. } => data.f32().unwrap().as_slice().chunks_exact(2)
+                .for_each(|val| { x.push(val[0]); y.push(val[1]); }),
+            Self { val: VertexTypes::Vector3(x,y,z), .. } => data.f32().unwrap().as_slice().chunks_exact(3)
+                .for_each(|val| { x.push(val[0]); y.push(val[1]); z.push(val[2]); }),
+            Self { val: VertexTypes::Vector4(x,y,z,w), .. } => data.f32().unwrap().as_slice().chunks_exact(4)
+                .for_each(|val| { x.push(val[0]); y.push(val[1]); z.push(val[2]); w.push(val[3]); }),
+            _ => Err(VertexDataParseError)?
+        }
+        Ok(())
+    }
+
+    pub fn min(&self) -> Option<serde_json::value::Value> {
+        use serde_json::json;
+        match self {
+            Self { usage: VertexUsage::Position, val: VertexTypes::Vector3(x,y,z) } => Some(json!(vec![
+                    x.iter().copied().reduce(f32::min), 
+                    y.iter().copied().reduce(f32::min), 
+                    z.iter().copied().reduce(f32::min)
+            ])),
+            Self { usage: VertexUsage::Position, val: VertexTypes::Vector4(x,y,z,w) } => Some(json!(vec![
+                    x.iter().copied().reduce(f32::min), 
+                    y.iter().copied().reduce(f32::min), 
+                    z.iter().copied().reduce(f32::min),
+                    w.iter().copied().reduce(f32::min),
+            ])),
+            _ => None
+        }
+    }
+
+    pub fn max(&self) -> Option<serde_json::value::Value> {
+        use serde_json::json;
+        match self {
+            Self { usage: VertexUsage::Position, val: VertexTypes::Vector3(x,y,z) } => Some(json!(vec![
+                    x.iter().copied().reduce(f32::max), 
+                    y.iter().copied().reduce(f32::max), 
+                    z.iter().copied().reduce(f32::max)
+            ])),
+            Self { usage: VertexUsage::Position, val: VertexTypes::Vector4(x,y,z,w) } => Some(json!(vec![
+                    x.iter().copied().reduce(f32::max), 
+                    y.iter().copied().reduce(f32::max), 
+                    z.iter().copied().reduce(f32::max),
+                    w.iter().copied().reduce(f32::max),
+            ])),
+            _ => None
+        }
+    }
+
+    pub fn component_type(&self) -> gltf::accessor::DataType {
+        use gltf::accessor::DataType;
+        match self {
+            Self { usage: VertexUsage::Normal, val: VertexTypes::Unorm4x8(..) } => DataType::I8,
+            Self { val: VertexTypes::Unorm4x8(..), .. } => DataType::U8,
+            Self { val: VertexTypes::Pad(..), .. } => DataType::U32,
+            Self { val: VertexTypes::Vector2(..), .. } => DataType::F32,
+            Self { val: VertexTypes::Vector3(..), .. } => DataType::F32,
+            Self { val: VertexTypes::Vector4(..), .. } => DataType::F32,
+            _ => DataType::U32,
+        }
+    }
+
+    pub fn dimensions(&self) -> gltf::accessor::Dimensions {
+        use gltf::accessor::Dimensions;
+        match self {
+            Self { usage: VertexUsage::Normal, val: VertexTypes::Unorm4x8(..) } => Dimensions::Vec3,
+            Self { usage: VertexUsage::Normal | VertexUsage::Position, val: VertexTypes::Vector4(..) } => Dimensions::Vec3,
+            Self { val: VertexTypes::Unorm4x8(..), .. } => Dimensions::Vec4,
+            Self { val: VertexTypes::Pad(..), .. } => Dimensions::Scalar,
+            Self { val: VertexTypes::Vector2(..), .. } => Dimensions::Vec2,
+            Self { val: VertexTypes::Vector3(..), .. } => Dimensions::Vec3,
+            Self { val: VertexTypes::Vector4(..), .. } => Dimensions::Vec4,
+            _ => Dimensions::Scalar,
+        }
+    }
+
+    pub fn stride(&self) -> Option<usize> {
+        match self {
+            Self { usage: VertexUsage::Normal, val: VertexTypes::Unorm4x8(..) } => Some(4),
+            Self { usage: VertexUsage::Normal | VertexUsage::Position, val: VertexTypes::Vector4(..) } => Some(16),
+            _ => None,
+        }
+    }
+    
+    pub fn normalized(&self) -> bool {
+        match self {
+            Self { usage: VertexUsage::Normal | VertexUsage::BlendWeight, val: VertexTypes::Unorm4x8(..) } => true,
+            _ => false
+        }
+    }
+}
+
+pub fn get_vertex_format<O: Version + 'static>(fmt1: u32, fmt2: u32) -> (Vec<VertexData>, usize) {
     let mut fmt = Vec::new();
     let mut s = 0;
     if fmt2 == 0 {
         let b1: bool = (fmt1 & 0x40000) != 0;
         if fmt1 & 1 != 0 {
-            fmt.push((if b1 {BaseTypes::VECTOR4_KEY} else {BaseTypes::VECTOR3_KEY}, VertexUsage::Position));
+            fmt.push(VertexData::new(if b1 {BaseTypes::VECTOR4_KEY} else {BaseTypes::VECTOR3_KEY}, VertexUsage::Position));
             s += if b1 {16} else {12};
         }
         if (fmt1 & 0x400) != 0 {
-            fmt.push((BaseTypes::COLOR_KEY, VertexUsage::Tangent));
+            // blend weights
+            fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::BlendWeight));
             s += 4;
         }
         if (fmt1 & 0x800) != 0 {
-            fmt.push((BaseTypes::COLOR_KEY, VertexUsage::BiNormal));
+            // blend indices
+            fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::BlendIndices));
             s += 4;
         }
         if (fmt1 & 2) != 0 {
+            // binorm ?
+            let usage = VertexUsage::Unknown(0);
             if b1 {
                 for _ in (0..(((s + 15) & 0xFFFF0) - s)).step_by(4) {
-                    fmt.push((BaseTypes::COLOR_KEY, VertexUsage::Pad));
+                    fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Pad(s)));
                     s += 4;
                 }
-                fmt.push((BaseTypes::VECTOR4_KEY, VertexUsage::BlendWeight));
+                fmt.push(VertexData::new(BaseTypes::VECTOR4_KEY, usage));
                 s += 16;
             } else if TypeId::of::<O>() == TypeId::of::<PS3>() {
-                fmt.push((BaseTypes::VECTOR3_KEY, VertexUsage::BlendWeight));
+                fmt.push(VertexData::new(BaseTypes::VECTOR3_KEY, usage));
                 s += 12;
             } else {
-                fmt.push((BaseTypes::COLOR_KEY, VertexUsage::BlendWeight));
+                fmt.push(VertexData::new(BaseTypes::COLOR_KEY, usage));
                 s += 4;
             }
         }
         if fmt1 & 0x100 != 0 {
-            fmt.push((BaseTypes::COLOR_KEY, VertexUsage::TextureCoord(0)));
+            fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Unknown(1)));
             s += 4;
         }
         if fmt1 & 0x200 != 0 {
-            fmt.push((BaseTypes::COLOR_KEY, VertexUsage::TextureCoord(1)));
+            fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Unknown(2)));
             s += 4;
         }
         for i in 0..((fmt1 >> 2) & 0xF) {
-            fmt.push((BaseTypes::VECTOR2_KEY, VertexUsage::BlendIndices(i as usize)));
+            // texture coords
+            fmt.push(VertexData::new(BaseTypes::VECTOR2_KEY, VertexUsage::TextureCoord(i as usize)));
             s += 8;
         }
         if fmt1 & 0x40 != 0 {
             if b1 {
                 for _ in (0..(((s + 15) & 0xFFFF0) - s)).step_by(4) {
-                    fmt.push((BaseTypes::COLOR_KEY, VertexUsage::Pad));
+                    fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Pad(s)));
                     s += 4;
                 }
-                fmt.push((BaseTypes::VECTOR4_KEY, VertexUsage::Normal));
+                fmt.push(VertexData::new(BaseTypes::VECTOR4_KEY, VertexUsage::Normal));
                 s += 16;
             } else {
-                fmt.push((BaseTypes::COLOR_KEY, VertexUsage::Normal));
+                fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Normal));
                 s += 4;
             }
         }
         if fmt1 & 0x80 != 0 {
-            fmt.push((BaseTypes::VECTOR3_KEY, VertexUsage::PSize));
+            fmt.push(VertexData::new(BaseTypes::VECTOR3_KEY, VertexUsage::PSize));
             s += 12;
         }
         if b1 {
             for _ in (0..(((s + 15) & 0xFFFF0) - s)).step_by(4) {
-                fmt.push((BaseTypes::COLOR_KEY, VertexUsage::Pad));
+                fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Pad(s)));
                 s += 4;
             }
         }
     } else {
         if fmt1 & 1 != 0 {
-            fmt.push((BaseTypes::VECTOR3_KEY, VertexUsage::Position));
+            fmt.push(VertexData::new(BaseTypes::VECTOR3_KEY, VertexUsage::Position));
             s += 12;
         }
         if fmt1 & 0x400 != 0 {
-            fmt.push((BaseTypes::COLOR_KEY, VertexUsage::Tangent));
+            fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::BlendWeight));
             s += 4;
         }
         if fmt1 & 0x800 != 0 {
-            fmt.push((BaseTypes::COLOR_KEY, VertexUsage::BiNormal));
+            fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::BlendIndices));
             s += 4;
         }
         if fmt1 & 2 != 0{
-            fmt.push((BaseTypes::COLOR_KEY, VertexUsage::BlendWeight));
+            fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Unknown(0)));
             s += 4;
         }
         if fmt1 & 0x100 != 0 {
-            fmt.push((BaseTypes::COLOR_KEY, VertexUsage::TextureCoord(0)));
+            fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Unknown(1)));
             s += 4;
         }
         if fmt1 & 0x200 != 0 {
-            fmt.push((BaseTypes::COLOR_KEY, VertexUsage::TextureCoord(1)));
+            fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Unknown(2)));
             s += 4;
         }
         let n = (fmt1 >> 2) & 0xf;
         if n <= 2 {
             for i in 0..n {
-                fmt.push((BaseTypes::VECTOR2_KEY, VertexUsage::BlendIndices(i as usize)));
+                fmt.push(VertexData::new(BaseTypes::VECTOR2_KEY, VertexUsage::TextureCoord(i as usize)));
                 s += 8;
             }
         }
         if fmt1 & 0x40 != 0 {
-            fmt.push((BaseTypes::COLOR_KEY, VertexUsage::Normal));
+            fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Normal));
             s += 4;
         }
         if fmt1 & 0x80 != 0 {
-            fmt.push((BaseTypes::VECTOR3_KEY, VertexUsage::PSize));
+            fmt.push(VertexData::new(BaseTypes::VECTOR3_KEY, VertexUsage::PSize));
             s += 12;
         }
     }
@@ -2022,25 +2209,28 @@ use serde_with::serde_as;
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct VertexBuffer {
-    #[serde_as(as = "serde_with::Map<serde_with::DisplayFromStr, _>")]
-    pub vals: Vec<(VertexUsage, VertexTypes)>
+    //#[serde_as(as = "serde_with::Map<serde_with::DisplayFromStr, _>")]
+    #[serde_as(as="serde_with::KeyValueMap<_>")]
+    pub vals: Vec<VertexData>
 }
 
 impl VertexBuffer {
-    pub fn from_data<O: Version + 'static>(data: &[u8], info: &mut VBuffInfo, formats: &mut HashMap<(u32, u32), (Vec<(u32, VertexUsage)>, usize)>) -> Self {
+    pub fn from_data<O: Version + 'static>(data: &[u8], info: &mut VBuffInfo, formats: &mut HashMap<(u32, u32), (Vec<VertexData>, usize)>) -> Self {
         let (fmt, size) = formats.entry((info.fmt1, info.fmt2)).or_insert_with(|| {
             get_vertex_format::<O>(info.fmt1, info.fmt2)
         });
-        assert!(info.size as usize % *size == 0);
+        if info.size as usize % *size != 0 {
+            warn!("Vertex Buffer size is not a multiple of assumed size");
+        }
         let n = info.size as usize / *size;
         let mut offset = info.offset as usize;
-        let mut vals = fmt.iter().map(|(t, u)| (u.clone(), VertexTypes::new(*t))).collect::<Vec<_>>();
+        let mut vals = fmt.clone();
         for _ in 0..n {
             // let mut val = Vec::with_capacity(fmt.len());
-            for (kind, (_, val)) in zip(fmt.iter().map(|(x, _)| x), &mut vals) {
-                let v = BaseTypes::from_data::<O>(&data[offset..], *kind);
+            for val in &mut vals {
+                let v = BaseTypes::from_data::<O>(&data[offset..], val.val.ty());
                 offset += v.size::<O>();
-                val.push(v);
+                val.val.push(v);
             }
         }
         if TypeId::of::<O>() == TypeId::of::<XBOX>() {
@@ -2049,85 +2239,69 @@ impl VertexBuffer {
                 let (fmt, _) = formats.entry((info.fmt1, info.fmt2)).or_insert_with(|| {
                     get_vertex_format::<O>(info.fmt1, info.fmt2)
                 });
-                let mut vals_new = fmt.iter().map(|(t, u)| (u.clone(), VertexTypes::new(*t))).collect::<Vec<_>>();
+                let mut vals_new = fmt.clone();
                 let mut binorm = Vec::with_capacity(n);
                 let mut tan = Vec::with_capacity(n);
-                for (usage, val) in &mut vals {
-                    if *usage == VertexUsage::BiNormal {
-                        match val {
-                            VertexTypes::Unorm4x8(val) => {
-                                for v in val {
-                                    let a = *v & 0xFF;
-                                    let b = (*v >> 8) & 0xFF;
-                                    let c = (*v >> 16) & 0xFF;
-                                    let d = (*v >> 24) & 0xFF;
-                                    // println!("{}, {:?}",*v, (a,b,c,d));
-                                    binorm.push((d << 24) | (d << 16) | (d << 8) | c);
-                                    tan.push((a << 16) | (b << 8));
-                                }
-                            },
-                            _ => ()
-                        }
+                for val in &mut vals {
+                    match val {
+                        VertexData { 
+                            usage: VertexUsage::BlendIndices, 
+                            val: VertexTypes::Unorm4x8(val),
+                        } => {
+                            for v in val {
+                                let a = *v & 0xFF;
+                                let b = (*v >> 8) & 0xFF;
+                                let c = (*v >> 16) & 0xFF;
+                                let d = (*v >> 24) & 0xFF;
+                                // println!("{}, {:?}",*v, (a,b,c,d));
+                                binorm.push((d << 24) | (d << 16) | (d << 8) | c);
+                                tan.push((a << 16) | (b << 8));
+                            }
+                        },
+                        _ => (),
                     }
                 }
-                for (usage, val) in &mut vals_new {
-                    if *usage == VertexUsage::BiNormal {
-                        *val = VertexTypes::Unorm4x8(binorm.clone());
-                    } else if *usage == VertexUsage::Tangent {
-                        *val = VertexTypes::Unorm4x8(tan.clone());
-                    } else {
-                        for (usage2, val2) in &vals {
-                            if *usage == *usage2 {
-                                *val = val2.clone();
+                for val in &mut vals_new {
+                    match val {
+                        VertexData { 
+                            usage: VertexUsage::BlendIndices, val
+                        } => *val = VertexTypes::Unorm4x8(binorm.clone()),
+                        VertexData { 
+                            usage: VertexUsage::BlendWeight, val
+                        } => *val = VertexTypes::Unorm4x8(tan.clone()),
+                        _ => for val2 in &vals {
+                            if val.usage == val2.usage {
+                                val.val = val2.val.clone();
                             }
                         }
                     }
                 }
                 vals = vals_new;
             }
-            for (usage, val) in &mut vals {
-                if *usage == VertexUsage::BlendWeight {
-                    match val {
-                        VertexTypes::Vector4(x, y, z, ..) => {
-                            x.iter_mut().for_each(|x| *x = *x/2.0 + 0.5);
-                            y.iter_mut().for_each(|x| *x = *x/2.0 + 0.5);
-                            z.iter_mut().for_each(|x| *x = *x/2.0 + 0.5);
-                        },
-                        VertexTypes::Unorm4x8(v) => v.iter_mut().for_each(|val| {
-                            let z_ = ((*val) & 0x3FF) ^ 0x200;
-                            let y_ = (((*val) >> 10) & 0x3FF) ^ 0x200;
-                            let x_ = (((*val) >> 20) & 0x3FF) ^ 0x200;
-                            // let x: u32 = ((x as f32)/4.0).round().max(0.0).min(255.0) as u32;
-                            // let y: u32 = ((y as f32)/4.0).round().max(0.0).min(255.0) as u32;
-                            // let z: u32 = ((z as f32)/4.0).round().max(0.0).min(255.0) as u32;
-                            // let x: u32 = (x_ as f64 - 4.0).div(4.0).round_ties_even().clamp(0.0, 255.0) as u32;
-                            // let y: u32 = (y_ as f64 - 4.0).div(4.0).round_ties_even().clamp(0.0, 255.0) as u32;
-                            // let z: u32 = (z_ as f64 - 4.0).div(4.0).round_ties_even().clamp(0.0, 255.0) as u32;
-                            let x: u32 = (x_ as f32 - 4.0f32).div(4.0f32).round_ties_even().clamp(0.0, 255.0) as u32;
-                            let y: u32 = (y_ as f32 - 4.0f32).div(4.0f32).round_ties_even().clamp(0.0, 255.0) as u32;
-                            let z: u32 = (z_ as f32 - 4.0f32).div(4.0f32).round_ties_even().clamp(0.0, 255.0) as u32;
-                            // println!("{:?}, {:?}", (
-                            //     (x_ as f32 - 4.0).div(4.0),
-                            //     (y_ as f32 - 4.0).div(4.0),
-                            //     (z_ as f32 - 4.0).div(4.0)
-                            // ), (x,y,z));
-
-                            // let z = *val & 0x3FF;
-                            // let y = (*val >> 10) & 0x3FF;
-                            // let x = (*val >> 20) & 0x3FF;
-                            // let x = (((if x & 0x200 != 0 { x - 512 } else { x + 512 }) as f32 - 4.0)/4.0).round().max(0.1).min(255.0) as u32;
-                            // let y = (((if y & 0x200 != 0 { y - 512 } else { y + 512 }) as f32 - 4.0)/4.0).round().max(0.1).min(255.0) as u32;
-                            // let z = (((if z & 0x200 != 0 { z - 512 } else { z + 512 }) as f32 - 4.0)/4.0).round().max(0.1).min(255.0) as u32;
-                            // let x = if x & 0x200 != 0 { (x as f32 - 512.0) / 512.0 * 127.0 } else { x as f32 / 511.0 * 128.0  + 127.0 } as u32;
-                            // let y = if y & 0x200 != 0 { (y as f32 - 512.0) / 512.0 * 127.0 } else { y as f32 / 511.0 * 128.0  + 127.0 } as u32;
-                            // let z = if z & 0x200 != 0 { (z as f32 - 512.0) / 512.0 * 127.0 } else { z as f32 / 511.0 * 128.0  + 127.0 } as u32;
-                            *val = (127 << 24) | (z << 16) | (y << 8) | x;
-                        }),
-                        _ => panic!("Unexpected vertex type for weight")
-                    }
+            for val in &mut vals {
+                match val {
+                    VertexData {
+                        usage: VertexUsage::Unknown(0), val: VertexTypes::Vector4(x, y, z, ..)
+                    } => {
+                        x.iter_mut().for_each(|x| *x = *x/2.0 + 0.5);
+                        y.iter_mut().for_each(|x| *x = *x/2.0 + 0.5);
+                        z.iter_mut().for_each(|x| *x = *x/2.0 + 0.5);
+                    },
+                    VertexData {
+                        usage: VertexUsage::Unknown(0), val: VertexTypes::Unorm4x8(v)
+                    } => v.iter_mut().for_each(|val| {
+                        let z_ = ((*val) & 0x3FF) ^ 0x200;
+                        let y_ = (((*val) >> 10) & 0x3FF) ^ 0x200;
+                        let x_ = (((*val) >> 20) & 0x3FF) ^ 0x200;
+                        let x: u32 = (x_ as f32 - 4.0f32).div(4.0f32).round_ties_even().clamp(0.0, 255.0) as u32;
+                        let y: u32 = (y_ as f32 - 4.0f32).div(4.0f32).round_ties_even().clamp(0.0, 255.0) as u32;
+                        let z: u32 = (z_ as f32 - 4.0f32).div(4.0f32).round_ties_even().clamp(0.0, 255.0) as u32;
+                        *val = (127 << 24) | (z << 16) | (y << 8) | x;
+                    }),
+                    VertexData { usage: VertexUsage::Unknown(0), .. } => panic!("Unexpected vertex type for Unknown(0)"),
+                    _ => (),
                 }
             }
-            // vals.push(val);
         }
         Self { vals }
     }
@@ -2136,12 +2310,12 @@ impl VertexBuffer {
     pub fn into_data<O: Version + 'static>(&self, data: &mut[u8], info: &VBuffInfo) {
         let mut offset = info.offset as usize;
         let mut off_ = 0;
-        let i = self.vals.iter().map(|(_, x)| x.len()).min().unwrap();
-        for (_, val) in &self.vals {
+        let i = self.vals.iter().map(|x| x.val.len()).min().unwrap();
+        for VertexData { val, .. } in &self.vals {
             assert!(val.len() == i);
         }
         for i in 0..i {
-            for (_, val) in &self.vals {
+            for VertexData { val, .. } in &self.vals {
                 let v = val.get(i);
                 v.into_data::<O>(&mut data[offset..], &mut off_);
                 offset += v.size::<O>();
@@ -2156,8 +2330,8 @@ impl VertexBuffer {
     }
     pub fn dump<O: Version + 'static>(&self) -> Vec<u8> {
         // self.vals.iter().flat_map(|x| x.iter().flat_map(|x| x.dump_bytes::<O>())).collect()
-        let i = self.vals.iter().map(|(_, x)| x.len()).min().unwrap();
-        (0..i).flat_map(|i| self.vals.iter().flat_map(move |(_, val)| val.get(i).dump_bytes::<O>())).collect()
+        let i = self.vals.iter().map(|x| x.val.len()).min().unwrap();
+        (0..i).flat_map(|i| self.vals.iter().flat_map(move |val| val.val.get(i).dump_bytes::<O>())).collect()
     }
 }
 
@@ -2174,7 +2348,11 @@ impl IndexBuffer {
             _ => u32::size::<O>(),
         };
         assert!(info.size as usize % size == 0);
-        let n = info.size as usize / size;
+        let mut n = info.size as usize / size;
+        if data.len() < (info.offset + info.size) as usize {
+            warn!("Index buffer of size {} only has data of size {} available", info.size, data.len() - info.offset as usize);
+            n = (data.len() - info.offset as usize) / size;
+        }
         match info.format {
             0x10 => Self::U16 { vals: OrderedDataVec::from_bytes::<O>(&data[info.offset as usize..], n) },
             _ => Self::U32 { vals: OrderedDataVec::from_bytes::<O>(&data[info.offset as usize..], n) },

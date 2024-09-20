@@ -3,13 +3,14 @@ use std::{collections::HashMap, iter::zip, mem::size_of};
 use flate2::Decompress;
 use log::warn;
 use serde_json::{Value, json, to_vec_pretty, from_slice, Map};
-use zerocopy::{AsBytes, ByteOrder, FromBytes, BE, F32, LE, U16, U32, U64, I32};
+use zerocopy::{AsBytes, ByteOrder, FromBytes, BE, F32, LE, U16, U32, U64, I32, I16};
 use flate2::read::ZlibDecoder;
 use flate2::write::ZlibEncoder;
 use serde::{Serialize, Deserialize};
 use std::sync::Mutex;
 use std::io::prelude::*;
 use anyhow::Result;
+use indicatif::ProgressBar;
 
 use super::lua_stuff::LuaCompiler;
 use super::read_write::{Reader, Writer, PathStuff};
@@ -168,7 +169,9 @@ impl OrderedDataImpl for u64 { type PC = U64<LE>; type XBOX = U64<BE>; type PS3 
 impl OrderedDataImpl for u32 { type PC = U32<LE>; type XBOX = U32<BE>; type PS3 = U32<BE>; }
 impl OrderedDataImpl for i32 { type PC = I32<LE>; type XBOX = I32<BE>; type PS3 = I32<BE>; }
 impl OrderedDataImpl for u16 { type PC = U16<LE>; type XBOX = U16<BE>; type PS3 = U16<BE>; }
+impl OrderedDataImpl for i16 { type PC = I16<LE>; type XBOX = I16<BE>; type PS3 = I16<BE>; }
 impl OrderedDataImpl for u8 { type PC = u8; type XBOX = u8; type PS3 = u8; }
+impl OrderedDataImpl for i8 { type PC = i8; type XBOX = i8; type PS3 = i8; }
 
 const HASHING_ARRAY: [u32; 256] = [
     0x00000000, 0x04c11db7, 0x09823b6e, 0x0d4326d9, 0x130476dc, 0x17c56b6b, 0x1a864db2, 0x1e475005, 
@@ -255,6 +258,8 @@ lazy_static::lazy_static! {
     pub static ref ANIM_TABLES: Mutex<bool> = Mutex::new(true);
 
     pub static ref ZIP: Mutex<bool> = Mutex::new(true);
+
+    pub static ref GLTF: Mutex<bool> = Mutex::new(false);
 
 }
 
@@ -518,6 +523,38 @@ pub struct Matrix4x4 {
     pub y: Vector4,
     pub z: Vector4,
     pub w: Vector4,
+}
+
+impl From<&[f32; 16]> for Matrix4x4 {
+    fn from(x: &[f32; 16]) -> Self {
+        Self {
+            x: Vector4 { x: x[0], y: x[1], z: x[2], w: x[3] },
+            y: Vector4 { x: x[4], y: x[5], z: x[6], w: x[7] },
+            z: Vector4 { x: x[8], y: x[9], z: x[10], w: x[11] },
+            w: Vector4 { x: x[12], y: x[13], z: x[14], w: x[15] },
+        }
+    }
+}
+
+impl std::convert::TryFrom<&[f32]> for Matrix4x4 {
+    type Error = ();
+    fn try_from(x: &[f32]) -> Result<Self, ()> {
+        if x.len() >= 16 { Ok(Self {
+            x: Vector4 { x: x[0], y: x[1], z: x[2], w: x[3] },
+            y: Vector4 { x: x[4], y: x[5], z: x[6], w: x[7] },
+            z: Vector4 { x: x[8], y: x[9], z: x[10], w: x[11] },
+            w: Vector4 { x: x[12], y: x[13], z: x[14], w: x[15] },
+        }) } else { Err(()) }
+    }
+}
+
+impl From<&Matrix4x4> for [f32; 16] {
+    fn from(mat: &Matrix4x4) -> Self { [
+        mat.x.x, mat.x.y, mat.x.z, mat.x.w,
+        mat.y.x, mat.y.y, mat.y.z, mat.y.w,
+        mat.z.x, mat.z.y, mat.z.z, mat.z.w,
+        mat.w.x, mat.w.y, mat.w.z, mat.w.w
+    ]}
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
@@ -1062,14 +1099,17 @@ pub struct SubBlocks {
 }
 
 impl SubBlocks {
-    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize, lua: &LuaCompiler) -> Self {
-        let mut val = Self::default();
-        val.header = OrderedData::from_bytes::<O>(&data[offset..]);
-        val.block_headers = OrderedDataVec::from_bytes::<O>(&data[offset+SubBlocksHeader::size::<O>()..], val.header.block_num as usize);
-        for info in val.block_headers.iter() {
-            val.blocks.push(SubBlock::from_data::<O>(&data[offset..], info, lua));
-        }
-        val
+    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize, lua: &LuaCompiler, prog: Option<&ProgressBar>) -> Self {
+        let header: SubBlocksHeader = OrderedData::from_bytes::<O>(&data[offset..]);
+        prog.map(|x| x.set_length(header.block_num as u64));
+        let block_headers: Vec<SubBlocksBlockHeader> = OrderedDataVec::from_bytes::<O>(&data[offset+SubBlocksHeader::size::<O>()..], header.block_num as usize);
+        let blocks = block_headers.iter().map(|info| {
+            prog.map(|x| { x.inc(1); x.set_message(info.key.to_string()) });
+            SubBlock::from_data::<O>(&data[offset..], info, lua)
+        }).collect();
+        prog.map(|x| x.finish());
+        
+        Self { header, block_headers, blocks }
     }
 
     pub fn size<O: Version + 'static>(&self) -> usize {
@@ -1082,38 +1122,49 @@ impl SubBlocks {
         return s
     }
 
-    pub fn dump<O: Version + 'static>(&self, lua: &LuaCompiler) -> Vec<u8> {
+    pub fn dump<O: Version + 'static>(&self, lua: &LuaCompiler, prog: Option<&ProgressBar>) -> Vec<u8> {
+        prog.map(|x| x.set_length(self.header.block_num as u64));
         let mut block_headers = self.block_headers.clone();
         let mut offset = SubBlocksHeader::size::<O>() + block_headers.size::<O>();
         let mut data = vec![];
         let off = (offset + 15) & 0xfffffff0;
         data.extend(vec![0u8; off - offset]);
         offset = off;
-        for (block, block_header) in zip(&self.blocks, &mut block_headers) {
+        for (block, info) in zip(&self.blocks, &mut block_headers) {
+            prog.map(|x| { x.inc(1); x.set_message(info.key.to_string()) });
             let block_data: Vec<u8> = block.dump::<O>(lua);
-            block_header.offset = offset as u32;
-            block_header.size = block_data.len() as u32;
+            info.offset = offset as u32;
+            info.size = block_data.len() as u32;
             offset += block_data.len();
             data.extend(block_data);
             let off = (offset + 16) & 0xfffffff0;
             data.extend(vec![0u8; off - offset]);
             offset = off;
         }
+        prog.map(|x| x.finish());
         self.header.dump_bytes::<O>().into_iter().chain(block_headers.dump_bytes::<O>().into_iter()).chain(data.into_iter()).collect()
     }
 
-    pub fn to_file(&self, writer: Writer, keys: &StringKeys) -> Result<()> {
+    pub fn to_file(&self, writer: Writer, keys: &StringKeys, prog: Option<&ProgressBar>) -> Result<()> {
+        prog.map(|x| x.set_length(self.header.block_num as u64));
         writer.join("index.json").write(&to_vec_pretty(self)?)?;
         for (block, info) in zip(&self.blocks, &self.block_headers) {
+            prog.map(|x| { x.inc(1); x.set_message(info.key.to_string()) });
             block.to_file(writer.join(info.key.str().unwrap()), keys)?
         }
+        prog.map(|x| x.finish());
         Ok(())
     }
 
-    pub fn from_file(reader: Reader, lua: &LuaCompiler) -> Result<Self> {
+    pub fn from_file(reader: Reader, lua: &LuaCompiler, prog: Option<&ProgressBar>) -> Result<Self> {
         let mut val = from_slice::<Self>(&reader.join("index.json").read()?)?;
-        val.blocks = Result::from_iter(val.block_headers.iter().map(|info| SubBlock::from_file(reader.join(info.key.str().unwrap()), info, lua)))?;
+        prog.map(|x| x.set_length(val.block_headers.len() as u64));
+        val.blocks = Result::from_iter(val.block_headers.iter().map(|info| {
+            prog.map(|x| { x.inc(1); x.set_message(info.key.to_string()) });
+            SubBlock::from_file(reader.join(info.key.str().unwrap()), info, lua)
+        }))?;
         val.header.block_num = val.blocks.len() as u32;
+        prog.map(|x| x.finish());
         Ok(val)
     }
 }
@@ -1319,6 +1370,15 @@ impl Lua {
             String::new()
         };
         Self { code, data, name }
+    }
+
+    pub fn conv(&self, fmt: &str, lua: &LuaCompiler) -> Result<Vec<u8>> {
+        let val = &self.data;
+        Ok(if (val.len() > 3) && (val[0] == 0x1bu8) && (val[1] == 76) && (val[2] == 117) && (val[3] == 97) {
+            lua.convert(&val, fmt)?
+        } else {
+            val.clone()
+        })
     }
 
     pub fn dump(&self, lua: &LuaCompiler) -> Vec<u8> {
