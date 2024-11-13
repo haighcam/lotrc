@@ -1,27 +1,19 @@
 use std::{
     collections::{HashSet, VecDeque}, fs, path::{Path, PathBuf}
 };
-use audio::AudioTable;
 use log::error;
 use clap::{Parser, Args};
 use anyhow::Result;
 use indicatif::MultiProgress;
 
-mod audio;
-mod types;
-mod pak;
-mod pak_alt;
-mod bin;
-mod level_alt;
-mod level_info;
-mod level;
-mod lua_stuff;
-mod read_write;
-
-use level::Level;
-use level_info::LevelInfo;
-use read_write::{Reader, Writer, PathStuff};
-use types::PC;
+use lotrc::{
+    audio::AudioTable, 
+    level::Level,
+    level_alt::Level as LevelAlt,
+    level_info::LevelInfo,
+    read_write::{Reader, Writer, PathStuff},
+    types::{PC, Crc, DECOMP_LUA, RECOMP_LUA, ZIP, ANIM_TABLES, GLTF, COMPRESSION, UNLUAC},
+};
 
 fn v3_styling() -> clap::builder::styling::Styles {
     use clap::builder::styling::*;
@@ -131,27 +123,27 @@ fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parse
         if src.with_extension("PAK").is_file() && !parsed.contains(&src.with_extension("PAK")) {
             parsed.insert(src.with_extension("PAK"));
             match args {
-                Commands { compile: true, .. } => Level::parse(src).dump::<PC, _>(dest.join(name)),
-                Commands { alt_comp: true, .. } => level_alt::Level::parse(src, mp)?.dump::<PC, _>(dest.join(name), mp)?,
-                _ => level_alt::Level::parse(src, mp)?.to_file(Writer::new(dest.join(name), *types::ZIP.lock().unwrap())?, mp.cloned())?,
+                Commands { compile: true, .. } => Level::parse(src)?.dump::<PC, _>(dest.join(name))?,
+                Commands { alt_comp: true, .. } => LevelAlt::parse(src, mp)?.dump::<PC, _>(dest.join(name), mp)?,
+                _ => LevelAlt::parse(src, mp)?.to_file(Writer::new(dest.join(name), *ZIP.lock().unwrap())?, mp.cloned())?,
             }
         } else if src.file_name().unwrap() == "level_info.dat" {
             parsed.insert(src.clone());
             let level_info = LevelInfo::parse(src)?;
             match args {
                 Commands { compile: true, .. } => level_info.dump::<PC, _>(dest.join(name))?,
-                _ => level_info.to_file(Writer::new(dest.join(name), *types::ZIP.lock().unwrap())?)?,
+                _ => level_info.to_file(Writer::new(dest.join(name), *ZIP.lock().unwrap())?)?,
             }
         } else if !src.with_extension("PAK").is_file() && src.with_extension("bin").is_file() && ext == "bin" {
             parsed.insert(src.with_extension("bin"));
-            let table: AudioTable = AudioTable::parse(src);
+            let table: AudioTable = AudioTable::parse(src)?;
             match args {
                 Commands { compile: true, .. } => table.dump::<PC, _>(dest.join(name)),
                 _ => table.to_file(dest.join(name)),
             }
         } else if ext == "audio.json" {
             parsed.insert(src.clone());
-            let table = AudioTable::from_file(src);
+            let table = AudioTable::from_file(src)?;
             match args {
                 Commands { dump: true, .. } => table.to_file(dest.join(name)),
                 _ => table.dump::<PC, _>(dest.join(name)),
@@ -164,14 +156,14 @@ fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parse
                 if reader.join("index.json").is_file() {
                     let level_info = LevelInfo::from_file(reader)?;
                     match args {
-                        Commands { dump: true, .. } => level_info.to_file(Writer::new(dest.join(name), *types::ZIP.lock().unwrap())?)?,
+                        Commands { dump: true, .. } => level_info.to_file(Writer::new(dest.join(name), *ZIP.lock().unwrap())?)?,
                         _ => level_info.dump::<PC, _>(dest.join(name))?,
                     }
                     true
                 } else if reader.join("pak_header.json").is_file() {
-                    let level = level_alt::Level::from_file(reader, mp)?;
+                    let level = LevelAlt::from_file(reader, mp)?;
                     match args {
-                        Commands { dump: true, .. } => level.to_file(Writer::new(dest.join(name), *types::ZIP.lock().unwrap())?, mp.cloned())?,
+                        Commands { dump: true, .. } => level.to_file(Writer::new(dest.join(name), *ZIP.lock().unwrap())?, mp.cloned())?,
                         _ => level.dump::<PC, _>(dest.join(name), mp)?
                     }
                     true
@@ -230,21 +222,21 @@ fn main() -> Result<()> {
     };
     let args = CliArgs::parse_from(wild::args_os()).combine(file_args);
 
-    *types::DECOMP_LUA.lock().unwrap() = args.lua_decomp;
-    *types::RECOMP_LUA.lock().unwrap() = args.lua_recomp;
-    *types::ANIM_TABLES.lock().unwrap() = !args.no_anim_table;
-    *types::ZIP.lock().unwrap() = !args.no_zip;
-    *types::GLTF.lock().unwrap() = args.gltf;
+    *DECOMP_LUA.lock().unwrap() = args.lua_decomp;
+    *RECOMP_LUA.lock().unwrap() = args.lua_recomp;
+    *ANIM_TABLES.lock().unwrap() = !args.no_anim_table;
+    *ZIP.lock().unwrap() = !args.no_zip;
+    *GLTF.lock().unwrap() = args.gltf;
     if let Some(compression) = args.compression {
-        *types::COMPRESSION.lock().unwrap() = flate2::Compression::new(compression);
+        *COMPRESSION.lock().unwrap() = flate2::Compression::new(compression);
     }
     if let Some(unluac) = args.unluac {
-        *types::UNLUAC.lock().unwrap() = unluac;
+        *UNLUAC.lock().unwrap() = unluac;
     }
 
     if args.command.hash {
         for input in args.input {
-            let val =  types::Crc::from_string(&input).key();
+            let val =  Crc::from_string(&input).key();
             println!("{}: {}, 0X{:0X}", input, val, val);
         }
     } else {

@@ -2,11 +2,15 @@ use std::fs;
 use serde::{Serialize, Deserialize};
 use std::path::Path;
 use log::{error, info};
+use anyhow::Result;
+use pyo3::prelude::*;
 
-use lotrc_rs_proc::OrderedData;
+use lotrc_proc::{OrderedData, basicpymethods, PyMethods};
 use super::types::{OrderedData, OrderedDataVec, Crc, OrderedDataImpl, Version, PC, XBOX};
 
-#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
+#[basicpymethods]
+#[pyclass(module="audio", get_all, set_all)]
+#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
 pub struct Header {
     pub const0x2: u32,
     pub n1: u32,
@@ -18,20 +22,25 @@ pub struct Header {
     pub n7: u32,
 }
 
-#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
+#[basicpymethods]
+#[pyclass(module="audio", get_all, set_all)]
+#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
 pub struct Obj1 {
     pub key: Crc,
     pub val: u32,
 }
 
-#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
+#[basicpymethods]
+#[pyclass(module="audio", get_all, set_all)]
+#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
 pub struct Obj2 {
     pub unk_0: u32,
     pub unk_1: u32,
     pub n: u32,
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[pyclass(module="audio", get_all, set_all)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PyMethods)]
 pub struct AudioTable {
     #[serde(skip)]
     pub header: Header,
@@ -45,8 +54,26 @@ pub struct AudioTable {
     pub extra: Vec<Crc>,
 }
 
+#[basicpymethods]
+#[pymethods]
 impl AudioTable {
-    pub fn parse<P: AsRef<Path>>(path: P) -> Self {
+    #[staticmethod]
+    fn load(path: String) -> Result<Self> {
+        let path = std::path::PathBuf::from(path);
+        if path.with_extension("json").is_file() {
+            Self::from_file(path)
+        } else {
+            Self::parse(path)
+        }
+    }
+
+    fn dump_pc(&self, path: String) {
+        self.dump::<PC, _>(path)
+    }
+}
+
+impl AudioTable {
+    pub fn parse<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
         info!("Parsing audio table {}", path.file_stem().unwrap().to_str().unwrap());   
         let data = fs::read(path).unwrap();
@@ -56,7 +83,7 @@ impl AudioTable {
             Self::from_data::<XBOX>(&data[..])
         } else {
             error!("Invalid audio table data");
-            Default::default()
+            Ok(Default::default())
         }
     }
 
@@ -65,39 +92,39 @@ impl AudioTable {
         fs::write(path.as_ref().with_extension("bin"), self.to_data::<O>()).unwrap();
     }
 
-    pub fn from_data<O: Version + 'static>(data: &[u8]) -> Self {
-        let header: Header = OrderedData::from_bytes::<O>(&data);
+    pub fn from_data<O: Version + 'static>(data: &[u8]) -> Result<Self> {
+        let header: Header = OrderedData::from_bytes::<O>(&data)?;
         let mut offset = Header::size::<O>();
-        let obj1s: Vec<Obj1> = OrderedDataVec::from_bytes::<O>(&data[offset..], header.n1 as usize);
+        let obj1s: Vec<Obj1> = OrderedDataVec::from_bytes::<O>(&data[offset..], header.n1 as usize)?;
         offset += obj1s.size::<O>();
         let mut obj2s = Vec::with_capacity(header.n2 as usize);
         for _ in 0..header.n2 {
-            let obj: Obj2 = OrderedData::from_bytes::<O>(&data[offset..]);
+            let obj: Obj2 = OrderedData::from_bytes::<O>(&data[offset..])?;
             offset += Obj2::size::<O>();
-            let objs: Vec<Obj1> = OrderedDataVec::from_bytes::<O>(&data[offset..], obj.n as usize);
+            let objs: Vec<Obj1> = OrderedDataVec::from_bytes::<O>(&data[offset..], obj.n as usize)?;
             offset += objs.size::<O>();
             obj2s.push((obj, objs));
         }
         let mut obj3s = Vec::with_capacity(header.n3 as usize);
         for _ in 0..header.n3 {
-            let obj: Obj2 = OrderedData::from_bytes::<O>(&data[offset..]);
+            let obj: Obj2 = OrderedData::from_bytes::<O>(&data[offset..])?;
             offset += Obj2::size::<O>();
-            let objs: Vec<Obj1> = OrderedDataVec::from_bytes::<O>(&data[offset..], obj.n as usize);
+            let objs: Vec<Obj1> = OrderedDataVec::from_bytes::<O>(&data[offset..], obj.n as usize)?;
             offset += objs.size::<O>();
             obj3s.push((obj, objs));
         }
-        let obj4s: Vec<Obj1> = OrderedDataVec::from_bytes::<O>(&data[offset..], header.n4 as usize);
+        let obj4s: Vec<Obj1> = OrderedDataVec::from_bytes::<O>(&data[offset..], header.n4 as usize)?;
         offset += obj4s.size::<O>();
-        let obj5s: Vec<Obj1> = OrderedDataVec::from_bytes::<O>(&data[offset..], header.n5 as usize);
+        let obj5s: Vec<Obj1> = OrderedDataVec::from_bytes::<O>(&data[offset..], header.n5 as usize)?;
         offset += obj5s.size::<O>();
-        let obj6s: Vec<Obj1> = OrderedDataVec::from_bytes::<O>(&data[offset..], header.n6 as usize);
+        let obj6s: Vec<Obj1> = OrderedDataVec::from_bytes::<O>(&data[offset..], header.n6 as usize)?;
         offset += obj6s.size::<O>();
-        let obj7s: Vec<Obj1> = OrderedDataVec::from_bytes::<O>(&data[offset..], header.n7 as usize);
+        let obj7s: Vec<Obj1> = OrderedDataVec::from_bytes::<O>(&data[offset..], header.n7 as usize)?;
         offset += obj7s.size::<O>();
         let n = (data.len() - offset) / 4;
-        let extra: Vec<Crc> = OrderedDataVec::from_bytes::<O>(&data[offset..], n);
+        let extra: Vec<Crc> = OrderedDataVec::from_bytes::<O>(&data[offset..], n)?;
 
-        Self {
+        Ok(Self {
             header,
             obj1s,
             obj2s,
@@ -107,7 +134,7 @@ impl AudioTable {
             obj6s,
             obj7s,
             extra
-        }
+        })
     }
 
     pub fn to_data<O: Version + 'static>(&self) -> Vec<u8> {
@@ -130,8 +157,8 @@ impl AudioTable {
         fs::write(path.as_ref().with_extension("audio.json"), serde_json::to_string_pretty(&self).unwrap()).unwrap();
     }
 
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Self {
-        let mut val = serde_json::from_slice::<Self>(&fs::read(path.as_ref().with_extension("json")).unwrap()).unwrap();
+    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let mut val = serde_json::from_slice::<Self>(&fs::read(path.as_ref().with_extension("json"))?)?;
         val.header = Header {
             const0x2: 2,
             n1: val.obj1s.len() as u32,
@@ -142,6 +169,6 @@ impl AudioTable {
             n6: val.obj6s.len() as u32,
             n7: val.obj7s.len() as u32
         };
-        val
+        Ok(val)
     }
 }
