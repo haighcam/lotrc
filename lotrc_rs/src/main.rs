@@ -228,7 +228,7 @@ fn main() -> Result<()> {
     *ZIP.lock().unwrap() = !args.no_zip;
     *GLTF.lock().unwrap() = args.gltf;
     if let Some(compression) = args.compression {
-        *COMPRESSION.lock().unwrap() = flate2::Compression::new(compression);
+        *COMPRESSION.lock().unwrap() = lotrc::Compression::new(compression);
     }
     if let Some(unluac) = args.unluac {
         *UNLUAC.lock().unwrap() = unluac;

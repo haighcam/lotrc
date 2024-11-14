@@ -11,6 +11,8 @@ pub mod pak_alt;
 pub mod read_write;
 pub mod types;
 
+pub use flate2::Compression;
+
 #[pymodule]
 mod lotrc {
     use pyo3::prelude::*;

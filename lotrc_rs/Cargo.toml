@@ -1,6 +1,6 @@
 [package]
 name = "lotrc_rs"
-version = "0.1.0"
+version = "0.4.0"
 edition = "2021"
 
 [dependencies]
@@ -12,4 +12,3 @@ indicatif-log-bridge = "0.2.2"
 anyhow = "1.0.86"
 clap = { version = "4.5.7", features = ["derive"] }
 wild = "2.2.1"
-flate2 = { version = "1.0.30", features = ["zlib-ng"], default-features = false }
