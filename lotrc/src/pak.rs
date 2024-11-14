@@ -2617,52 +2617,6 @@ impl RadiosityVals {
         self.vals.to_bytes::<O>(&mut data[info.offset as usize..])
     }
 }
-/*
-#[derive(Debug, Clone, Default, Serialize, Deserialize, OrderedData)]
-#[serde(from = "(u16, f32, i16, i16)", into = "(u16, f32, i16, i16)")]
-pub struct FoliageVal(u16, half::f16, i16, i16);
-
-impl From<FoliageVal> for (u16, f32, i16, i16) {
-    fn from(value: FoliageVal) -> Self {
-        (value.0, value.1.into(), value.2, value.3)
-    }
-}
-
-impl From<(u16, f32, i16, i16)> for FoliageVal {
-    fn from(value: (u16, f32, i16, i16)) -> Self {
-        Self(value.0, half::f16::from_f32(value.1), value.2, value.3)
-    }
-}
-
-impl IntoPy<PyObject> for FoliageVal {
-    fn into_py(self, py: Python<'_>) -> PyObject {
-        <(u16, f32, i16, i16)>::from(self).into_py(py)
-    }
-}
-
-impl <'py> FromPyObject<'py> for FoliageVal {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
-        Ok(<(u16, f32, i16, i16)>::extract_bound(ob)?.into())
-    }
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Foliage {
-    pub vals: Vec<FoliageVal>
-}
-
-impl IntoPy<PyObject> for Foliage {
-    fn into_py(self, py: Python<'_>) -> PyObject {
-        self.vals.into_py(py)
-    }
-}
-
-impl <'py> FromPyObject<'py> for Foliage {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
-        Ok(Self { vals: Vec::extract_bound(ob)? })
-    }
-}
-*/
 
 type FoliageValProxy = (u16, u16, i16, i16);
 #[derive(Debug, Clone, Default, Serialize, Deserialize, OrderedData)]

@@ -12,3 +12,7 @@
 Cargo.lock
 **/*.exe
 *.pyc
+*.so
+*.pyd
+*.zip
+*.bin

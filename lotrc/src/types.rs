@@ -176,39 +176,8 @@ impl <T: OrderedDataImpl> OrderedDataVec for Vec<T> {
     fn size<V: Version>(&self) -> usize { V::size_vec(self) }
 }
 
-#[repr(transparent)]
-#[derive(Debug, Default, Clone, Immutable, KnownLayout, FromBytes, IntoBytes, Unaligned)]
-pub struct F16LE([u8; 2]);
-#[repr(transparent)]
-#[derive(Debug, Default, Clone, Immutable, KnownLayout, FromBytes, IntoBytes, Unaligned)]
-pub struct F16BE([u8; 2]);
-
-impl From<half::f16> for F16LE {
-    fn from(value: half::f16) -> Self {
-        Self(value.to_le_bytes())
-    }
-}
-
-impl From<F16LE> for half::f16 {
-    fn from(value: F16LE) -> Self {
-        Self::from_le_bytes(value.0)
-    }
-}
-
-impl From<half::f16> for F16BE {
-    fn from(value: half::f16) -> Self {
-        Self(value.to_be_bytes())
-    }
-}
-
-impl From<F16BE> for half::f16 {
-    fn from(value: F16BE) -> Self {
-        Self::from_be_bytes(value.0)
-    }
-}
 
 impl OrderedDataImpl for f32 { type PC = F32<LE>; type XBOX = F32<BE>; type PS3 = F32<BE>; }
-impl OrderedDataImpl for half::f16 { type PC = F16LE; type XBOX = F16BE; type PS3 = F16BE; }
 impl OrderedDataImpl for u64 { type PC = U64<LE>; type XBOX = U64<BE>; type PS3 = U64<BE>; }
 impl OrderedDataImpl for u32 { type PC = U32<LE>; type XBOX = U32<BE>; type PS3 = U32<BE>; }
 impl OrderedDataImpl for i32 { type PC = I32<LE>; type XBOX = I32<BE>; type PS3 = I32<BE>; }
@@ -1720,15 +1689,6 @@ pub struct GameObjs {
     pub gamemodemask: i32,
     pub types: IndexMap<Crc, Vec<GameObjsTypeField>>,
     pub objs: Vec<GameObj>,
-
-    /*
-    pub size: usize,
-    pub header: GameObjsHeader,
-    pub types: Vec<GameObjsTypeHeader>,
-    pub type_fields: Vec<Vec<GameObjsTypeField>>,
-    pub obj_headers: Vec<GameObjsObjHeader>,
-    pub objs: Vec<Vec<BaseTypes>>,
-    */
 }
 
 impl GameObjs {

@@ -1,8 +1,10 @@
 # Lord of the Rings Conquest Level Parsing
 
-This is the compiled version of the tool
+Consists of a rust library for interacting with LOTRC files and a compiled tool for basic usage.
 
-For the python library version of the tool see https://github.com/haighcam/lotrc/tree/main
+The library is also compiled for as a python module which should work in python 3.9 or greater. This is bundled with the experimental blender add-on.
+
+For the deprecated python library see https://github.com/haighcam/lotrc/tree/main
 
 Command line utility for converting some Lord of the Rings Conquest files to and from a more editable format.
 Currently supports:

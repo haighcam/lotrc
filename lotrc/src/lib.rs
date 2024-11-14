@@ -12,7 +12,7 @@ pub mod read_write;
 pub mod types;
 
 #[pymodule]
-mod lotrc_py {
+mod lotrc {
     use pyo3::prelude::*;
 
     #[pymodule(submodule)]
