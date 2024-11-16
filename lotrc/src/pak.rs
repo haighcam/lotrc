@@ -7,7 +7,13 @@ use anyhow::Result;
 use pyo3::prelude::*;
 
 use lotrc_proc::{OrderedData, basicpymethods, PyMethods};
-use super::types::{BaseTypes, Color, OrderedData, Vector4, Matrix4x4, OrderedDataVec, Vector2, Crc, Vector3, OrderedDataImpl, Version, XBOX, PS3};
+use crate::{
+    pak_alt::GltfData,
+    types::{
+        BaseTypes, Color, OrderedData, Vector4, Matrix4x4, OrderedDataVec, Vector2, 
+        Crc, Vector3, OrderedDataImpl, Version, XBOX, PS3, PC
+    }
+};
 
 #[basicpymethods]
 #[pyclass(module="pak", get_all, set_all)]
@@ -2155,10 +2161,41 @@ impl VertexData {
             Self { val: VertexTypes::None(), .. } => vec![],
         }
     }
+
+    pub fn gltf_data(&self) -> Vec<u8> {
+        fn conv_val(val: u32) -> u32 {
+            if val < 127 {
+                129 + val
+            } else {
+                val - 127
+            }
+        }
+        match self {
+            Self { usage: VertexUsage::Normal(), val: VertexTypes::Unorm4x8(vals) } => {
+                vals.iter().map(|x|
+                    conv_val((x >> 24) & 0xff) << 24 | 
+                    conv_val((x >> 16) & 0xff) << 16 | 
+                    conv_val((x >> 8) & 0xff) << 8 | 
+                    conv_val(x & 0xff)
+                ).collect::<Vec<_>>().dump_bytes::<PC>()
+            },
+            _ => self.dump_bytes::<PC>()
+        }
+    }
+
     
-    pub fn from_gltf(&mut self, mut data: crate::pak_alt::GltfData) -> Result<(), VertexDataParseError> {
+    pub fn from_gltf(&mut self, mut data: GltfData) -> Result<(), VertexDataParseError> {
         use gltf::accessor::DataType;
-        
+        fn conv_val(val: u32) -> u32 {
+            if val > 128 {
+                val - 129
+            } else if val < 128 {
+                val + 127
+            } else {
+                0
+            }
+        }
+
         match self {
             Self { usage: VertexUsage::BlendWeight(), val: VertexTypes::Unorm4x8(vals) } => {
                 assert!(data.ty == DataType::U8);
@@ -2174,7 +2211,12 @@ impl VertexData {
                 assert!(data.m == 3);
                 data.ty = DataType::U32;
                 data.m = 1;
-                vals.extend(data.u32().unwrap());
+                vals.extend(data.u32().unwrap().iter().map(|x|
+                    conv_val((x >> 24) & 0xff) << 24 | 
+                    conv_val((x >> 16) & 0xff) << 16 | 
+                    conv_val((x >> 8) & 0xff) << 8 | 
+                    conv_val(x & 0xff)
+                ));
             },
             Self { usage: VertexUsage::Normal() | VertexUsage::Position(), val: VertexTypes::Vector4(x,y,z,w) } => {
                 assert!(data.ty == DataType::F32);

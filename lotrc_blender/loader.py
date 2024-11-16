@@ -2,7 +2,7 @@ import bpy
 import pathlib
 import numpy as np
 from mathutils import Matrix, Vector, Quaternion
-from .. import lotrc
+from . import lotrc
 
 class LoadLevel(bpy.types.Operator):
     """Load a Lord of the Rings Conquest Level"""
@@ -10,16 +10,27 @@ class LoadLevel(bpy.types.Operator):
     bl_label = "Load LOTRC Level"
 
     def execute(self, context):
-        level_path = context.scene.lotrc_props.filepath
+        level_path = context.scene.lotrc_props.load_filepath
         LOADED_LEVELS[context.scene.name] = Level(level_path, context)
         return {'FINISHED'}
 
-CLASSES = [LoadLevel]
+class DumpLevel(bpy.types.Operator):
+    """Dump a Lord of the Rings Conquest Level"""
+    bl_idname = "lotrc.dump_level"
+    bl_label = "Dump LOTRC Level"
+
+    def execute(self, context):
+        level_path = context.scene.lotrc_props.dump_filepath
+        LOADED_LEVELS[context.scene.name].dump(level_path)
+        return {'FINISHED'}
+
+CLASSES = [LoadLevel, DumpLevel]
 GEOM_TREES = {}
 LOADED_LEVELS = {}
 
 def new_geom_tree(name, *inputs):
     tree = bpy.data.node_groups.new(name,'GeometryNodeTree')
+    tree.use_fake_user = True
     tree_in = tree.nodes.new('NodeGroupInput')
     tree_out = tree.nodes.new('NodeGroupOutput')
     tree.interface.new_socket('Geometry', in_out='OUTPUT', socket_type='NodeSocketGeometry')
@@ -183,12 +194,18 @@ def texture_enum(_, context):
 class Level:
     def __init__(self, path, context):
         self.level = lotrc.level_alt.Level.load(path)
-        self.name = pathlib.Path(path).name
-        self.col = bpy.data.collections.new(self.name)
+        #self.name = pathlib.Path(path).stem
+        self.col = bpy.data.collections.new(pathlib.Path(path).stem)
+        self.models_col = None
+        self.level_col = None
         self.textures = {}
         self.models = {}
         self.types = {}
         self.model_names = list(self.level.models.keys())
         self.texture_names = list(self.level.textures.keys())
         context.scene.collection.children.link(self.col)
-        GEOM_TREES.update(create_geom_trees())
+        if GEOM_TREES == {}:
+            GEOM_TREES.update(create_geom_trees())
+
+    def dump(self, path):
+        self.level.dump_pc(str(pathlib.Path(path).joinpath(self.col.name)))

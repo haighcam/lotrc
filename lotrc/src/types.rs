@@ -661,6 +661,7 @@ impl From<&Matrix4x4> for [f32; 16] {
 }
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
+#[serde(from = "bool", into = "bool")]
 pub struct Bool {
     pub val: u8,
     pub _pad1: u8,
@@ -668,16 +669,30 @@ pub struct Bool {
     pub _pad3: u8,
 }
 
+impl From<bool> for Bool {
+    fn from(value: bool) -> Self {
+        Self {
+            val: if value { 1 } else { 0 },
+            ..Default::default()
+        }
+    }
+}
+
+impl From<Bool> for bool {
+    fn from(value: Bool) -> Self {
+        value.val != 0
+    }
+}
+
 impl IntoPy<PyObject> for Bool {
     fn into_py(self, py: Python<'_>) -> PyObject {
-        (self.val != 0).into_py(py)
+        bool::from(self).into_py(py)
     }
 }
 
 impl <'py> FromPyObject<'py> for Bool {
     fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
-        let v = bool::extract_bound(ob)?;
-        Ok(Self { val: if v { 1 } else { 0 }, ..Default::default() })
+        Ok(Self::from(bool::extract_bound(ob)?))
     }
 }
 

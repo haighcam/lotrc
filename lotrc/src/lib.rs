@@ -107,7 +107,7 @@ mod lotrc {
         use crate::types::{
             BaseTypes, SubBlocks, SubBlock, Spray, GameObjs, Lua, SSA, SubBlocksHeader,
             SubBlocksBlockHeader, StringKeysHeader, StringKeysVal, StringKeys, SSAVal, GameObjsHeader,
-            GameObjsTypeHeader, GameObjsTypeField, GameObjsObjHeader, SprayInstance, SprayVal, 
+            GameObjsTypeHeader, GameObjsTypeField, GameObjsObjHeader, GameObj, SprayInstance, SprayVal, 
             CrowdItem, CrowdHeader, CrowdVal, AtlasUVVal, hash_string
         };
     }

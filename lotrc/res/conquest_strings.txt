@@ -4449,6 +4449,7 @@ stringlist
 nodelist
 intlist
 crclist
+crc
 weightlist
 matrixlist
 templateLevel

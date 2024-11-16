@@ -3,8 +3,8 @@ import pathlib
 import numpy as np
 from mathutils import Matrix, Vector, Quaternion
 from .. import lotrc
+from ..loader import GEOM_TREES, LOADED_LEVELS
 from .conv import *
-from .loader import GEOM_TREES, LOADED_LEVELS
 
 class LoadModels(bpy.types.Operator):
     """Load Models from a Lord of the Rings Conquest Level"""
@@ -12,10 +12,23 @@ class LoadModels(bpy.types.Operator):
     bl_label = "Load LOTRC Models"
 
     def execute(self, context):
-        import_models(LOADED_LEVELS[context.scene.name], context)
+        model = context.scene.lotrc_props.selected_model
+        import_models(LOADED_LEVELS[context.scene.name], model, context)
         return {'FINISHED'}
 
-CLASSES = [LoadModels]
+class ClearModels(bpy.types.Operator):
+    """Delete Previously Loaded Models from a Lord of the Rings Conquest Level"""
+    bl_idname = "lotrc.clear_models"
+    bl_label = "Clear Loaded LOTRC Models"
+
+    def execute(self, context):
+        level = LOADED_LEVELS[context.scene.name]
+        level.col.children.unlink(level.models_col)
+        level.models_col = None
+        bpy.ops.outliner.orphans_purge()
+        return {'FINISHED'}
+
+CLASSES = [LoadModels, ClearModels]
 
 UNKNOWN = np.uint32(1)
 STATIC = np.uint32(2)
@@ -166,8 +179,12 @@ def add_mesh(info, vertex_data, index_data, usage, name, col, obj_arma, skin_bon
     normals = attrs.pop(lotrc.pak.VertexUsage.Normal(), None)
     if normals is not None:
         if isinstance(normals, lotrc.pak.VertexTypes.Unorm4x8):
-            normals = np.frombuffer(np.array(normals[0], 'I').tobytes(), 'b').reshape(-1, 4).T / 127.0
-        mesh.normals_split_custom_set_from_vertices(pos_to_blender(normals))
+            normals = np.frombuffer(np.array(normals[0], 'I').tobytes(), 'B').reshape(-1, 4).astype('f') / 127.0 - 1.0
+            #normals[:, [0,2]] *= normals[:, 3, None]
+        attribute = mesh.attributes.new(f'raw_norms', 'FLOAT_COLOR', 'POINT')
+        attribute.data.foreach_set('color', normals.flatten().copy())
+        mesh.normals_split_custom_set_from_vertices(pos_to_blender(normals.T))
+
     
     for i in range(4):
         uv = attrs.pop(lotrc.pak.VertexUsage.TextureCoord(i), None)
@@ -183,6 +200,18 @@ def add_mesh(info, vertex_data, index_data, usage, name, col, obj_arma, skin_bon
         mod = obj.modifiers.new('Billboard', 'NODES')
         mod.node_group = tree
     
+    weights = attrs.pop(lotrc.pak.VertexUsage.BlendWeight(), None)
+    indices = attrs.pop(lotrc.pak.VertexUsage.BlendIndices(), None)
+    if skinned and weights is not None and indices is not None:
+        vertex_groups = [obj.vertex_groups.new(name=i) for i in skin_bones[info.skin_offset:info.skin_offset+info.skin_size]]
+        n = len(weights[0])
+        weights = np.array(weights[0], 'I').tobytes()
+        indices = np.array(indices[0], 'I').tobytes()
+        for j in range(len(weights)//4):
+            for i,w in zip([2,1,0,3], weights[j*4:j*4+4]):
+                if w != 0:
+                    vertex_groups[indices[j*4+i]].add((j,), w/255.0, 'REPLACE')      
+
     for i, (attr, data) in enumerate(attrs.items()):
         if isinstance(data, lotrc.pak.VertexTypes.Vector3):
             ty = 'FLOAT_VECTOR'
@@ -209,21 +238,8 @@ def add_mesh(info, vertex_data, index_data, usage, name, col, obj_arma, skin_bon
         attr_name = attr.__class__.__name__.split('_')[-1]
         attribute = mesh.attributes.new(f'{attr_name}{i}', ty, 'POINT')
         attribute.data.foreach_set(dat_name, data)
-    
-    weights = attrs.pop(lotrc.pak.VertexUsage.BlendWeight(), None)
-    indices = attrs.pop(lotrc.pak.VertexUsage.BlendIndices(), None)
-    if skinned and weights is not None and indices is not None:
-        vertex_groups = [obj.vertex_groups.new(name=i) for i in skin_bones]
-        n = len(weights[0])
-        weights = np.array(weights[0], 'I').tobytes()
-        indices = np.array(indices[0], 'I').tobytes()
-        for j in range(len(weights)//4):
-            for i,w in zip([2,1,0,3], weights[j*4:j*4+4]):
-                if w != 0:
-                    vertex_groups[indices[j*4+i]].add((j,), w/255.0, 'REPLACE')      
     return obj
-    
-            
+
 def create_mat(level, info, model_name, i=''):
     base = info[0].base
     mat = bpy.data.materials.new(f"MAT{i}.{model_name}")
@@ -309,26 +325,29 @@ def create_mat(level, info, model_name, i=''):
     return mat
 
 def import_model(level, model, model_name, models_col, context):
+    lotrc_props = context.scene.lotrc_props
     model_col = bpy.data.collections.new(model_name)
     models_col.children.link(model_col)
                 
     mats = [create_mat(level, info, model_name, i) for i, info in enumerate(model.mats)]
 
-    obj_arma, bones = add_skeleton(model, model_name, model_col, context)
-    skin_bones = [bones[i] for i in model.skin_order]
-    
-    obj_arma_hk, bones_hk = add_hk_skeleton(model.hk_constraint, model_name, model_col, context)
-
-    collision_col = bpy.data.collections.new(f'COLLISION.{model_name}')
-    model_col.children.link(collision_col)
-    for i, shape in enumerate(model.shapes):
-        add_collision(shape, collision_col, model_name, i, obj_arma, bones)
-    
+    if lotrc_props.models_skeleton:
+        obj_arma, bones = add_skeleton(model, model_name, model_col, context)
+        skin_bones = [bones[i] for i in model.skin_order]
+    else:
+        obj_arma, skin_bones = None, None
+    if lotrc_props.models_hk_skeleton:
+        obj_arma_hk, bones_hk = add_hk_skeleton(model.hk_constraint, model_name, model_col, context)
+ 
     i = 0
     mesh_order = np.array([(i & 0x3FFFFFFF, i >> 30) for i in model.mesh_order], dtype='I').reshape(-1, 2)
     uses = np.zeros(len(mesh_order), 'I')
     info = model.info
-    for lod in [info.lod0, info.lod1, info.lod2, info.lod3]:
+    if lotrc_props.models_only_lod1:
+        lods = [info.lod0]
+    else:
+        lods = [info.lod0, info.lod1, info.lod2, info.lod3]
+    for lod in lods:
         uses[mesh_order[i:lod.start, 0]] |= UNKNOWN
         uses[mesh_order[lod.start:lod.static_end, 0]] |= STATIC
         uses[mesh_order[lod.static_end:lod.skinned_end, 0]] |= SKINNED
@@ -336,18 +355,20 @@ def import_model(level, model, model_name, models_col, context):
         uses[mesh_order[lod.physics_end:lod.breakable_end, 0]] |= BREAKABLE
         i = lod.breakable_end
     
-    
     meshes = []
     col = bpy.data.collections.new(f"MESHES.{model_name}")
     model_col.children.link(col)
     vertex_data = model.vertex_data
     index_data = model.index_data
     for i, (info, usage, mat) in enumerate(zip(model.buffer_infos, uses, model.mat_order)):
-        mesh = add_mesh(
-            info, vertex_data, index_data, usage,
-            f"MESH{i}.{model_name}", col, obj_arma, skin_bones[info.skin_offset:info.skin_offset+info.skin_size]
-        )
-        mesh.data.materials.append(mats[mat])
+        if usage != 0:
+            mesh = add_mesh(
+                info, vertex_data, index_data, usage, 
+                f"MESH{i}.{model_name}", col, obj_arma, skin_bones
+            )
+            mesh.data.materials.append(mats[mat])
+        else:
+            mesh = None
         meshes.append(mesh)
     
     # collections to organize meshes
@@ -355,7 +376,7 @@ def import_model(level, model, model_name, models_col, context):
     k = 0
     col_base = bpy.data.collections.new(f"BASE.{model_name}")
     model_col.children.link(col_base)
-    for i, lod in enumerate([info.lod0, info.lod1, info.lod2, info.lod3]):
+    for i, lod in enumerate(lods):
         col = bpy.data.collections.new(f"LOD{i}.{model_name}")
         model_col.children.link(col)
         for j, f in mesh_order[k:lod.start]:
@@ -385,19 +406,33 @@ def import_model(level, model, model_name, models_col, context):
             if i == 0 and f != 1: col_base.objects.link(obj)
         k = lod.breakable_end
     model_col['base'] = col_base
-    model_col['collision'] = collision_col
+
+    if lotrc_props.models_collision and lotrc_props.models_skeleton:
+        collision_col = bpy.data.collections.new(f'COLLISION.{model_name}')
+        model_col.children.link(collision_col)
+        for i, shape in enumerate(model.shapes):
+            add_collision(shape, collision_col, model_name, i, obj_arma, bones)
+
+        model_col['collision'] = collision_col
     return model_col
 
-def import_models(level, context):
-    objects = []
+def import_models(level, model, context):
+    models = level.level.models
+    if model == 'All Models':
+        pass
+    elif model in models:
+        models = {model: models[model]}
+    else:
+        models = {}
+
     models_col = bpy.data.collections.new("Models")
     level.col.children.link(models_col)
 
     models_col.hide_viewport = True
-    for model_name, model in level.level.models.items():
-        level.models[model_name] = import_model(level, model, model_name, models_col, context)
+    for model_name, model in models.items():
+        level.models[model_name.lower()] = import_model(level, model, model_name, models_col, context)
     models_col.hide_viewport = False
-    return objects
+    level.models_col = models_col
     
 def copy_mesh(name, mesh):
     obj = bpy.data.objects.new(name, mesh.data)

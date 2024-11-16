@@ -1,6 +1,6 @@
 from bpy_extras.io_utils import ImportHelper
 import bpy
-from .loader.loader import LOADED_LEVELS, model_enum, texture_enum
+from .loader import LOADED_LEVELS, model_enum, texture_enum
 
 class PanelBase(bpy.types.Panel):
     bl_idname = "lotrc.panel_base"
@@ -39,26 +39,27 @@ class TextureSelectOperator(bpy.types.Operator):
         context.window_manager.invoke_search_popup(self)
         return {'FINISHED'}
 
-class LevelPanel(PanelBase):
-    bl_idname = "lotrc.level_panel"
-    bl_label = "Load Level"
+class LoadPanel(PanelBase):
+    bl_idname = "lotrc.load_panel"
+    bl_label = "Load LOTRC Objects"
 
     def draw(self, context):
         props = context.scene.lotrc_props
-        #self.layout.operator('lotrc.select_level', text='Select Level')
-        self.layout.prop(props, 'filepath')
+        self.layout.prop(props, 'load_filepath', text='filepath')
         row = self.layout.row()
-        row.enabled = props.filepath != ''
+        row.enabled = props.load_filepath != ''
         row.operator('lotrc.load_level', text='Load Level')
         if context.scene.name in LOADED_LEVELS:
             (header, box) = self.layout.panel('load_textures')
             header.label(text='Textures')
             if box is not None:
+                box.operator('lotrc.clear_textures', text='Clear')
                 box.operator('lotrc.texture_select', text=f'Select Texture')
                 box.operator('lotrc.load_textures', text=f'Load: {props.selected_texture}')
             (header, box) = self.layout.panel('load_models')
             header.label(text='Models')
             if box is not None:
+                box.operator('lotrc.clear_models', text='Clear')
                 box.operator('lotrc.model_select', text=f'Select Model')
                 box.prop(props, 'models_only_lod1', text='Load Only LOD1')
                 box.prop(props, 'models_skeleton', text='Load Skeleton')
@@ -70,36 +71,45 @@ class LevelPanel(PanelBase):
             (header, box) = self.layout.panel('load_level_block')
             header.label(text='Level Block')
             if box is not None:
+                box.operator('lotrc.clear_level_block', text='Clear')
                 box.operator('lotrc.load_level_block', text='Load')
 
-class TestPanel(PanelBase):
-    bl_idname = "lotrc.test_panel"
-    bl_label = "Test Panel"
+class DumpPanel(PanelBase):
+    bl_idname = "lotrc.dump_panel"
+    bl_label = "Dump LOTRC Objects"
+
+    @classmethod
+    def poll(cls, context):
+        return context.scene.name in LOADED_LEVELS
+
+    def draw(self, context):
+        props = context.scene.lotrc_props
+        self.layout.prop(props, 'dump_filepath', text='folder')
+        row = self.layout.row()
+        row.enabled = props.dump_filepath != ''
+        row.operator('lotrc.dump_level', text='Dump Level')
+
+        (header, box) = self.layout.panel('dump_level_block')
+        header.label(text='Level Block')
+        if box is not None:
+            box.operator('lotrc.dump_level_block', text='Dump')
+
+class ValuePanel(PanelBase):
+    bl_idname = "lotrc.value_panel"
+    bl_label = "LOTRC Value Panel"
     
     @classmethod
     def poll(cls, context):
-        return (context.selected_objects != [])
+        return 'lotrc' in context.view_layer.active_layer_collection.collection
 
     def draw(self, context):
-        for obj in context.selected_objects:
-            self.layout.label(text=obj.name)
-
-class ImportLevel(bpy.types.Operator, ImportHelper):
-    """Select a Lord of the Rings Conquest Level"""
-    bl_idname = "lotrc.select_level"
-    bl_label = "Select LOTRC Level"
-
-    filepath: bpy.props.StringProperty(subtype="FILE_PATH")
-    directory: bpy.props.StringProperty(subtype="DIR_PATH")
-    
-    def execute(self, context):
-        context.scene.lotrc_props.filepath = self.filepath
-        return {'FINISHED'}
+        self.layout.prop(context.scene.lotrc_props, 'object_key', text='Key')
+        self.layout.prop(context.scene.lotrc_props, 'object_value', text='Value')
 
 CLASSES = [
-    LevelPanel, 
-    #TestPanel, 
-    ImportLevel,
+    ValuePanel,
+    LoadPanel, 
+    DumpPanel,
     ModelSelectOperator,
     TextureSelectOperator,
 ]

@@ -659,7 +659,6 @@ impl Model {
         )
     }
 
-
     pub fn to_gltf(&self) -> Result<gltf::Glb> {
         let mut root = gltf::json::root::Root::default();
         let mut bin = Vec::new();
@@ -672,7 +671,7 @@ impl Model {
 
         let vbuffs: Vec<HashMap<VertexUsage, Index<Accessor>>> = self.vertex_data.iter().map(|vbuff| 
             vbuff.vals.iter().map(|val| (val.usage.clone(), GltfAsset { 
-                data: val.dump_bytes::<PC>(),
+                data: val.gltf_data(),
                 count: val.val.len(),
                 stride: val.stride(),
                 target: Some(Target::ArrayBuffer),
