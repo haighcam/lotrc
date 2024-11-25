@@ -1,5 +1,5 @@
 use std::any::TypeId;
-use std::{collections::HashMap, iter::zip, mem::size_of};
+use std::{collections::{HashMap, HashSet}, iter::zip, mem::size_of};
 use flate2::Decompress;
 use log::warn;
 use serde_json::{Value, json, to_vec_pretty, from_slice, Map};
@@ -14,8 +14,11 @@ use indicatif::ProgressBar;
 use indexmap::IndexMap;
 use pyo3::prelude::*;
 
-use super::lua_stuff::LuaCompiler;
-use super::read_write::{Reader, Writer, PathStuff};
+use crate::{
+    lua_stuff as lua,
+    read_write::{Reader, Writer, PathStuff},
+    pak::PFieldInfo,
+};
 
 use lotrc_proc::{OrderedData, basicpymethods, PyMethods};
 
@@ -28,20 +31,28 @@ pub struct PC;
 pub struct XBOX;
 pub struct PS3;
 pub trait Version {
-    fn from_bytes<T: OrderedDataImpl>(data: &[u8]) -> Result<T>;
-    fn to_bytes<T: OrderedDataImpl>(val: &T, data: &mut [u8]) -> Result<()>;
-    fn dump_bytes<T: OrderedDataImpl>(val: &T) -> Vec<u8>;
-    fn size<T: OrderedDataImpl>() -> usize;
-    fn from_bytes_vec<T: OrderedDataImpl>(data: &[u8], num: usize) -> Result<Vec<T>>;
-    fn to_bytes_vec<T: OrderedDataImpl>(val: &Vec<T>, data: &mut [u8]) -> Result<()>;
-    fn dump_bytes_vec<T: OrderedDataImpl>(val: &Vec<T>) -> Vec<u8>;
+    fn from_bytes<T: OrderedData>(data: &[u8]) -> Result<T>;
+    fn to_bytes<T: OrderedData>(val: &T, data: &mut [u8]) -> Result<()>;
+    fn dump_bytes<T: OrderedData>(val: &T) -> Vec<u8>;
+    fn size<T: OrderedData>() -> usize;
+    fn from_bytes_vec<T: OrderedData>(data: &[u8], num: usize) -> Result<Vec<T>>;
+    fn to_bytes_vec<T: OrderedData>(val: &Vec<T>, data: &mut [u8]) -> Result<()>;
+    fn dump_bytes_vec<T: OrderedData>(val: &Vec<T>) -> Vec<u8>;
     #[inline]
-    fn size_vec<T: OrderedDataImpl>(val: &Vec<T>) -> usize {
+    fn size_vec<T: OrderedData>(val: &Vec<T>) -> usize {
         val.len() * Self::size::<T>()
     }
+    #[inline]
+    fn pc() -> bool { false }
+    #[inline]
+    fn ps3() -> bool { false }
+    #[inline]
+    fn xbox() -> bool { false }
 }
 
 impl Version for PC {
+    #[inline]
+    fn pc() -> bool { true }
     #[inline]
     fn from_bytes<T: OrderedData>(data: &[u8]) -> Result<T> {
         Ok(T::PC::read_from_prefix(data).map_err(|e| anyhow!("{}", e))?.0.into())
@@ -76,6 +87,8 @@ impl Version for PC {
 
 impl Version for XBOX {
     #[inline]
+    fn xbox() -> bool { true }
+    #[inline]
     fn from_bytes<T: OrderedData>(data: &[u8]) -> Result<T> {
         Ok(T::XBOX::read_from_prefix(data).map_err(|e| anyhow!("{}", e))?.0.into())
     }
@@ -109,6 +122,8 @@ impl Version for XBOX {
 
 impl Version for PS3 {
     #[inline]
+    fn ps3() -> bool { true }
+    #[inline]
     fn from_bytes<T: OrderedData>(data: &[u8]) -> Result<T> {
         Ok(T::PS3::read_from_prefix(data).map_err(|e| anyhow!("{}", e))?.0.into())
     }
@@ -140,51 +155,102 @@ impl Version for PS3 {
     }
 }
 
-pub trait OrderedData where Self: OrderedDataImpl {
-    #[inline]
-    fn from_bytes<V: Version>(data: &[u8]) -> Result<Self> { V::from_bytes(data) }
-    #[inline]
-    fn to_bytes<V: Version>(&self, data: &mut [u8]) -> Result<()> { V::to_bytes(self, data) }
-    #[inline]
-    fn dump_bytes<V: Version>(&self) -> Vec<u8> { V::dump_bytes(self) }
-    #[inline]
-    fn size<V: Version>() -> usize { V::size::<Self>() }
-}
-
-impl <T: OrderedDataImpl> OrderedData for T {}
-
-pub trait OrderedDataImpl where Self: Sized + Clone + Default {
+pub trait OrderedData where Self: Sized + Clone + Default {
     type PC: Into<Self> + From<Self> + Immutable + KnownLayout + FromBytes + IntoBytes + Unaligned + Clone + std::fmt::Debug + Default;
     type XBOX: Into<Self> + From<Self> + Immutable + KnownLayout + FromBytes + IntoBytes + Unaligned + Clone + std::fmt::Debug + Default;
     type PS3: Into<Self> + From<Self> + Immutable + KnownLayout + FromBytes + IntoBytes + Unaligned + Clone + std::fmt::Debug + Default;
 }
-pub trait OrderedDataVec {
-    fn from_bytes<V: Version>(data: &[u8], num: usize) -> Result<Self> where Self: Sized;
-    fn to_bytes<V: Version>(&self, data: &mut [u8]) -> Result<()>;
-    fn dump_bytes<V: Version>(&self) -> Vec<u8>;
-    fn size<V: Version>(&self) -> usize;
+
+impl OrderedData for f32 { type PC = F32<LE>; type XBOX = F32<BE>; type PS3 = F32<BE>; }
+impl OrderedData for u64 { type PC = U64<LE>; type XBOX = U64<BE>; type PS3 = U64<BE>; }
+impl OrderedData for u32 { type PC = U32<LE>; type XBOX = U32<BE>; type PS3 = U32<BE>; }
+impl OrderedData for i32 { type PC = I32<LE>; type XBOX = I32<BE>; type PS3 = I32<BE>; }
+impl OrderedData for u16 { type PC = U16<LE>; type XBOX = U16<BE>; type PS3 = U16<BE>; }
+impl OrderedData for i16 { type PC = I16<LE>; type XBOX = I16<BE>; type PS3 = I16<BE>; }
+impl OrderedData for u8 { type PC = u8; type XBOX = u8; type PS3 = u8; }
+impl OrderedData for i8 { type PC = i8; type XBOX = i8; type PS3 = i8; }
+
+pub struct NoArgs;
+
+impl <'py> IntoPyObject<'py> for NoArgs {
+    type Target = pyo3::types::PyTuple;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(pyo3::types::PyTuple::empty(py))
+    }
 }
 
-impl <T: OrderedDataImpl> OrderedDataVec for Vec<T> {
+impl <'py> FromPyObject<'py> for NoArgs {
+    fn extract_bound(_ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+        Ok(Self)
+    }
+}
+
+pub trait AsData<'a, 'b> where Self: Sized {
+    type InArgs;
+    type OutArgs;
+    fn from_bytes<V: Version>(data: &[u8], args: Self::InArgs) -> Result<Self>;
+    fn dump_bytes<V: Version>(&self, args: Self::OutArgs) -> Vec<u8>;
+    fn size<V: Version>(&self) -> usize;
+    #[inline]
+    fn to_bytes<V: Version>(&self, data: &mut [u8], args: Self::OutArgs) -> Result<()> {
+        let vals = self.dump_bytes::<V>(args);
+        data[..vals.len()].copy_from_slice(&vals[..]);
+        Ok(())
+    }
+}
+
+#[macro_export]
+macro_rules! wrap_args {
+    () => { crate::types::NoArgs };
+    ( $a:expr ) => { $a };
+    ( $($a:expr),* ) => { ($($a),*) };
+}
+#[macro_export]
+macro_rules! from_bytes {
+    ($t:ty, $q:ty, $d:expr $( ,$x:expr )*) => { <$q as AsData<'_, '_>>::from_bytes::<$t>($d, crate::types::wrap_args!($($x),*)) };
+    ($t:ty, $d:expr $( ,$x:expr )*) => { AsData::<'_, '_>::from_bytes::<$t>($d, crate::types::wrap_args!($($x),*)) };
+}
+#[macro_export]
+macro_rules! to_bytes {
+    ($t:ty, $v:expr, $d:expr $( ,$x:expr )*) => { $v.to_bytes::<$t>($d, crate::types::wrap_args!($($x),*)) }
+}
+#[macro_export]
+macro_rules! dump_bytes {
+    ($t:ty, $v:expr $( ,$x:expr )*) => { $v.dump_bytes::<$t>(crate::types::wrap_args!($($x),*)) }
+}
+pub use wrap_args;
+pub use from_bytes;
+pub use to_bytes;
+pub use dump_bytes;
+
+impl <T: OrderedData> AsData<'_, '_> for Vec<T> {
+    type InArgs = usize;
+    type OutArgs = NoArgs;
     #[inline]
     fn from_bytes<V: Version>(data: &[u8], num: usize) -> Result<Self> { V::from_bytes_vec(data, num) }
     #[inline]
-    fn to_bytes<V: Version>(&self, data: &mut [u8]) -> Result<()> { V::to_bytes_vec(self, data) }
+    fn to_bytes<V: Version>(&self, data: &mut [u8], _args: NoArgs) -> Result<()> { V::to_bytes_vec(self, data) }
     #[inline]
-    fn dump_bytes<V: Version>(&self) -> Vec<u8> { V::dump_bytes_vec(self) }
+    fn dump_bytes<V: Version>(&self, _args: NoArgs) -> Vec<u8> { V::dump_bytes_vec(self) }
     #[inline]
     fn size<V: Version>(&self) -> usize { V::size_vec(self) }
 }
 
-
-impl OrderedDataImpl for f32 { type PC = F32<LE>; type XBOX = F32<BE>; type PS3 = F32<BE>; }
-impl OrderedDataImpl for u64 { type PC = U64<LE>; type XBOX = U64<BE>; type PS3 = U64<BE>; }
-impl OrderedDataImpl for u32 { type PC = U32<LE>; type XBOX = U32<BE>; type PS3 = U32<BE>; }
-impl OrderedDataImpl for i32 { type PC = I32<LE>; type XBOX = I32<BE>; type PS3 = I32<BE>; }
-impl OrderedDataImpl for u16 { type PC = U16<LE>; type XBOX = U16<BE>; type PS3 = U16<BE>; }
-impl OrderedDataImpl for i16 { type PC = I16<LE>; type XBOX = I16<BE>; type PS3 = I16<BE>; }
-impl OrderedDataImpl for u8 { type PC = u8; type XBOX = u8; type PS3 = u8; }
-impl OrderedDataImpl for i8 { type PC = i8; type XBOX = i8; type PS3 = i8; }
+impl <T: OrderedData> AsData<'_, '_> for T {
+    type InArgs = NoArgs;
+    type OutArgs = NoArgs;
+    #[inline]
+    fn from_bytes<V: Version>(data: &[u8], _args: NoArgs) -> Result<Self> { V::from_bytes(data) }
+    #[inline]
+    fn to_bytes<V: Version>(&self, data: &mut [u8], _args: NoArgs) -> Result<()> { V::to_bytes(self, data) }
+    #[inline]
+    fn dump_bytes<V: Version>(&self, _args: NoArgs) -> Vec<u8> { V::dump_bytes(self) }
+    #[inline]
+    fn size<V: Version>(&self) -> usize { V::size::<Self>() }
+}
 
 const HASHING_ARRAY: [u32; 256] = [
     0x00000000, 0x04c11db7, 0x09823b6e, 0x0d4326d9, 0x130476dc, 0x17c56b6b, 0x1a864db2, 0x1e475005, 
@@ -277,6 +343,11 @@ lazy_static::lazy_static! {
     pub static ref GLTF: Mutex<bool> = Mutex::new(false);
 }
 
+#[pyfunction]
+pub fn crc_string(val: u32) -> Option<String> {
+    STRING_LOOKUP.lock().unwrap().get(&val).cloned()
+}
+
 pub fn update_strings(vals: &[String]) {
     let mut strings = STRING_LOOKUP.lock().unwrap();
     let new_strings: Vec<_> = vals.iter().filter_map(|x| {
@@ -297,9 +368,13 @@ pub enum Crc {
     Key(u32)
 }
 
-impl IntoPy<PyObject> for Crc {
-    fn into_py(self, py: Python<'_>) -> PyObject {
-        self.to_string().into_py(py)
+impl <'py> IntoPyObject<'py> for Crc {
+    type Target = <String as IntoPyObject<'py>>::Target;
+    type Output = <String as IntoPyObject<'py>>::Output;
+    type Error = <String as IntoPyObject<'py>>::Error;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        self.to_string().into_pyobject(py)
     }
 }
 
@@ -415,7 +490,7 @@ impl From<U32String> for Crc {
     }
 }
 
-impl OrderedDataImpl for Crc { type PC = U32<LE>; type XBOX = U32<BE>; type PS3 = U32<BE>; }
+impl OrderedData for Crc { type PC = U32<LE>; type XBOX = U32<BE>; type PS3 = U32<BE>; }
 
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
@@ -430,9 +505,13 @@ pub struct Strings {
     pub strings: Vec<String>,
 }
 
-impl IntoPy<PyObject> for Strings {
-    fn into_py(self, py: Python<'_>) -> PyObject {
-        self.strings.into_py(py)
+impl <'py> IntoPyObject<'py> for Strings {
+    type Target = <Vec<String> as IntoPyObject<'py>>::Target;
+    type Output = <Vec<String> as IntoPyObject<'py>>::Output;
+    type Error = <Vec<String> as IntoPyObject<'py>>::Error;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        self.strings.into_pyobject(py)
     }
 }
 
@@ -442,12 +521,15 @@ impl <'py> FromPyObject<'py> for Strings {
     }
 }
 
-impl Strings {
-    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize, num: usize) -> Result<Self> {
+impl AsData<'_, '_> for Strings {
+    type InArgs = usize;
+    type OutArgs = NoArgs;
+
+    fn from_bytes<V: Version>(data: &[u8], num: Self::InArgs) -> Result<Self> {
         let mut strings = Vec::with_capacity(num);
-        let mut offset = offset;
+        let mut offset = 0;
         for _ in 0..num {
-            let k = u32::from_bytes::<O>(&data[offset..])? as usize;
+            let k = from_bytes!(V, u32, &data[offset..])? as usize;
             offset += 4;
             strings.push(String::from_utf8_lossy(&data[offset..offset+k]).to_string());
             offset += k;
@@ -455,27 +537,18 @@ impl Strings {
         Ok(Self { strings, ..Default::default() })
     }
 
-    pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], offset: usize) -> Result<()> {
-        let mut offset = offset;
-        for string in &self.strings {
-            (string.len() as u32).to_bytes::<O>(&mut data[offset..])?;
-            offset += 4;
-            data[offset..(offset+string.len())].copy_from_slice(string.as_bytes());
-            offset += string.len();
-        }
-        Ok(())
-    }
-
-    pub fn dump<O: Version + 'static>(&self) -> Vec<u8> {
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
         self.strings.iter().flat_map(|string| {
-            (string.len() as u32).dump_bytes::<O>().into_iter().chain(string.as_bytes().iter().cloned()).collect::<Vec<_>>()
+            dump_bytes!(V, (string.len() as u32)).into_iter().chain(string.as_bytes().iter().cloned()).collect::<Vec<_>>()
         }).collect()
     }
 
-    pub fn size(&self) -> usize {
+    fn size<V: Version>(&self) -> usize {
         self.strings.iter().map(|x| x.len()).sum::<usize>() + 4 * self.strings.len()
     }
+}
 
+impl Strings {
     pub fn len(&self) -> usize {
         self.strings.len()
     }
@@ -497,9 +570,13 @@ pub struct CompressedBlock {
     pub data: Vec<u8>,
 }
 
-impl IntoPy<PyObject> for CompressedBlock {
-    fn into_py(self, py: Python<'_>) -> PyObject {
-        std::borrow::Cow::from(&self.data[..]).into_py(py)
+impl <'py> IntoPyObject<'py> for CompressedBlock {
+    type Target = <Vec<u8> as IntoPyObject<'py>>::Target;
+    type Output = <Vec<u8> as IntoPyObject<'py>>::Output;
+    type Error = <Vec<u8> as IntoPyObject<'py>>::Error;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        self.data.into_pyobject(py)
     }
 }
 
@@ -553,9 +630,13 @@ pub struct Vector2 {
     pub y: f32,
 }
 
-impl IntoPy<PyObject> for Vector2 {
-    fn into_py(self, py: Python<'_>) -> PyObject {
-        (self.x, self.y).into_py(py)
+impl <'py> IntoPyObject<'py> for Vector2 {
+    type Target = <(f32, f32) as IntoPyObject<'py>>::Target;
+    type Output = <(f32, f32) as IntoPyObject<'py>>::Output;
+    type Error = <(f32, f32) as IntoPyObject<'py>>::Error;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        (self.x, self.y).into_pyobject(py)
     }
 }
 
@@ -573,9 +654,13 @@ pub struct Vector3 {
     pub z: f32,
 }
 
-impl IntoPy<PyObject> for Vector3 {
-    fn into_py(self, py: Python<'_>) -> PyObject {
-        (self.x, self.y, self.z).into_py(py)
+impl <'py> IntoPyObject<'py> for Vector3 {
+    type Target = <(f32, f32, f32) as IntoPyObject<'py>>::Target;
+    type Output = <(f32, f32, f32) as IntoPyObject<'py>>::Output;
+    type Error = <(f32, f32, f32) as IntoPyObject<'py>>::Error;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        (self.x, self.y, self.z).into_pyobject(py)
     }
 }
 
@@ -594,9 +679,13 @@ pub struct Vector4 {
     pub w: f32,
 }
 
-impl IntoPy<PyObject> for Vector4 {
-    fn into_py(self, py: Python<'_>) -> PyObject {
-        (self.x, self.y, self.z, self.w).into_py(py)
+impl <'py> IntoPyObject<'py> for Vector4 {
+    type Target = <(f32, f32, f32, f32) as IntoPyObject<'py>>::Target;
+    type Output = <(f32, f32, f32, f32) as IntoPyObject<'py>>::Output;
+    type Error = <(f32, f32, f32, f32) as IntoPyObject<'py>>::Error;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        (self.x, self.y, self.z, self.w).into_pyobject(py)
     }
 }
 
@@ -615,9 +704,13 @@ pub struct Matrix4x4 {
     pub w: Vector4,
 }
 
-impl IntoPy<PyObject> for Matrix4x4 {
-    fn into_py(self, py: Python<'_>) -> PyObject {
-        [self.x, self.y, self.z, self.w].into_py(py)
+impl <'py> IntoPyObject<'py> for Matrix4x4 {
+    type Target = <[Vector4; 4] as IntoPyObject<'py>>::Target;
+    type Output = <[Vector4; 4] as IntoPyObject<'py>>::Output;
+    type Error = <[Vector4; 4] as IntoPyObject<'py>>::Error;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        [self.x, self.y, self.z, self.w].into_pyobject(py)
     }
 }
 
@@ -684,9 +777,13 @@ impl From<Bool> for bool {
     }
 }
 
-impl IntoPy<PyObject> for Bool {
-    fn into_py(self, py: Python<'_>) -> PyObject {
-        bool::from(self).into_py(py)
+impl <'py> IntoPyObject<'py> for Bool {
+    type Target = <bool as IntoPyObject<'py>>::Target;
+    type Output = <bool as IntoPyObject<'py>>::Output;
+    type Error = <bool as IntoPyObject<'py>>::Error;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        bool::from(self).into_pyobject(py)
     }
 }
 
@@ -705,9 +802,13 @@ pub struct Weight {
     pub d: u8,
 }
 
-impl IntoPy<PyObject> for Weight {
-    fn into_py(self, py: Python<'_>) -> PyObject {
-        (self.x, self.a, self.b, self.c, self.d).into_py(py)
+impl <'py> IntoPyObject<'py> for Weight {
+    type Target = <(u32, u8, u8, u8, u8) as IntoPyObject<'py>>::Target;
+    type Output = <(u32, u8, u8, u8, u8) as IntoPyObject<'py>>::Output;
+    type Error = <(u32, u8, u8, u8, u8) as IntoPyObject<'py>>::Error;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        (self.x, self.a, self.b, self.c, self.d).into_pyobject(py)
     }
 }
 
@@ -735,9 +836,13 @@ impl TryFrom<&str> for Color  {
     }
 }
 
-impl IntoPy<PyObject> for Color {
-    fn into_py(self, py: Python<'_>) -> PyObject {
-        format!("0x{:08X}", self.0).into_py(py)
+impl <'py> IntoPyObject<'py> for Color {
+    type Target = <String as IntoPyObject<'py>>::Target;
+    type Output = <String as IntoPyObject<'py>>::Output;
+    type Error = <String as IntoPyObject<'py>>::Error;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        format!("0x{:08X}", self.0).into_pyobject(py)
     }
 }
 
@@ -793,90 +898,90 @@ impl BaseTypes {
     pub const CRCLIST_KEY: u32 = hash_string("CRCList".as_bytes(), None);
     pub const WEIGHTLIST_KEY: u32 = hash_string("WeightList".as_bytes(), None);
     pub const MATRIXLIST_KEY: u32 = hash_string("MatrixList".as_bytes(), None);
-    pub fn from_data<O: Version + 'static>(data: &[u8], kind: u32) -> Result<Self> {
+    pub fn from_data<O: Version>(data: &[u8], kind: u32) -> Result<Self> {
         Ok(match kind {
-            Self::CRC_KEY => Self::CRC(OrderedData::from_bytes::<O>(data)?),
-            Self::GUID_KEY => Self::GUID(OrderedData::from_bytes::<O>(data)?),
-            Self::COLOR_KEY => Self::Color(OrderedData::from_bytes::<O>(data)?),
-            Self::VECTOR2_KEY => Self::Vector2(OrderedData::from_bytes::<O>(data)?),
-            Self::VECTOR3_KEY => Self::Vector3(OrderedData::from_bytes::<O>(data)?),
-            Self::VECTOR4_KEY => Self::Vector4(OrderedData::from_bytes::<O>(data)?),
-            Self::MATRIX4X4_KEY => Self::Matrix4x4(OrderedData::from_bytes::<O>(data)?),
-            Self::FLOAT_KEY => Self::Float(OrderedData::from_bytes::<O>(data)?),
-            Self::INT_KEY  => Self::Int(OrderedData::from_bytes::<O>(data)?),
-            Self::BOOL_KEY => Self::Bool(OrderedData::from_bytes::<O>(data)?),
-            Self::BYTE_KEY => Self::Byte(OrderedData::from_bytes::<O>(data)?),
+            Self::CRC_KEY => Self::CRC(from_bytes!(O, data)?),
+            Self::GUID_KEY => Self::GUID(from_bytes!(O, data)?),
+            Self::COLOR_KEY => Self::Color(from_bytes!(O, data)?),
+            Self::VECTOR2_KEY => Self::Vector2(from_bytes!(O, data)?),
+            Self::VECTOR3_KEY => Self::Vector3(from_bytes!(O, data)?),
+            Self::VECTOR4_KEY => Self::Vector4(from_bytes!(O, data)?),
+            Self::MATRIX4X4_KEY => Self::Matrix4x4(from_bytes!(O, data)?),
+            Self::FLOAT_KEY => Self::Float(from_bytes!(O, data)?),
+            Self::INT_KEY  => Self::Int(from_bytes!(O, data)?),
+            Self::BOOL_KEY => Self::Bool(from_bytes!(O, data)?),
+            Self::BYTE_KEY => Self::Byte(from_bytes!(O, data)?),
             Self::STRING_KEY => {
-                let val: List = OrderedData::from_bytes::<O>(data)?;
-                let vals = OrderedDataVec::from_bytes::<O>(&data[val.offset as usize + List::size::<O>()..], val.num as usize)?;
+                let val: List = from_bytes!(O, data)?;
+                let vals = from_bytes!(O, &data[val.offset as usize + val.size::<O>()..], val.num as usize)?;
                 Self::String(String::from_utf8(vals).unwrap())
             },
             Self::STRINGLIST_KEY => {
-                let val: List = OrderedData::from_bytes::<O>(data)?;
-                let vals: Vec<List> = OrderedDataVec::from_bytes::<O>(&data[val.offset as usize + List::size::<O>()..], val.num as usize)?;
+                let val: List = from_bytes!(O, data)?;
+                let vals: Vec<List> = from_bytes!(O, &data[val.offset as usize + val.size::<O>()..], val.num as usize)?;
                 let valss = vals.iter().enumerate().map(|(i, v)| { Ok(String::from_utf8(
-                    OrderedDataVec::from_bytes::<O>(&data[val.offset as usize + List::size::<O>() * (i + 2) + v.offset as usize..], v.num as usize)?
+                    from_bytes!(O, &data[val.offset as usize + val.size::<O>() * (i + 2) + v.offset as usize..], v.num as usize)?
                 ).unwrap())}).collect::<Result<Vec<_>>>()?;
                 Self::StringList(valss)
             },
             Self::OBJECTLIST_KEY => {
-                let val: List = OrderedData::from_bytes::<O>(data)?;
-                let vals = OrderedDataVec::from_bytes::<O>(&data[val.offset as usize + List::size::<O>()..], val.num as usize)?;
+                let val: List = from_bytes!(O, data)?;
+                let vals = from_bytes!(O, &data[val.offset as usize + val.size::<O>()..], val.num as usize)?;
                 Self::ObjectList(vals)
             },
             Self::NODELIST_KEY => {
-                let val: List = OrderedData::from_bytes::<O>(data)?;
-                let vals = OrderedDataVec::from_bytes::<O>(&data[val.offset as usize + List::size::<O>()..], val.num as usize)?;
+                let val: List = from_bytes!(O, data)?;
+                let vals = from_bytes!(O, &data[val.offset as usize + val.size::<O>()..], val.num as usize)?;
                 Self::NodeList(vals)
             },
             Self::INTLISTS_KEY => {
-                let val: List = OrderedData::from_bytes::<O>(data)?;
-                let vals = OrderedDataVec::from_bytes::<O>(&data[val.offset as usize + List::size::<O>()..], val.num as usize)?;
+                let val: List = from_bytes!(O, data)?;
+                let vals = from_bytes!(O, &data[val.offset as usize + val.size::<O>()..], val.num as usize)?;
                 Self::IntList(vals)
             },
             Self::CRCLIST_KEY => {
-                let val: List = OrderedData::from_bytes::<O>(data)?;
-                let vals = OrderedDataVec::from_bytes::<O>(&data[val.offset as usize + List::size::<O>()..], val.num as usize)?;
+                let val: List = from_bytes!(O, data)?;
+                let vals = from_bytes!(O, &data[val.offset as usize + val.size::<O>()..], val.num as usize)?;
                 Self::CRCList(vals)
             },
             Self::WEIGHTLIST_KEY => {
-                let val: List = OrderedData::from_bytes::<O>(data)?;
-                let vals = OrderedDataVec::from_bytes::<O>(&data[val.offset as usize + List::size::<O>()..], val.num as usize)?;
+                let val: List = from_bytes!(O, data)?;
+                let vals = from_bytes!(O, &data[val.offset as usize + val.size::<O>()..], val.num as usize)?;
                 Self::WeightList(vals)
             },
             Self::MATRIXLIST_KEY => {
-                let val: List = OrderedData::from_bytes::<O>(data)?;
-                let vals = OrderedDataVec::from_bytes::<O>(&data[val.offset as usize + List::size::<O>()..], val.num as usize)?;
+                let val: List = from_bytes!(O, data)?;
+                let vals = from_bytes!(O, &data[val.offset as usize + val.size::<O>()..], val.num as usize)?;
                 Self::MatrixList(vals)
             },
             _ => panic!("Unkown Type {:?}", kind)
         })
     }
 
-    pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], off: &mut usize) -> Result<()> {
+    pub fn into_data<O: Version>(&self, data: &mut [u8], off: &mut usize) -> Result<()> {
         match self {
-            Self::CRC(val) => val.to_bytes::<O>(data)?,
-            Self::GUID(val) => val.to_bytes::<O>(data)?,
-            Self::Color(val) => val.to_bytes::<O>(data)?,
-            Self::Vector2(val) => val.to_bytes::<O>(data)?,
-            Self::Vector3(val) => val.to_bytes::<O>(data)?,
-            Self::Vector4(val) => val.to_bytes::<O>(data)?,
-            Self::Matrix4x4(val) => val.to_bytes::<O>(data)?,
-            Self::Float(val) => val.to_bytes::<O>(data)?,
-            Self::Int(val) => val.to_bytes::<O>(data)?,
-            Self::Bool(val) => val.to_bytes::<O>(data)?,
-            Self::Byte(val) => val.to_bytes::<O>(data)?,
+            Self::CRC(val) => to_bytes!(O, val, data)?,
+            Self::GUID(val) => to_bytes!(O, val, data)?,
+            Self::Color(val) => to_bytes!(O, val, data)?,
+            Self::Vector2(val) => to_bytes!(O, val, data)?,
+            Self::Vector3(val) => to_bytes!(O, val, data)?,
+            Self::Vector4(val) => to_bytes!(O, val, data)?,
+            Self::Matrix4x4(val) => to_bytes!(O, val, data)?,
+            Self::Float(val) => to_bytes!(O, val, data)?,
+            Self::Int(val) => to_bytes!(O, val, data)?,
+            Self::Bool(val) => to_bytes!(O, val, data)?,
+            Self::Byte(val) => to_bytes!(O, val, data)?,
             Self::String(vals) => {
-                List{ num: vals.len() as u16, offset: (*off - List::size::<O>()) as u16}.to_bytes::<O>(data)?;
+                to_bytes!(O, List{ num: vals.len() as u16, offset: (*off - O::size::<List>()) as u16}, data)?;
                 data[*off..*off + vals.len()].copy_from_slice(vals.as_bytes());
                 if vals.len() != 0 { *off += vals.len() + 1 };
             },
             Self::StringList(vals) => {
-                List{ num: vals.len() as u16, offset: (*off - List::size::<O>()) as u16}.to_bytes::<O>(data)?;
+                to_bytes!(O, List{ num: vals.len() as u16, offset: (*off - O::size::<List>()) as u16}, data)?;
                 let mut off_ = *off;
-                *off += vals.len() * List::size::<O>();
+                *off += vals.len() * O::size::<List>();
                 for v in vals {
-                    List{ num: v.len() as u16, offset: (*off - off_ - List::size::<O>()) as u16}.to_bytes::<O>(&mut data[off_..])?;
+                    to_bytes!(O, List{ num: v.len() as u16, offset: (*off - off_ - O::size::<List>()) as u16}, data)?;
                     data[*off..*off + v.len()].copy_from_slice(v.as_bytes());                    
                     if v.len() != 0 {
                         *off += v.len() + 1;
@@ -885,122 +990,103 @@ impl BaseTypes {
                 }
             },
             Self::ObjectList(vals) => {
-                List{ num: vals.len() as u16, offset: (*off - List::size::<O>()) as u16}.to_bytes::<O>(data)?;
-                vals.to_bytes::<O>(&mut data[*off..])?;
+                to_bytes!(O, List{ num: vals.len() as u16, offset: (*off - O::size::<List>()) as u16}, data)?;
+                to_bytes!(O, vals, &mut data[*off..])?;
                 *off += vals.size::<O>();
             },
             Self:: NodeList(vals) => {
-                List{ num: vals.len() as u16, offset: (*off - List::size::<O>()) as u16}.to_bytes::<O>(data)?;
-                vals.to_bytes::<O>(&mut data[*off..])?;
+                to_bytes!(O, List{ num: vals.len() as u16, offset: (*off - O::size::<List>()) as u16}, data)?;
+                to_bytes!(O, vals, &mut data[*off..])?;
                 *off += vals.size::<O>();
             },
             Self::IntList(vals) => {
-                List{ num: vals.len() as u16, offset: (*off - List::size::<O>()) as u16}.to_bytes::<O>(data)?;
-                vals.to_bytes::<O>(&mut data[*off..])?;
+                to_bytes!(O, List{ num: vals.len() as u16, offset: (*off - O::size::<List>()) as u16}, data)?;
+                to_bytes!(O, vals, &mut data[*off..])?;
                 *off += vals.size::<O>();
             },
             Self::CRCList(vals) => {
-                List{ num: vals.len() as u16, offset: (*off - List::size::<O>()) as u16}.to_bytes::<O>(data)?;
-                vals.to_bytes::<O>(&mut data[*off..])?;
+                to_bytes!(O, List{ num: vals.len() as u16, offset: (*off - O::size::<List>()) as u16}, data)?;
+                to_bytes!(O, vals, &mut data[*off..])?;
                 *off += vals.size::<O>();
             },
             Self::WeightList(vals) => {
-                List{ num: vals.len() as u16, offset: (*off - List::size::<O>()) as u16}.to_bytes::<O>(data)?;
-                vals.to_bytes::<O>(&mut data[*off..])?;
+                to_bytes!(O, List{ num: vals.len() as u16, offset: (*off - O::size::<List>()) as u16}, data)?;
+                to_bytes!(O, vals, &mut data[*off..])?;
                 *off += vals.size::<O>();
             },
             Self::MatrixList(vals) => {
-                List{ num: vals.len() as u16, offset: (*off - List::size::<O>()) as u16}.to_bytes::<O>(data)?;
-                vals.to_bytes::<O>(&mut data[*off..])?;
+                to_bytes!(O, List{ num: vals.len() as u16, offset: (*off - O::size::<List>()) as u16}, data)?;
+                to_bytes!(O, vals, &mut data[*off..])?;
                 *off += vals.size::<O>();
             },
         };
         Ok(())
     }
 
-    pub fn dump<O: Version + 'static>(&self, data: &mut Vec<u8>, off: usize) -> Result<()> {
+    pub fn dump<O: Version>(&self, data: &mut Vec<u8>, off: usize) -> Result<()> {
         match self {
-            Self::CRC(val) => val.to_bytes::<O>(&mut data[off..])?,
-            Self::GUID(val) => val.to_bytes::<O>(&mut data[off..])?,
-            Self::Color(val) => val.to_bytes::<O>(&mut data[off..])?,
-            Self::Vector2(val) => val.to_bytes::<O>(&mut data[off..])?,
-            Self::Vector3(val) => val.to_bytes::<O>(&mut data[off..])?,
-            Self::Vector4(val) => val.to_bytes::<O>(&mut data[off..])?,
-            Self::Matrix4x4(val) => val.to_bytes::<O>(&mut data[off..])?,
-            Self::Float(val) => val.to_bytes::<O>(&mut data[off..])?,
-            Self::Int(val) => val.to_bytes::<O>(&mut data[off..])?,
-            Self::Bool(val) => val.to_bytes::<O>(&mut data[off..])?,
-            Self::Byte(val) => val.to_bytes::<O>(&mut data[off..])?,
+            Self::CRC(val) => to_bytes!(O, val, &mut data[off..])?,
+            Self::GUID(val) => to_bytes!(O, val, &mut data[off..])?,
+            Self::Color(val) => to_bytes!(O, val, &mut data[off..])?,
+            Self::Vector2(val) => to_bytes!(O, val, &mut data[off..])?,
+            Self::Vector3(val) => to_bytes!(O, val, &mut data[off..])?,
+            Self::Vector4(val) => to_bytes!(O, val, &mut data[off..])?,
+            Self::Matrix4x4(val) => to_bytes!(O, val, &mut data[off..])?,
+            Self::Float(val) => to_bytes!(O, val, &mut data[off..])?,
+            Self::Int(val) => to_bytes!(O, val, &mut data[off..])?,
+            Self::Bool(val) => to_bytes!(O, val, &mut data[off..])?,
+            Self::Byte(val) => to_bytes!(O, val, &mut data[off..])?,
             Self::String(vals) => {
-                List{ num: vals.len() as u16, offset: (data.len() - off - List::size::<O>()) as u16}.to_bytes::<O>(&mut data[off..])?;
+                to_bytes!(O, List{ num: vals.len() as u16, offset: (data.len() - off - O::size::<List>()) as u16}, &mut data[off..])?;
                 data.extend(vals.as_bytes());
                 if vals.len() != 0 { data.push(0) };
             },
             Self::StringList(vals) => {
-                List{ num: vals.len() as u16, offset: (data.len() - off - List::size::<O>()) as u16}.to_bytes::<O>(&mut data[off..])?;
+                to_bytes!(O, List{ num: vals.len() as u16, offset: (data.len() - off - O::size::<List>()) as u16}, &mut data[off..])?;
                 let mut off_ = data.len();
-                data.extend(vec![0u8; vals.len() * List::size::<O>()]);
+                data.extend(vec![0u8; vals.len() * O::size::<List>()]);
                 for v in vals {
-                    List{ num: v.len() as u16, offset: (data.len() - off_ - List::size::<O>()) as u16}.to_bytes::<O>(&mut data[off_..])?;
+                    to_bytes!(O, List{ num: v.len() as u16, offset: (data.len() - off_ - O::size::<List>()) as u16}, &mut data[off_..])?;
                     data.extend(v.as_bytes());
                     if v.len() != 0 { data.push(0) }
                     off_ += 4;
                 }
             },
             Self::ObjectList(vals) => {
-                List{ num: vals.len() as u16, offset: (data.len() - off - List::size::<O>()) as u16}.to_bytes::<O>(&mut data[off..])?;
-                data.extend(vals.dump_bytes::<O>());
+                to_bytes!(O, List{ num: vals.len() as u16, offset: (data.len() - off - O::size::<List>()) as u16}, &mut data[off..])?;
+                data.extend(dump_bytes!(O, vals));
             },
             Self:: NodeList(vals) => {
-                List{ num: vals.len() as u16, offset: (data.len() - off - List::size::<O>()) as u16}.to_bytes::<O>(&mut data[off..])?;
-                data.extend(vals.dump_bytes::<O>());
+                to_bytes!(O, List{ num: vals.len() as u16, offset: (data.len() - off - O::size::<List>()) as u16}, &mut data[off..])?;
+                data.extend(dump_bytes!(O, vals));
             },
             Self::IntList(vals) => {
-                List{ num: vals.len() as u16, offset: (data.len() - off - List::size::<O>()) as u16}.to_bytes::<O>(&mut data[off..])?;
-                data.extend(vals.dump_bytes::<O>());
+                to_bytes!(O, List{ num: vals.len() as u16, offset: (data.len() - off - O::size::<List>()) as u16}, &mut data[off..])?;
+                data.extend(dump_bytes!(O, vals));
             },
             Self::CRCList(vals) => {
-                List{ num: vals.len() as u16, offset: (data.len() - off - List::size::<O>()) as u16}.to_bytes::<O>(&mut data[off..])?;
-                data.extend(vals.dump_bytes::<O>());
+                to_bytes!(O, List{ num: vals.len() as u16, offset: (data.len() - off - O::size::<List>()) as u16}, &mut data[off..])?;
+                data.extend(dump_bytes!(O, vals));
             },
             Self::WeightList(vals) => {
-                List{ num: vals.len() as u16, offset: (data.len() - off - List::size::<O>()) as u16}.to_bytes::<O>(&mut data[off..])?;
-                data.extend(vals.dump_bytes::<O>());
+                to_bytes!(O, List{ num: vals.len() as u16, offset: (data.len() - off - O::size::<List>()) as u16}, &mut data[off..])?;
+                data.extend(dump_bytes!(O, vals));
             },
             Self::MatrixList(vals) => {
-                List{ num: vals.len() as u16, offset: (data.len() - off - List::size::<O>()) as u16}.to_bytes::<O>(&mut data[off..])?;
-                data.extend(vals.dump_bytes::<O>());
+                to_bytes!(O, List{ num: vals.len() as u16, offset: (data.len() - off - O::size::<List>()) as u16}, &mut data[off..])?;
+                data.extend(dump_bytes!(O, vals));
             },
         }
         Ok(())
     }
 
-
-    pub fn dump_bytes<O: Version + 'static>(&self) -> Vec<u8> {
-        match self {
-            Self::CRC(val) => val.dump_bytes::<O>(),
-            Self::GUID(val) => val.dump_bytes::<O>(),
-            Self::Color(val) => val.dump_bytes::<O>(),
-            Self::Vector2(val) => val.dump_bytes::<O>(),
-            Self::Vector3(val) => val.dump_bytes::<O>(),
-            Self::Vector4(val) => val.dump_bytes::<O>(),
-            Self::Matrix4x4(val) => val.dump_bytes::<O>(),
-            Self::Float(val) => val.dump_bytes::<O>(),
-            Self::Int(val) => val.dump_bytes::<O>(),
-            Self::Bool(val) => val.dump_bytes::<O>(),
-            Self::Byte(val) => val.dump_bytes::<O>(),
-            _ => panic!("Not implemented for this type"),
-        }
-    }
-
-
-    pub fn off_size<O: Version + 'static>(&self) -> usize {
+    pub fn off_size<O: Version>(&self) -> usize {
         match self {
             Self::String(vals) => {
                 if vals.len() != 0 { vals.len() + 1 } else { 0 }
             },
             Self::StringList(vals) => {
-                let mut s = vals.len() * List::size::<O>();
+                let mut s = vals.len() * O::size::<List>();
                 for v in vals {
                     if v.len() != 0 {
                         s += v.len() + 1;
@@ -1011,7 +1097,7 @@ impl BaseTypes {
             Self::ObjectList(vals) => {
                 vals.size::<O>()
             },
-            Self:: NodeList(vals) => {
+            Self::NodeList(vals) => {
                 vals.size::<O>()
             },
             Self::IntList(vals) => {
@@ -1030,29 +1116,6 @@ impl BaseTypes {
         }
     }
 
-    pub fn size<O: Version + 'static>(&self) -> usize {
-        match self {
-            Self::CRC(..) => u32::size::<O>(),
-            Self::GUID(..) => u32::size::<O>(),
-            Self::Color(..) => u32::size::<O>(),
-            Self::Vector2(..) => Vector2::size::<O>(),
-            Self::Vector3(..) => Vector3::size::<O>(),
-            Self::Vector4(..) => Vector4::size::<O>(),
-            Self::Matrix4x4(..) => Matrix4x4::size::<O>(),
-            Self::Float(..) => f32::size::<O>(),
-            Self::Int(..) => u32::size::<O>(),
-            Self::Bool(..) => Bool::size::<O>(),
-            Self::Byte(..) => u8::size::<O>(),
-            Self::String(..) => List::size::<O>(),
-            Self::StringList(..) => List::size::<O>(),
-            Self::ObjectList(..) => List::size::<O>(),
-            Self:: NodeList(..) => List::size::<O>(),
-            Self::IntList(..) => List::size::<O>(),
-            Self::CRCList(..) => List::size::<O>(),
-            Self::WeightList(..) => List::size::<O>(),
-            Self::MatrixList(..) => List::size::<O>(),
-        }
-    }
 
     pub fn to_json(&self) -> Value {
         match self {
@@ -1145,6 +1208,114 @@ impl BaseTypes {
     }
 }
 
+impl AsData<'_, '_> for BaseTypes {
+    type InArgs = u32;
+    type OutArgs = NoArgs;
+
+    fn from_bytes<O: Version>(data: &[u8], kind: u32) -> Result<Self> {
+        Ok(match kind {
+            Self::CRC_KEY => Self::CRC(from_bytes!(O, data)?),
+            Self::GUID_KEY => Self::GUID(from_bytes!(O, data)?),
+            Self::COLOR_KEY => Self::Color(from_bytes!(O, data)?),
+            Self::VECTOR2_KEY => Self::Vector2(from_bytes!(O, data)?),
+            Self::VECTOR3_KEY => Self::Vector3(from_bytes!(O, data)?),
+            Self::VECTOR4_KEY => Self::Vector4(from_bytes!(O, data)?),
+            Self::MATRIX4X4_KEY => Self::Matrix4x4(from_bytes!(O, data)?),
+            Self::FLOAT_KEY => Self::Float(from_bytes!(O, data)?),
+            Self::INT_KEY  => Self::Int(from_bytes!(O, data)?),
+            Self::BOOL_KEY => Self::Bool(from_bytes!(O, data)?),
+            Self::BYTE_KEY => Self::Byte(from_bytes!(O, data)?),
+            Self::STRING_KEY => {
+                let val: List = from_bytes!(O, data)?;
+                let vals = from_bytes!(O, &data[val.offset as usize + val.size::<O>()..], val.num as usize)?;
+                Self::String(String::from_utf8(vals).unwrap())
+            },
+            Self::STRINGLIST_KEY => {
+                let val: List = from_bytes!(O, data)?;
+                let vals: Vec<List> = from_bytes!(O, &data[val.offset as usize + val.size::<O>()..], val.num as usize)?;
+                let valss = vals.iter().enumerate().map(|(i, v)| { Ok(String::from_utf8(
+                    from_bytes!(O, &data[val.offset as usize + val.size::<O>() * (i + 2) + v.offset as usize..], v.num as usize)?
+                ).unwrap())}).collect::<Result<Vec<_>>>()?;
+                Self::StringList(valss)
+            },
+            Self::OBJECTLIST_KEY => {
+                let val: List = from_bytes!(O, data)?;
+                let vals = from_bytes!(O, &data[val.offset as usize + val.size::<O>()..], val.num as usize)?;
+                Self::ObjectList(vals)
+            },
+            Self::NODELIST_KEY => {
+                let val: List = from_bytes!(O, data)?;
+                let vals = from_bytes!(O, &data[val.offset as usize + val.size::<O>()..], val.num as usize)?;
+                Self::NodeList(vals)
+            },
+            Self::INTLISTS_KEY => {
+                let val: List = from_bytes!(O, data)?;
+                let vals = from_bytes!(O, &data[val.offset as usize + val.size::<O>()..], val.num as usize)?;
+                Self::IntList(vals)
+            },
+            Self::CRCLIST_KEY => {
+                let val: List = from_bytes!(O, data)?;
+                let vals = from_bytes!(O, &data[val.offset as usize + val.size::<O>()..], val.num as usize)?;
+                Self::CRCList(vals)
+            },
+            Self::WEIGHTLIST_KEY => {
+                let val: List = from_bytes!(O, data)?;
+                let vals = from_bytes!(O, &data[val.offset as usize + val.size::<O>()..], val.num as usize)?;
+                Self::WeightList(vals)
+            },
+            Self::MATRIXLIST_KEY => {
+                let val: List = from_bytes!(O, data)?;
+                let vals = from_bytes!(O, &data[val.offset as usize + val.size::<O>()..], val.num as usize)?;
+                Self::MatrixList(vals)
+            },
+            _ => panic!("Unkown Type {:?}", kind)
+        })
+    }
+
+    fn dump_bytes<O: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
+        match self {
+            Self::CRC(val) => dump_bytes!(O, val),
+            Self::GUID(val) => dump_bytes!(O, val),
+            Self::Color(val) => dump_bytes!(O, val),
+            Self::Vector2(val) => dump_bytes!(O, val),
+            Self::Vector3(val) => dump_bytes!(O, val),
+            Self::Vector4(val) => dump_bytes!(O, val),
+            Self::Matrix4x4(val) => dump_bytes!(O, val),
+            Self::Float(val) => dump_bytes!(O, val),
+            Self::Int(val) => dump_bytes!(O, val),
+            Self::Bool(val) => dump_bytes!(O, val),
+            Self::Byte(val) => dump_bytes!(O, val),
+            _ => panic!("Not implemented for this type"),
+        }
+    }
+
+    fn size<O: Version>(&self) -> usize {
+        match self {
+            Self::CRC(..) => O::size::<u32>(),
+            Self::GUID(..) => O::size::<u32>(),
+            Self::Color(..) => O::size::<u32>(),
+            Self::Vector2(..) => O::size::<Vector2>(),
+            Self::Vector3(..) => O::size::<Vector3>(),
+            Self::Vector4(..) => O::size::<Vector4>(),
+            Self::Matrix4x4(..) => O::size::<Matrix4x4>(),
+            Self::Float(..) => O::size::<f32>(),
+            Self::Int(..) => O::size::<u32>(),
+            Self::Bool(..) => O::size::<Bool>(),
+            Self::Byte(..) => O::size::<u8>(),
+            Self::String(..) => O::size::<List>(),
+            Self::StringList(..) => O::size::<List>(),
+            Self::ObjectList(..) => O::size::<List>(),
+            Self::NodeList(..) => O::size::<List>(),
+            Self::IntList(..) => O::size::<List>(),
+            Self::CRCList(..) => O::size::<List>(),
+            Self::WeightList(..) => O::size::<List>(),
+            Self::MatrixList(..) => O::size::<List>(),
+        }
+    }
+
+
+}
+
 #[basicpymethods]
 #[pyclass(module="types", get_all, set_all)]
 #[derive(Debug, Clone, Serialize, Deserialize, PyMethods)]
@@ -1152,6 +1323,7 @@ pub enum SubBlock {
     LangStrings(LangStrings),
     Data(Data),
     Spray(Spray),
+    PFields(PFields),
     Crowd(Crowd),
     GameObjs(GameObjs),
     AtlasUV(AtlasUV),
@@ -1159,61 +1331,68 @@ pub enum SubBlock {
     SSA(SSA),
 }
 
-impl SubBlock {
-    pub fn from_data<O: Version + 'static>(data: &[u8], info: &SubBlocksBlockHeader, lua: &LuaCompiler) -> Result<Self> {
-        Ok(match info.key.key() {
-            LangStrings::KEY_POLISH | LangStrings::KEY_GERMAN | LangStrings::KEY_FRENCH | LangStrings::KEY_SPANISH | LangStrings::KEY_RUSSIAN | LangStrings::KEY_SWEDISH | LangStrings::KEY_ENGLISH | LangStrings::KEY_ITALIAN | LangStrings::KEY_NORWEGIAN => 
-                SubBlock::LangStrings(LangStrings::from_data::<O>(data, info.offset as usize, info.size as usize)?),
-            Data::KEY_PFIELDS => SubBlock::Data(Data::from_data(data, info.offset as usize, info.size as usize)),
-            Spray::KEY => SubBlock::Spray(Spray::from_data::<O>(data, info.offset as usize, info.size as usize)?),
-            Crowd::KEY => SubBlock::Crowd(Crowd::from_data::<O>(data, info.offset as usize, info.size as usize)?),
-            GameObjs::KEY => SubBlock::GameObjs(GameObjs::from_data::<O>(data, info.offset as usize, info.size as usize, -1)?),
-            AtlasUV::KEY1 | AtlasUV::KEY2 => SubBlock::AtlasUV(AtlasUV::from_data::<O>(data, info.offset as usize, info.size as usize)?),
-            _ => match info.key.str() {
-                Some(x) if x.ends_with(".lua") => SubBlock::Lua(Lua::from_data(data, info.offset as usize, info.size as usize, lua, x.to_string())?),
-                Some(x) if x.ends_with(".ssa") => SubBlock::SSA(SSA::from_data::<O>(data, info.offset as usize, info.size as usize)?),
+impl AsData<'_, '_> for SubBlock {
+    type InArgs = (Crc, usize);
+    type OutArgs = NoArgs;
+
+    fn from_bytes<V: Version>(data: &[u8], (key, size): Self::InArgs) -> Result<Self> {
+        Ok(match key.key() {
+            LangStrings::KEY_POLISH | LangStrings::KEY_GERMAN | LangStrings::KEY_FRENCH | LangStrings::KEY_SPANISH | LangStrings::KEY_RUSSIAN | LangStrings::KEY_SWEDISH | LangStrings::KEY_ENGLISH | LangStrings::KEY_ITALIAN | LangStrings::KEY_NORWEGIAN => SubBlock::LangStrings(from_bytes!(V, LangStrings, data, size)?),
+            Spray::KEY => SubBlock::Spray(from_bytes!(V, Spray, data)?),
+            Crowd::KEY => SubBlock::Crowd(from_bytes!(V, Crowd, data)?),
+            PFields::KEY => SubBlock::PFields(from_bytes!(V, PFields, data, size)?),
+            GameObjs::KEY => SubBlock::GameObjs(from_bytes!(V, GameObjs, data, -1)?),
+            AtlasUV::KEY1 | AtlasUV::KEY2 => SubBlock::AtlasUV(from_bytes!(V, AtlasUV, data, size)?),
+            _ => match key.str() {
+                Some(x) if x.ends_with(".lua") => SubBlock::Lua(from_bytes!(V, Lua, data, size, x.to_string())?),
+                Some(x) if x.ends_with(".ssa") => SubBlock::SSA(from_bytes!(V, SSA, data, size)?),
                 Some(x) if x.ends_with(".csv") || x.ends_with(".txt") || x.ends_with(".dat") => 
-                    SubBlock::Data(Data::from_data(data, info.offset as usize, info.size as usize)),
+                    SubBlock::Data(from_bytes!(V, Data, data, size)?),
                 _ => {
-                    warn!("Unknown block type {:?}", info.key);
-                    SubBlock::Data(Data::from_data(data, info.offset as usize, info.size as usize))
+                    warn!("Unknown block type {:?}", key);
+                    SubBlock::Data(from_bytes!(V, Data, data, size)?)
                 } 
             }
         })
     }
 
-    pub fn dump<O: Version + 'static>(&self, lua: &LuaCompiler) -> Result<Vec<u8>> {
-        Ok(match self {
-            SubBlock::LangStrings(val) => val.dump::<O>(),
-            SubBlock::Data(val) => val.dump(),
-            SubBlock::Spray(val) => val.dump::<O>()?,
-            SubBlock::Crowd(val) => val.dump::<O>()?,
-            SubBlock::GameObjs(val) => val.dump::<O>()?,
-            SubBlock::AtlasUV(val) => val.dump::<O>(),
-            SubBlock::Lua(val) => val.dump(lua),
-            SubBlock::SSA(val) => val.dump::<O>()?,
-        })
-    }
-
-    pub fn size<O: Version + 'static>(&self) -> usize {
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
         match self {
-            SubBlock::LangStrings(val) => val.size(),
-            SubBlock::Data(val) => val.data.len(),
-            SubBlock::Spray(val) => val.size::<O>(),
-            SubBlock::Crowd(val) => val.size::<O>(),
-            SubBlock::GameObjs(val) => val.size::<O>(),
-            SubBlock::AtlasUV(val) => val.vals.size::<O>(),
-            SubBlock::Lua(val) => val.data.len(),
-            SubBlock::SSA(val) => val.size(),
+            SubBlock::LangStrings(val) => dump_bytes!(V, val),
+            SubBlock::Data(val) => dump_bytes!(V, val),
+            SubBlock::Spray(val) => dump_bytes!(V, val),
+            SubBlock::Crowd(val) => dump_bytes!(V, val),
+            SubBlock::PFields(val) => dump_bytes!(V, val),
+            SubBlock::GameObjs(val) => dump_bytes!(V, val),
+            SubBlock::AtlasUV(val) => dump_bytes!(V, val),
+            SubBlock::Lua(val) => dump_bytes!(V, val),
+            SubBlock::SSA(val) => dump_bytes!(V, val),
         }
     }
 
+    fn size<V: Version>(&self) -> usize {
+        match self {
+            SubBlock::LangStrings(val) => val.size::<V>(),
+            SubBlock::Data(val) => val.size::<V>(),
+            SubBlock::Spray(val) => val.size::<V>(),
+            SubBlock::Crowd(val) => val.size::<V>(),
+            SubBlock::PFields(val) => val.size::<V>(),
+            SubBlock::GameObjs(val) => val.size::<V>(),
+            SubBlock::AtlasUV(val) => val.size::<V>(),
+            SubBlock::Lua(val) => val.size::<V>(),
+            SubBlock::SSA(val) => val.size::<V>(),
+        }
+    }
+}
+
+impl SubBlock {
     pub fn to_file(&self, writer: Writer, keys: &StringKeys) -> Result<()> {
         match self {
             SubBlock::LangStrings(val) => val.to_file(writer, keys),
             SubBlock::Data(val) => val.to_file(writer),
             SubBlock::Spray(val) => val.to_file(writer),
             SubBlock::Crowd(val) => val.to_file(writer),
+            SubBlock::PFields(val) => val.to_file(writer),
             SubBlock::GameObjs(val) => val.to_file(writer),
             SubBlock::AtlasUV(val) => val.to_file(writer),
             SubBlock::Lua(val) => val.to_file(writer),
@@ -1221,24 +1400,24 @@ impl SubBlock {
         }
     }
 
-    pub fn from_file(reader: Reader, info: &SubBlocksBlockHeader, lua: &LuaCompiler) -> Result<Self> {
-        Ok(match info.key.key() {
+    pub fn from_file(reader: Reader, key: &Crc) -> Result<Self> {
+        Ok(match key.key() {
             LangStrings::KEY_POLISH | LangStrings::KEY_GERMAN | LangStrings::KEY_FRENCH | LangStrings::KEY_SPANISH | LangStrings::KEY_RUSSIAN | LangStrings::KEY_SWEDISH | LangStrings::KEY_ENGLISH | LangStrings::KEY_ITALIAN | LangStrings::KEY_NORWEGIAN => 
                 SubBlock::LangStrings(LangStrings::from_file(reader)?),
-            Data::KEY_PFIELDS => SubBlock::Data(Data::from_file(reader)?),
             Spray::KEY => SubBlock::Spray(Spray::from_file(reader)?),
             Crowd::KEY => SubBlock::Crowd(Crowd::from_file(reader)?),
+            PFields::KEY => SubBlock::PFields(PFields::from_file(reader)?),
             GameObjs::KEY => SubBlock::GameObjs(GameObjs::from_file(reader.with_file_name("level.json"))?),
             AtlasUV::KEY1 | AtlasUV::KEY2 => SubBlock::AtlasUV(AtlasUV::from_file(reader)?),
-            _ => match info.key.str() {
-                Some(x) if x.ends_with(".lua") => SubBlock::Lua(Lua::from_file(reader, lua)?),
+            _ => match key.str() {
+                Some(x) if x.ends_with(".lua") => SubBlock::Lua(Lua::from_file(reader)?),
                 Some(x) if x.ends_with(".ssa") => SubBlock::SSA(SSA::from_file(reader)?),
                 Some(x) if x.ends_with(".csv") || x.ends_with(".txt") || x.ends_with(".dat") => 
                     SubBlock::Data(Data::from_file(reader)?),
                 _ =>  {
-                    warn!("Unknown block type {:?}", info.key);
+                    warn!("Unknown block type {:?}", key);
                     SubBlock::Data(Data::from_file(reader)?)
-                }    
+                } 
             }
         })
     }
@@ -1263,91 +1442,124 @@ pub struct SubBlocksBlockHeader {
     pub size: u32,
 }
 
-#[basicpymethods]
-#[pyclass(module="types", get_all, set_all)]
-#[derive(Default, Debug, Clone, Serialize, Deserialize, PyMethods)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct SubBlocks {
-    #[serde(skip)]
-    pub header: SubBlocksHeader,
-    pub block_headers: Vec<SubBlocksBlockHeader>,
-    #[serde(skip)]
-    pub blocks: Vec<SubBlock>,
+    pub blocks: IndexMap<Crc, SubBlock>,
 }
 
-impl SubBlocks {
-    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize, lua: &LuaCompiler, prog: Option<&ProgressBar>) -> Result<Self> {
-        let header: SubBlocksHeader = OrderedData::from_bytes::<O>(&data[offset..])?;
-        prog.map(|x| x.set_length(header.block_num as u64));
-        let block_headers: Vec<SubBlocksBlockHeader> = OrderedDataVec::from_bytes::<O>(&data[offset+SubBlocksHeader::size::<O>()..], header.block_num as usize)?;
-        let blocks = block_headers.iter().map(|info| {
-            prog.map(|x| { x.inc(1); x.set_message(info.key.to_string()) });
-            SubBlock::from_data::<O>(&data[offset..], info, lua)
-        }).collect::<Result<Vec<_>>>()?;
-        prog.map(|x| x.finish());
-        
-        Ok(Self { header, block_headers, blocks })
+impl <'py> IntoPyObject<'py> for SubBlocks {
+    type Target = <IndexMap<Crc, SubBlock> as IntoPyObject<'py>>::Target;
+    type Output = <IndexMap<Crc, SubBlock> as IntoPyObject<'py>>::Output;
+    type Error = <IndexMap<Crc, SubBlock> as IntoPyObject<'py>>::Error;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        self.blocks.into_pyobject(py)
+    }
+}
+
+impl <'py> FromPyObject<'py> for SubBlocks {
+    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+        Ok(Self { blocks: IndexMap::extract_bound(ob)? })
+    }
+}
+
+
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct WrappedProgress {
+    pub inner: Option<ProgressBar>
+}
+
+impl From<Option<ProgressBar>> for WrappedProgress {
+    fn from(value: Option<ProgressBar>) -> Self {
+        Self { inner: value.clone() }
+    }
+}
+
+impl AsData<'_, '_> for SubBlocks {
+    type InArgs = WrappedProgress;
+    type OutArgs = WrappedProgress;
+    fn from_bytes<V: Version>(data: &[u8], prog: Self::InArgs) -> Result<Self> {
+        let header: SubBlocksHeader = from_bytes!(V, &data[..])?;
+        prog.inner.as_ref().map(|x| x.set_length(header.block_num as u64));
+        let block_headers: Vec<SubBlocksBlockHeader> = from_bytes!(V, &data[V::size::<SubBlocksHeader>()..], header.block_num as usize)?;
+        let blocks = block_headers.into_iter().map(|info| {
+            prog.inner.as_ref().map(|x| { x.inc(1); x.set_message(info.key.to_string()) });
+            let block = from_bytes!(V, SubBlock, &data[info.offset as usize..], info.key.clone(), info.size as usize)?;
+            Ok((info.key, block))
+        }).collect::<Result<_>>()?;
+        prog.inner.as_ref().map(|x| x.finish());
+        Ok(Self { blocks })
     }
 
-    pub fn size<O: Version + 'static>(&self) -> usize {
-        let mut s = SubBlocksHeader::size::<O>() + self.block_headers.size::<O>();
-        for block in &self.blocks {
-            s = (s + 16) & 0xFFFFFFF0;
-            s += block.size::<O>();
-        }
-        s = (s + 16) & 0xFFFFFFF0;
-        return s
-    }
-
-    pub fn dump<O: Version + 'static>(&self, lua: &LuaCompiler, prog: Option<&ProgressBar>) -> Result<Vec<u8>> {
-        prog.map(|x| x.set_length(self.header.block_num as u64));
-        let mut block_headers = self.block_headers.clone();
-        let mut offset = SubBlocksHeader::size::<O>() + block_headers.size::<O>();
+    fn dump_bytes<V: Version>(&self, prog: Self::OutArgs) -> Vec<u8> {
+        prog.inner.as_ref().map(|x| x.set_length(self.blocks.len() as u64));
+        let header = SubBlocksHeader { block_num: self.blocks.len() as u32, ..Default::default() };
+        let mut block_headers = Vec::with_capacity(self.blocks.len());
+        let mut offset = V::size::<SubBlocksHeader>() + V::size::<SubBlocksBlockHeader>() * self.blocks.len();
         let mut data = vec![];
         let off = (offset + 15) & 0xfffffff0;
         data.extend(vec![0u8; off - offset]);
         offset = off;
-        for (block, info) in zip(&self.blocks, &mut block_headers) {
-            prog.map(|x| { x.inc(1); x.set_message(info.key.to_string()) });
-            let block_data: Vec<u8> = block.dump::<O>(lua)?;
-            info.offset = offset as u32;
-            info.size = block_data.len() as u32;
+        for (key, block) in &self.blocks { 
+            prog.inner.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string()) });
+            let block_data: Vec<u8> = dump_bytes!(V, block);
+            block_headers.push(SubBlocksBlockHeader {
+                key: key.clone(),
+                offset: offset as u32,
+                size: block_data.len() as u32,
+            });
             offset += block_data.len();
             data.extend(block_data);
             let off = (offset + 16) & 0xfffffff0;
             data.extend(vec![0u8; off - offset]);
             offset = off;
         }
-        prog.map(|x| x.finish());
-        Ok(self.header.dump_bytes::<O>().into_iter().chain(block_headers.dump_bytes::<O>().into_iter()).chain(data.into_iter()).collect())
+        prog.inner.as_ref().map(|x| x.finish());
+        dump_bytes!(V, header).into_iter()
+            .chain(dump_bytes!(V, block_headers))
+            .chain(data)
+            .collect()
     }
 
+    fn size<V: Version>(&self) -> usize {
+        let mut s = V::size::<SubBlocksHeader>() + V::size::<SubBlocksBlockHeader>() * self.blocks.len();
+        for block in self.blocks.values() {
+            s = (s + 16) & 0xFFFFFFF0;
+            s += block.size::<V>();
+        }
+        s = (s + 16) & 0xFFFFFFF0;
+        return s
+    }
+}
+
+impl SubBlocks {
     pub fn to_file(&self, writer: Writer, keys: &StringKeys, prog: Option<&ProgressBar>) -> Result<()> {
-        prog.map(|x| x.set_length(self.header.block_num as u64));
-        writer.join("index.json").write(&to_vec_pretty(self)?)?;
-        for (block, info) in zip(&self.blocks, &self.block_headers) {
-            prog.map(|x| { x.inc(1); x.set_message(info.key.to_string()) });
-            block.to_file(writer.join(info.key.str().unwrap()), keys)?
+        prog.map(|x| x.set_length(self.blocks.len() as u64));
+        writer.join("index.json").write(&to_vec_pretty(&self.blocks.keys().cloned().collect::<Vec<_>>())?)?;
+        for (key, block) in &self.blocks {
+            prog.map(|x| { x.inc(1); x.set_message(key.to_string()) });
+            block.to_file(writer.join(key.str().unwrap()), keys)?
         }
         prog.map(|x| x.finish());
         Ok(())
     }
 
-    pub fn from_file(reader: Reader, lua: &LuaCompiler, prog: Option<&ProgressBar>) -> Result<Self> {
-        let mut val = from_slice::<Self>(&reader.join("index.json").read()?)?;
-        prog.map(|x| x.set_length(val.block_headers.len() as u64));
-        val.blocks = Result::from_iter(val.block_headers.iter().map(|info| {
-            prog.map(|x| { x.inc(1); x.set_message(info.key.to_string()) });
-            SubBlock::from_file(reader.join(info.key.str().unwrap()), info, lua)
-        }))?;
-        val.header.block_num = val.blocks.len() as u32;
+    pub fn from_file(reader: Reader, prog: Option<&ProgressBar>) -> Result<Self> {
+        let keys = from_slice::<Vec<Crc>>(&reader.join("index.json").read()?)?;
+        prog.map(|x| x.set_length(keys.len() as u64));
+        let blocks = keys.into_iter().map(|key| {
+            prog.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string())});
+            let block = SubBlock::from_file(reader.join(key.str().unwrap()), &key)?;
+            Ok((key, block))
+        }).collect::<Result<_>>()?;
         prog.map(|x| x.finish());
-        Ok(val)
+        Ok(Self { blocks })
     }
 }
 
-#[basicpymethods]
-#[pyclass(module="types", get_all, set_all)]
-#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
+#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct StringKeysHeader {
     pub num_a: u16,
     pub num_b: u16,
@@ -1357,9 +1569,7 @@ pub struct StringKeysHeader {
     pub z5: u32,
 }
 
-#[basicpymethods]
-#[pyclass(module="types", get_all, set_all)]
-#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
+#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct StringKeysVal {
     pub key: Crc,
     pub offset: u32,
@@ -1368,66 +1578,54 @@ pub struct StringKeysVal {
 #[basicpymethods]
 #[pyclass(module="types", get_all, set_all)]
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PyMethods)]
+#[serde(transparent)]
 pub struct StringKeys {
-    pub header: StringKeysHeader,
-    pub vals: Vec<StringKeysVal>,
-    pub pad: Vec<u32>,
+    pub vals: Vec<Crc>,
+}
+
+impl AsData<'_, '_> for StringKeys {
+    type InArgs = NoArgs;
+    type OutArgs = NoArgs;
+
+    fn from_bytes<V: Version>(data: &[u8], _args: Self::InArgs) -> Result<Self> {
+        let mut offset: usize = 0;
+        let header: StringKeysHeader = from_bytes!(V, &data[offset..])?;
+        assert!(header.num_a == header.num_b, "Seems to be true");
+        offset += V::size::<StringKeysHeader>();
+        let vals: Vec<StringKeysVal> = from_bytes!(V, &data[offset..], header.num_a as usize)?;
+        let vals = vals.into_iter().map(|x| x.key).collect(); 
+        Ok(Self { vals })
+    }
+
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
+        let header = StringKeysHeader {
+            num_a: self.vals.len() as u16,
+            num_b: self.vals.len() as u16,
+            ..Default::default()
+        };
+        let mut off = V::size::<StringKeysHeader>() + self.vals.len() * V::size::<StringKeysVal>();
+        let vals = self.vals.iter().map(|key| {
+            let val = StringKeysVal { key: key.clone(), offset: off as u32};
+            off += 4;
+            val
+        }).collect::<Vec<_>>();
+        
+        dump_bytes!(V, header).into_iter().chain(dump_bytes!(V, vals).into_iter()).chain(std::iter::repeat_n(0u8, self.vals.len() * V::size::<u32>())).collect()
+    }
+
+    fn size<V: Version>(&self) -> usize {
+        V::size::<StringKeysHeader>() + self.vals.size::<V>() * 3
+    }
 }
 
 impl StringKeys {
-    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize) -> Result<Self> {
-        let mut offset: usize = offset;
-        let header: StringKeysHeader = OrderedData::from_bytes::<O>(&data[offset..])?;
-        assert!(header.num_a == header.num_b, "Seems to be true");
-        offset += StringKeysHeader::size::<O>();
-        let vals: Vec<StringKeysVal> = OrderedDataVec::from_bytes::<O>(&data[offset..], header.num_a as usize)?;
-        offset += vals.size::<O>();
-        let pad = OrderedDataVec::from_bytes::<O>(&data[offset..], header.num_a as usize)?;
-        Ok(Self { header, vals, pad })
-    }
-
-    pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], offset: usize) -> Result<()> {
-        let mut offset = offset;
-        self.header.to_bytes::<O>(&mut data[offset..])?;
-        offset += StringKeysHeader::size::<O>();
-        self.vals.to_bytes::<O>(&mut data[offset..])?;
-        offset += self.vals.size::<O>();
-        self.pad.to_bytes::<O>(&mut data[offset..])?;
-        Ok(())
-    }
-
-    pub fn size<O: Version + 'static>(&self) -> usize {
-        StringKeysHeader::size::<O>() + self.vals.size::<O>() + self.pad.size::<O>()
-    }
-
-    pub fn dump<O: Version + 'static>(&self) -> Vec<u8> {
-        self.header.dump_bytes::<O>().into_iter().chain(self.vals.dump_bytes::<O>().into_iter()).chain(self.pad.dump_bytes::<O>().into_iter()).collect()
-    }
-
     pub fn to_file(&self, writer: Writer) -> Result<()> {
-        writer.with_extension("json").write(&to_vec_pretty(&json!(self.vals.iter().map(|x| x.key.to_string()).collect::<Vec<_>>()))?)?;
+        writer.with_extension("json").write(&to_vec_pretty(&json!(self))?)?;
         Ok(())
     }
 
     pub fn from_file(reader: Reader) -> Result<Self> {
-        let vals = from_slice::<Value>(&reader.with_extension("json").read()?)?;
-        let keys = vals.as_array().unwrap().iter().map(|val| Crc::from_string(val.as_str().unwrap())).collect::<Vec<_>>();
-        let header = StringKeysHeader {
-            num_a: keys.len() as u16,
-            num_b: keys.len() as u16,
-            z2: 0,
-            z3: 0,
-            z4: 0,
-            z5: 0,
-        };
-        let pad = vec![0u32; keys.len()];
-        let mut off = StringKeysHeader::size::<PC>() + keys.len() * StringKeysVal::size::<PC>();
-        let vals = keys.into_iter().map(|key| {
-            let val = StringKeysVal { key, offset: off as u32};
-            off += 4;
-            val
-        }).collect::<Vec<_>>();
-        Ok(Self { header, vals, pad })
+        Ok(from_slice::<Self>(&reader.with_extension("json").read()?)?)
     }
 }
 
@@ -1436,9 +1634,13 @@ pub struct LangStrings {
     pub strings: Vec<String>,
 }
 
-impl IntoPy<PyObject> for LangStrings {
-    fn into_py(self, py: Python<'_>) -> PyObject {
-        self.strings.into_py(py)
+impl <'py> IntoPyObject<'py> for LangStrings {
+    type Target = <Vec<String> as IntoPyObject<'py>>::Target;
+    type Output = <Vec<String> as IntoPyObject<'py>>::Output;
+    type Error = <Vec<String> as IntoPyObject<'py>>::Error;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        self.strings.into_pyobject(py)
     }
 }
 
@@ -1446,6 +1648,33 @@ impl <'py> FromPyObject<'py> for LangStrings {
     fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
         Ok(Self { strings: Vec::extract_bound(ob)? })
     }
+}
+
+impl AsData<'_, '_> for LangStrings {
+    type InArgs = usize;
+    type OutArgs = NoArgs;
+    fn from_bytes<V: Version>(data: &[u8], size: Self::InArgs) -> Result<Self> {
+        let mut val = Self::default();
+        let mut offset = 0;
+        while offset < size {
+            let start = offset;
+            while data[offset] != 0 || data[offset+1] != 0 {
+                offset += 2;
+            }
+            let string: Vec<u16> = from_bytes!(V, &data[start..offset], (offset-start)/2)?;
+            val.strings.push(String::from_utf16(string.as_slice()).unwrap());
+            offset += 2;
+        }
+        Ok(val)
+    }
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
+        let vals = self.strings.iter().flat_map(|x| x.encode_utf16().chain([0u16])).collect::<Vec<_>>();
+        dump_bytes!(V, vals)
+    }
+    fn size<V: Version>(&self) -> usize {
+        self.strings.iter().map(|x| x.encode_utf16().map(|_| 2).sum::<usize>() + 2).sum::<usize>()
+    }
+
 }
 
 impl LangStrings {
@@ -1459,32 +1688,8 @@ impl LangStrings {
     pub const KEY_ITALIAN: u32 = hash_string("Italian".as_bytes(), None);
     pub const KEY_NORWEGIAN: u32 = hash_string("Norwegian".as_bytes(), None);
 
-    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize, size: usize) -> Result<Self> {
-        let mut val = Self::default();
-        let mut offset_ = offset;
-        while offset_ < size + offset {
-            let start = offset_;
-            while data[offset_] != 0 || data[offset_+1] != 0 {
-                offset_ += 2;
-            }
-            let string: Vec<u16> = OrderedDataVec::from_bytes::<O>(&data[start..offset_], (offset_-start)/2)?;
-            val.strings.push(String::from_utf16(string.as_slice()).unwrap());
-            offset_ += 2;
-        }
-        Ok(val)
-    }
-
-    pub fn dump<O: Version + 'static>(&self) -> Vec<u8> {
-        let vals = self.strings.iter().flat_map(|x| x.encode_utf16().chain([0u16])).collect::<Vec<_>>();
-        vals.dump_bytes::<O>()
-    }
-
-    pub fn size(&self) -> usize {
-        self.strings.iter().map(|x| x.encode_utf16().map(|_| 2).sum::<usize>() + 2).sum::<usize>()
-    }
-
     pub fn to_file(&self, writer: Writer, keys: &StringKeys) -> Result<()> {
-        let vals = zip(&keys.vals, &self.strings).map(|(key, string)| (key.key.to_string(), json!(string))).collect::<Map<_,_>>();
+        let vals = zip(&keys.vals, &self.strings).map(|(key, string)| (key.to_string(), json!(string))).collect::<Map<_,_>>();
         writer.with_extension("json").write(&to_vec_pretty(&vals)?)?;
         Ok(())
     }
@@ -1515,34 +1720,40 @@ pub struct SSA {
     pub strings: Vec<String>,
 }
 
-impl SSA {
-    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize, size: usize) -> Result<Self> {
-        let n = u32::from_bytes::<O>(&data[offset..])? as usize;
-        let vals: Vec<SSAVal> = OrderedDataVec::from_bytes::<O>(&data[offset + 4..], n as usize)?;
+impl AsData<'_, '_> for SSA {
+    type InArgs = usize;
+    type OutArgs = NoArgs;
+    fn from_bytes<O: Version>(data: &[u8], size: Self::InArgs) -> Result<Self> {
+        let n = from_bytes!(O, u32, &data[..])? as usize;
+        let vals: Vec<SSAVal> = from_bytes!(O, &data[4..], n as usize)?;
         let offs = vals.iter().map(|x| x.off as usize).chain([size]).collect::<Vec<_>>();
         let strings = (0..n).map(|i| {
-            let s: Vec<u16> = OrderedDataVec::from_bytes::<O>(&data[offset + offs[i]..], (offs[i+1] - offs[i])/2)?;
+            let s: Vec<u16> = from_bytes!(O, &data[offs[i]..], (offs[i+1] - offs[i])/2)?;
             Ok(String::from_utf16(s.as_slice()).unwrap())
         }).collect::<Result<Vec<_>>>()?;
         Ok(Self { vals, strings })
     }
 
-    pub fn dump<O: Version + 'static>(&self) -> Result<Vec<u8>> {
-        let mut data = vec![0u8; 4 + (SSAVal::size::<O>() * self.vals.len())];
-        (self.vals.len() as u32).to_bytes::<O>(&mut data)?;
+    fn dump_bytes<O: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
+        let mut data = dump_bytes!(O, (self.vals.len() as u32));
+        let mut string_data = vec![];
         let mut vals: Vec<SSAVal> = self.vals.clone();
+        let off = 4 + (O::size::<SSAVal>() * self.vals.len()) as u32;
         for (string, val) in zip(&self.strings, &mut vals) {
-            val.off = data.len() as u32;
-            data.extend(string.encode_utf16().collect::<Vec<_>>().dump_bytes::<O>());
+            val.off = off + string_data.len() as u32;
+            string_data.extend(dump_bytes!(O, string.encode_utf16().collect::<Vec<_>>()));
         }
-        vals.to_bytes::<O>(&mut data[4..])?;
-        Ok(data)
+        data.extend(dump_bytes!(O, vals));
+        data.extend(string_data);
+        data 
     }
 
-    pub fn size(&self) -> usize {
-        self.strings.iter().map(|x| x.encode_utf16().map(|_| 2).sum::<usize>()).sum::<usize>() + 4 + (SSAVal::size::<PC>() * self.vals.len())
+    fn size<V: Version>(&self) -> usize {
+        self.strings.iter().map(|x| x.encode_utf16().map(|_| 2).sum::<usize>()).sum::<usize>() + 4 + (PC::size::<SSAVal>() * self.vals.len())
     }
+}
 
+impl SSA {
     pub fn to_file(&self, writer: Writer) -> Result<()> {
         writer.with_extension("json").write(&to_vec_pretty(self)?)?;
         Ok(())
@@ -1553,48 +1764,30 @@ impl SSA {
     }
 }
 
-#[pyclass(module="types", set_all)]
+#[basicpymethods]
+#[pyclass(module="types", set_all, get_all)]
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PyMethods)]
 pub struct Lua {
-    #[pyo3(get)]
     pub name: String,
     pub data: Vec<u8>,
-    #[pyo3(get)]
     pub code: String,
 }
 
-#[basicpymethods]
-#[pymethods]
-impl Lua {
-    #[getter]
-    fn get_data(&self) -> std::borrow::Cow<[u8]> {
-        std::borrow::Cow::from(&self.data[..])
-    }
-}
-
-impl Lua {
-    pub fn from_data(data: &[u8], offset: usize, size: usize, lua: &LuaCompiler, name: String) -> Result<Self> {
-        let data = data[offset..offset+size].to_vec();
+impl AsData<'_, '_> for Lua {
+    type InArgs = (usize, String);
+    type OutArgs = NoArgs;
+    fn from_bytes<V: Version>(data: &[u8], (size, name): Self::InArgs) -> Result<Self> {
+        let data = data[..size].to_vec();
         let code = if *DECOMP_LUA.lock().unwrap() {
-            lua.decomp(data.as_slice(), UNLUAC.lock().unwrap().clone())?
+            lua::decomp(data.as_slice(), UNLUAC.lock().unwrap().clone())?
         } else {
             String::new()
         };
         Ok(Self { code, data, name })
     }
-
-    pub fn conv(&self, fmt: &str, lua: &LuaCompiler) -> Result<Vec<u8>> {
-        let val = &self.data;
-        Ok(if (val.len() > 3) && (val[0] == 0x1bu8) && (val[1] == 76) && (val[2] == 117) && (val[3] == 97) {
-            lua.convert(&val, fmt)?
-        } else {
-            val.clone()
-        })
-    }
-
-    pub fn dump(&self, lua: &LuaCompiler) -> Vec<u8> {
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
         if *DECOMP_LUA.lock().unwrap() {
-            match lua.compile(&self.code, &self.name) {
+            match lua::compile(&self.code, &self.name) {
                 Ok(val) => val,
                 Err(e) => {
                     println!("{:?}", self.name);
@@ -1603,10 +1796,24 @@ impl Lua {
                 }
             }
         } else if *RECOMP_LUA.lock().unwrap() {
-            lua.convert(&self.data, "L4404").unwrap()
+            lua::convert(&self.data, "L4404").unwrap()
         } else {
             self.data.clone()
         }
+    }
+    fn size<V: Version>(&self) -> usize {
+        self.data.len()
+    }
+}
+
+impl Lua {
+    pub fn conv(&self, fmt: &str) -> Result<Vec<u8>> {
+        let val = &self.data;
+        Ok(if (val.len() > 3) && (val[0] == 0x1bu8) && (val[1] == 76) && (val[2] == 117) && (val[3] == 97) {
+            lua::convert(&val, fmt)?
+        } else {
+            val.clone()
+        })
     }
 
     pub fn to_file(&self, writer: Writer) -> Result<()> {
@@ -1618,23 +1825,23 @@ impl Lua {
         Ok(())
     }
 
-    pub fn from_file(reader: Reader, lua: &LuaCompiler) -> Result<Self> {
+    pub fn from_file(reader: Reader) -> Result<Self> {
         let name: String = reader.path().file_name().unwrap().to_str().unwrap().into();
         let mut val = reader.read()?;
         let (data, code) = if (val.len() > 3) && (val[0] == 0x1bu8) && (val[1] == 76) && (val[2] == 117) && (val[3] == 97) {
             let code = if *DECOMP_LUA.lock().unwrap() {
-                lua.decomp(&val, UNLUAC.lock().unwrap().clone())?
+                lua::decomp(&val, UNLUAC.lock().unwrap().clone())?
             } else {
                 String::new()
             };
             if *RECOMP_LUA.lock().unwrap() {
-                val = lua.convert(&val, "L4404")?;
+                val = lua::convert(&val, "L4404")?;
             }
             (val, code)
         } else {
             let code = String::from_utf8(val.clone())?;
             let data = if *RECOMP_LUA.lock().unwrap() {
-                lua.compile(&code, &name)?
+                lua::compile(&code, &name)?
             } else {
                 val
             };
@@ -1694,7 +1901,24 @@ pub struct GameObjsObjHeader {
 pub struct GameObj {
     pub layer: u32,
     pub key: Crc,
-    pub fields: Vec<BaseTypes>
+    pub fields: IndexMap<Crc, BaseTypes>
+}
+
+impl AsData<'_, '_> for GameObj {
+    type InArgs = NoArgs;
+    type OutArgs = NoArgs;
+
+    fn from_bytes<V: Version>(_data: &[u8], _args: Self::InArgs) -> Result<Self> {
+        panic!("not implemented")
+    }
+
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
+        panic!("not implemented")
+    }
+
+    fn size<V: Version>(&self) -> usize {
+        panic!("not implemented")
+    }
 }
 
 #[basicpymethods]
@@ -1703,51 +1927,121 @@ pub struct GameObj {
 pub struct GameObjs {
     pub gamemodemask: i32,
     pub types: IndexMap<Crc, Vec<GameObjsTypeField>>,
-    pub objs: Vec<GameObj>,
+    pub objs: IndexMap<u32, GameObj>,
+}
+
+impl AsData<'_, '_> for GameObjs {
+    type InArgs = i32;
+    type OutArgs = NoArgs;
+
+    fn from_bytes<V: Version>(data: &[u8], gamemodemask: Self::InArgs) -> Result<Self> {
+        let header: GameObjsHeader = from_bytes!(V, &data[..])?;
+        if header.const_ != 1296123652 {
+            log::error!("Invalid gameobj block");
+        }
+        let mut types = IndexMap::with_capacity(header.types_num as usize);
+        let mut type_orders = HashMap::with_capacity(header.types_num as usize);
+        let mut objs = IndexMap::with_capacity(header.obj_num as usize);
+        let mut offset = header.types_offset as usize;
+        for _ in 0..header.types_num {
+            let info: GameObjsTypeHeader = from_bytes!(V, &data[offset..])?;
+            offset += info.size::<V>();
+            let fields: Vec<GameObjsTypeField> = from_bytes!(V, &data[offset..], info.size as usize)?;
+            offset += fields.size::<V>();
+            let mut order: Vec<_> = (0..fields.len()).collect();
+            order.sort_by_key(|x| fields[*x].offset);
+            type_orders.insert(info.key.clone(), order);
+            types.insert(info.key, fields);
+        }
+        offset = header.obj_offset as usize;
+        for _ in 0..header.obj_num {
+            //println!("offset {:?}", offset);
+            let info: GameObjsObjHeader = from_bytes!(V, &data[offset..])?;
+            offset += info.size::<V>();
+            let ts = types.get(&info.key).unwrap();
+            let order = type_orders.get(&info.key).unwrap();
+            let mut fields = IndexMap::with_capacity(ts.len());
+            for t in order.iter().map(|i| &ts[*i]) {
+                let val = BaseTypes::from_data::<V>(&data[offset + t.offset as usize..], t.kind.key())?;
+                //println!("val {:?}", val);
+                fields.insert(t.key.clone(), val);
+            }
+            offset += info.size as usize;
+            let guid = if let Some(BaseTypes::GUID(val)) = fields.get(&Crc::Key(3482846511)) {
+                Some(*val)
+            } else { None }.unwrap();
+            objs.insert(guid, GameObj { layer: info.layer, key: info.key, fields });
+        }
+        Ok(Self { gamemodemask, types, objs })
+    }
+    
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
+        let mut type_data = vec![];
+        for (key, fields) in &self.types {
+            type_data.extend(dump_bytes!(V, GameObjsTypeHeader { key: key.clone(), size: fields.len() as u32, fields: 0 }));
+            type_data.extend(dump_bytes!(V, fields));
+        }
+        type_data.extend(vec![0u8; ((type_data.len() + 15) & 0xFFFFFFF0) - type_data.len()]);
+        let mut data = dump_bytes!(V, GameObjsHeader {
+            const_: 1296123652,
+            types_num: self.types.len() as u32,
+            types_offset: V::size::<GameObjsHeader>() as u32,
+            obj_num: self.objs.len() as u32,
+            obj_offset: (type_data.len() + V::size::<GameObjsHeader>()) as u32,
+            z5: 0,
+            z6: 0,
+            z7: 0
+        });
+        data.extend(type_data);
+        
+        for obj in self.objs.values() {
+            let ts = self.types.get(&obj.key).unwrap();
+            let obj_size = ts.iter().map(|t| {
+                let f = obj.fields.get(&t.key).unwrap();
+                t.offset as usize + f.size::<V>()
+            }).fold(0, usize::max);
+            let mut obj_vals = vec![0u8; (obj_size + 15) & 0xFFFFFFF0];
+            for t in ts {
+                let val = obj.fields.get(&t.key).unwrap();
+                val.dump::<V>(&mut obj_vals, t.offset as usize).unwrap();
+                if t.kind.key() == BaseTypes::INTLISTS_KEY {
+                    // println!("{}", vals.len());
+                    obj_vals.extend(vec![0u8; ((obj_vals.len() + 15) & 0xFFFFFFF0) - obj_vals.len()]);
+                }
+            }
+            obj_vals.extend(vec![0u8; ((obj_vals.len() + 15) & 0xFFFFFFF0) - obj_vals.len()]);
+            data.extend(dump_bytes!(V, GameObjsObjHeader {
+                layer: obj.layer,
+                key: obj.key.clone(),
+                size: obj_vals.len() as u16,
+                z3: 0,
+                z4: 0
+            }));
+            data.extend(obj_vals);
+        }
+        data
+    }
+
+    fn size<V: Version>(&self) -> usize {
+        let size = ((self.types.len() * V::size::<GameObjsTypeHeader>()) + (self.types.values().map(|x| x.len() as usize).sum::<usize>() * V::size::<GameObjsTypeField>()) + V::size::<GameObjsHeader>() + 15) & 0xFFFFFFF0;
+        size + self.obj_headers::<V>().iter().map(|x| x.size as usize).sum::<usize>() + self.objs.len() * V::size::<GameObjsObjHeader>() 
+    }
 }
 
 impl GameObjs {
     pub const KEY: u32 = hash_string("Level".as_bytes(), None);
-    pub fn from_data<O: Version + 'static>(data: &[u8], offset_: usize, _size: usize, gamemodemask: i32) -> Result<Self> {
-        let header: GameObjsHeader = OrderedData::from_bytes::<O>(&data[offset_..])?;
-        let mut types = IndexMap::with_capacity(header.types_num as usize);
-        let mut objs = Vec::with_capacity(header.obj_num as usize);
-        let mut offset = offset_ + header.types_offset as usize;
-        for _ in 0..header.types_num {
-            let info: GameObjsTypeHeader = OrderedData::from_bytes::<O>(&data[offset..])?;
-            offset += GameObjsTypeHeader::size::<O>();
-            let fields: Vec<GameObjsTypeField> = OrderedDataVec::from_bytes::<O>(&data[offset..], info.size as usize)?;
-            offset += fields.size::<O>();
-            types.insert(info.key, fields);
-        }
-        offset = offset_ + header.obj_offset as usize;
-        for _ in 0..header.obj_num {
-            let info: GameObjsObjHeader = OrderedData::from_bytes::<O>(&data[offset..])?;
-            offset += GameObjsObjHeader::size::<O>();
-            let ts = types.get(&info.key).unwrap();
-            let mut fields = Vec::with_capacity(ts.len());
-            for t in ts.iter() {
-                let val = BaseTypes::from_data::<O>(&data[offset + t.offset as usize..], t.kind.key())?;
-                fields.push(val)
-            }
-            offset += info.size as usize;
-            objs.push(GameObj { layer: info.layer, key: info.key, fields });
-        }
-        Ok(Self { gamemodemask, types, objs })
-    }
 
-    pub fn size<O: Version + 'static>(&self) -> usize {
-        let size = ((self.types.len() * GameObjsTypeHeader::size::<O>()) + (self.types.values().map(|x| x.len() as usize).sum::<usize>() * GameObjsTypeField::size::<O>()) + GameObjsHeader::size::<O>() + 15) & 0xFFFFFFF0;
-        size + self.obj_headers().iter().map(|x| x.size as usize).sum::<usize>() + self.objs.len() * GameObjsObjHeader::size::<O>() 
-    }
-
-    pub fn obj_headers(&self) -> Vec<GameObjsObjHeader> {
+    pub fn obj_headers<V: Version>(&self) -> Vec<GameObjsObjHeader> {
         let mut headers = Vec::with_capacity(self.objs.len());
-        for obj in &self.objs {
+        for obj in self.objs.values() {
             let ts = self.types.get(&obj.key).unwrap();
-            let mut off = zip(&obj.fields, ts).map(|(t, f)| f.offset as usize + t.size::<PC>()).fold(0, usize::max);
-            for (val, t) in zip(&obj.fields, ts) {
-                off += val.off_size::<PC>();
+            let mut off = ts.iter().map(|t| {
+                let f = obj.fields.get(&t.key).unwrap();
+                t.offset as usize + f.size::<V>()
+            }).fold(0, usize::max);
+            for t in ts {
+                let val = obj.fields.get(&t.key).unwrap();
+                off += val.off_size::<V>();
                 if t.key.key() == BaseTypes::INTLISTS_KEY {
                     off = (off + 15) & 0xFFFFFFF0;
                 }
@@ -1764,67 +2058,14 @@ impl GameObjs {
         headers
     }
 
-    pub fn dump<O: Version + 'static>(&self) -> Result<Vec<u8>> {
-        let mut type_data = vec![];
-        for (key, fields) in &self.types {
-            type_data.extend(GameObjsTypeHeader { key: key.clone(), size: fields.len() as u32, fields: 0 }.dump_bytes::<O>());
-            type_data.extend(fields.dump_bytes::<O>());
-        }
-        type_data.extend(vec![0u8; ((type_data.len() + 15) & 0xFFFFFFF0) - type_data.len()]);
-        let mut data = GameObjsHeader {
-            const_: 1296123652,
-            types_num: self.types.len() as u32,
-            types_offset: GameObjsHeader::size::<O>() as u32,
-            obj_num: self.objs.len() as u32,
-            obj_offset: (type_data.len() + GameObjsHeader::size::<O>()) as u32,
-            z5: 0,
-            z6: 0,
-            z7: 0
-        }.dump_bytes::<O>();
-        data.extend(type_data);
-        
-        for obj in &self.objs {
-            let ts = self.types.get(&obj.key).unwrap();
-            let obj_size = zip(&obj.fields, ts).map(|(t, f)| f.offset as usize + t.size::<PC>()).fold(0, usize::max);
-            let mut obj_vals = vec![0u8; (obj_size + 15) & 0xFFFFFFF0];
-            for (val, t) in zip(&obj.fields, ts) {
-                val.dump::<O>(&mut obj_vals, t.offset as usize)?;
-                if t.kind.key() == BaseTypes::INTLISTS_KEY {
-                    // println!("{}", vals.len());
-                    obj_vals.extend(vec![0u8; ((obj_vals.len() + 15) & 0xFFFFFFF0) - obj_vals.len()]);
-                }
-            }
-            obj_vals.extend(vec![0u8; ((obj_vals.len() + 15) & 0xFFFFFFF0) - obj_vals.len()]);
-            data.extend(GameObjsObjHeader {
-                layer: obj.layer,
-                key: obj.key.clone(),
-                size: obj_vals.len() as u16,
-                z3: 0,
-                z4: 0
-            }.dump_bytes::<O>());
-            data.extend(obj_vals);
-        }
-        Ok(data)
-    }
-
-    pub fn into_data<O: Version + 'static>(&self, data: &mut[u8], offset: usize) -> Result<()> {
-        let vals = self.dump::<O>()?;
-        data[offset..(offset + vals.len())].copy_from_slice(&vals[..]);
-        Ok(())
-
-    }
-
     pub fn to_file(&self, writer: Writer) -> Result<()> {
         let val = json!({
             "gamemodemask": self.gamemodemask,
-            "objs": self.objs.iter().map(|GameObj { layer, key, fields }| {
-                let ts = &self.types.get(key).unwrap();
-                let mut order: Vec<_> = (0..ts.len()).collect();
-                order.sort_by_key(|x| ts[*x].offset);
+            "objs": self.objs.values().map(|GameObj { layer, key, fields }| {
                 json!({
                     "type": key.to_string(),
                     "layer": layer,
-                    "fields": order.into_iter().map(|i| (ts[i].key.to_string(), fields[i].to_json())).collect::<Map<_,_>>()
+                    "fields": fields.iter().map(|(key, val)| (key.to_string(), val.to_json())).collect::<Map<_,_>>()
                 })
             }).collect::<Vec<_>>(),
             "types": self.types.iter().map(|(key, fs)| {
@@ -1859,16 +2100,25 @@ impl GameObjs {
                 }).collect::<Vec<_>>(),
             );
         }
+        let types_order: HashMap<_, _> = types.iter().map(|(key, fields)| {
+            let mut order: Vec<_> = (0..fields.len()).collect();
+            order.sort_by_key(|x| fields[*x].offset);
+            (key.clone(), order)
+        }).collect();
 
         let os = val["objs"].as_array().unwrap();
-        let mut objs = Vec::with_capacity(os.len());
+        let mut objs = IndexMap::with_capacity(os.len());
 
         for o in os {
             let key = Crc::from_string(o["type"].as_str().unwrap());
             let ts = types.get(&key).unwrap();
+            let order = types_order.get(&key).unwrap();
             let o_ = o["fields"].as_object().unwrap();
-            let fields = ts.iter().map(|t| BaseTypes::from_json(&o_[&t.key.to_string()], t.kind.key())).collect::<Vec<_>>();
-            objs.push(GameObj { 
+            let fields: IndexMap<Crc, BaseTypes> = order.iter().map(|i| &ts[*i]).map(|t| (t.key.clone(), BaseTypes::from_json(&o_[&t.key.to_string()], t.kind.key()))).collect();
+            let guid = if let Some(BaseTypes::GUID(val)) = fields.get(&Crc::Key(3482846511)) {
+                Some(*val)
+            } else { None }.unwrap();
+            objs.insert(guid, GameObj { 
                 layer: o["layer"].as_u64().unwrap() as u32,
                 key,
                 fields
@@ -1920,31 +2170,34 @@ pub struct Spray {
     vals: Vec<SprayVal>,
 }
 
-impl Spray {
-    pub const KEY: u32 = hash_string("Spray".as_bytes(), None);
-    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize, _size: usize) -> Result<Self> {
-        let mut offset = offset;
-        let n = u32::from_bytes::<O>(&data[offset..])? as usize;
-        offset += u32::size::<O>();
-        let instances: Vec<SprayInstance> = OrderedDataVec::from_bytes::<O>(&data[offset..], n)?;
-        offset += instances.size::<O>();
-        let n = u32::from_bytes::<O>(&data[offset..])? as usize;
-        offset += u32::size::<O>();
-        let vals: Vec<SprayVal> = OrderedDataVec::from_bytes::<O>(&data[offset..], n)?;
+impl AsData<'_, '_> for Spray {
+    type InArgs = NoArgs;
+    type OutArgs = NoArgs;
+    fn from_bytes<V: Version>(data: &[u8], _args: Self::InArgs) -> Result<Self> {
+        let mut offset = 0;
+        let n = from_bytes!(V, u32, &data[offset..])? as usize;
+        offset += V::size::<u32>();
+        let instances: Vec<SprayInstance> = from_bytes!(V, &data[offset..], n)?;
+        offset += instances.size::<V>();
+        let n = from_bytes!(V, u32, &data[offset..])? as usize;
+        offset += V::size::<u32>();
+        let vals: Vec<SprayVal> = from_bytes!(V, &data[offset..], n)?;
         Ok(Self { instances, vals })
     }
-
-    pub fn size<O: Version + 'static>(&self) -> usize {
-        self.instances.size::<O>() + self.vals.size::<O>() + (u32::size::<O>() * 2)
+    fn dump_bytes<O: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
+        dump_bytes!(O, (self.instances.len() as u32)).into_iter()
+            .chain(dump_bytes!(O, self.instances))
+            .chain(dump_bytes!(O, (self.vals.len() as u32)))
+            .chain(dump_bytes!(O, self.vals))
+            .collect()
     }
-
-    pub fn dump<O: Version + 'static>(&self) -> Result<Vec<u8>> {
-        Ok((self.instances.len() as u32).dump_bytes::<O>().into_iter()
-            .chain(self.instances.dump_bytes::<O>())
-            .chain((self.vals.len() as u32).dump_bytes::<O>())
-            .chain(self.vals.dump_bytes::<O>())
-            .collect())
+    fn size<V: Version>(&self) -> usize {
+        self.instances.size::<V>() + self.vals.size::<V>() + (V::size::<u32>() * 2)
     }
+}
+
+impl Spray {
+    pub const KEY: u32 = hash_string("Spray".as_bytes(), None);
 
     pub fn to_file(&self, writer: Writer) -> Result<()> {
         writer.with_extension("json").write(&to_vec_pretty(self)?)?;
@@ -1987,15 +2240,42 @@ pub struct CrowdItem {
     pub instances: Vec<CrowdVal>,
 }
 
+impl AsData<'_, '_> for CrowdItem {
+    type InArgs = NoArgs;
+    type OutArgs = NoArgs;
+    fn from_bytes<V: Version>(data: &[u8], _args: Self::InArgs) -> Result<Self> {
+        let mut offset = 0;
+        let header: CrowdHeader = from_bytes!(V, &data[offset..])?;
+        offset += header.size::<V>();
+        let animations: Vec<Crc> = from_bytes!(V, &data[offset..], header.animation_num as usize)?;
+        offset += animations.size::<V>();
+        let instances = from_bytes!(V, &data[offset..], header.instance_num as usize)?;
+        Ok(Self { header, animations, instances })
+    }
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
+        dump_bytes!(V, self.header).into_iter()
+            .chain(dump_bytes!(V, self.animations))
+            .chain(dump_bytes!(V, self.instances))
+            .collect()
+    }
+    fn size<V: Version>(&self) -> usize {
+        self.header.size::<V>() + self.animations.size::<V>() + self.instances.size::<V>()
+    }
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Crowd {
     pub vals: Vec<CrowdItem>
 }
 
-impl IntoPy<PyObject> for Crowd {
-    fn into_py(self, py: Python<'_>) -> PyObject {
-        self.vals.into_py(py)
+impl <'py> IntoPyObject<'py> for Crowd {
+    type Target = <Vec<CrowdItem> as IntoPyObject<'py>>::Target;
+    type Output = <Vec<CrowdItem> as IntoPyObject<'py>>::Output;
+    type Error = <Vec<CrowdItem> as IntoPyObject<'py>>::Error;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        self.vals.into_pyobject(py)
     }
 }
 
@@ -2005,53 +2285,53 @@ impl <'py> FromPyObject<'py> for Crowd {
     }
 }
 
-impl Crowd {
-    pub const KEY: u32 = hash_string("3dCrowd".as_bytes(), None);
-    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize, _size: usize) -> Result<Self> {
-        let val: u32 = OrderedData::from_bytes::<O>(&data[offset..])?;
+impl AsData<'_, '_> for Crowd {
+    type InArgs = NoArgs;
+    type OutArgs = NoArgs;
+
+    fn from_bytes<V: Version>(data: &[u8], _args: Self::InArgs) -> Result<Self> {
+        let val: u32 = from_bytes!(V, data)?;
         if val != 0x65 { return Err(anyhow!("Invalid Block Data for Crowd Block")); }
-        let n: u32 = OrderedData::from_bytes::<O>(&data[offset + u32::size::<O>()..])?;
-        let offs: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[offset + u32::size::<O>() * 2..], n as usize)?;
-        let vals = offs.into_iter().map(|off| {
-            let mut offset = offset + off as usize;
-            let header: CrowdHeader = OrderedData::from_bytes::<O>(&data[offset..])?;
-            offset += CrowdHeader::size::<O>();
-            let animations: Vec<Crc> = OrderedDataVec::from_bytes::<O>(&data[offset..], header.animation_num as usize)?;
-            offset += animations.size::<O>();
-            let instances = OrderedDataVec::from_bytes::<O>(&data[offset..], header.instance_num as usize)?;
-            Ok(CrowdItem { header, animations, instances })
-        }).collect::<Result<Vec<_>>>()?;
+        let n: u32 = from_bytes!(V, &data[V::size::<u32>()..])?;
+        let offs: Vec<u32> = from_bytes!(V, &data[V::size::<u32>() * 2..], n as usize)?;
+        let vals = offs.into_iter()
+            .map(|off| from_bytes!(V, CrowdItem, &data[off as usize..]))
+            .collect::<Result<Vec<_>>>()?;
         Ok(Self { vals })
     }
 
-    pub fn size<O: Version + 'static>(&self) -> usize {
-        let n = (2 + self.vals.len()) * u32::size::<O>();
-        let m: usize = self.vals.iter().map(|CrowdItem { animations, instances, .. }| {
-            CrowdHeader::size::<O>() + animations.size::<O>() + instances.size::<O>()
-        }).sum();
-        n + m
-    }
-
-    pub fn dump<O: Version + 'static>(&self) -> Result<Vec<u8>> {
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
         let n = self.vals.len() as u32;
 
         let mut vals = vec![];
         let mut offs = vec![];
-        let off = (n + 2) * (u32::size::<O>() as u32);
+        let off = (n + 2) * (V::size::<u32>() as u32);
         for CrowdItem { header, animations, instances } in &self.vals {
             offs.push(off + (vals.len() as u32));
-            vals.extend(header.dump_bytes::<O>());
-            vals.extend(animations.dump_bytes::<O>());
-            vals.extend(instances.dump_bytes::<O>());
+            vals.extend(dump_bytes!(V, header));
+            vals.extend(dump_bytes!(V, animations));
+            vals.extend(dump_bytes!(V, instances));
         }
 
         let mut data = Vec::with_capacity(off as usize + vals.len());
-        data.extend(0x65u32.dump_bytes::<O>());
-        data.extend(n.dump_bytes::<O>());
-        data.extend(offs.dump_bytes::<O>());
+        data.extend(dump_bytes!(V, 0x65u32));
+        data.extend(dump_bytes!(V, n));
+        data.extend(dump_bytes!(V, offs));
         data.extend(vals);
-        Ok(data)
+        data
     }
+
+    fn size<V: Version>(&self) -> usize {
+        let n = (2 + self.vals.len()) * V::size::<u32>();
+        let m: usize = self.vals.iter().map(|CrowdItem { animations, instances, .. }| {
+            V::size::<CrowdHeader>() + animations.size::<V>() + instances.size::<V>()
+        }).sum();
+        n + m
+    }
+}
+
+impl Crowd {
+    pub const KEY: u32 = hash_string("3dCrowd".as_bytes(), None);
 
     pub fn to_file(&self, writer: Writer) -> Result<()> {
         writer.with_extension("json").write(&to_vec_pretty(self)?)?;
@@ -2077,9 +2357,13 @@ pub struct AtlasUV {
     pub vals: Vec<AtlasUVVal>,
 }
 
-impl IntoPy<PyObject> for AtlasUV {
-    fn into_py(self, py: Python<'_>) -> PyObject {
-        self.vals.into_py(py)
+impl <'py> IntoPyObject<'py> for AtlasUV {
+    type Target = <Vec<AtlasUVVal> as IntoPyObject<'py>>::Target;
+    type Output = <Vec<AtlasUVVal> as IntoPyObject<'py>>::Output;
+    type Error = <Vec<AtlasUVVal> as IntoPyObject<'py>>::Error;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        self.vals.into_pyobject(py)
     }
 }
 
@@ -2089,20 +2373,124 @@ impl <'py> FromPyObject<'py> for AtlasUV {
     }
 }
 
+impl AsData<'_, '_> for AtlasUV {
+    type InArgs = usize;
+    type OutArgs = NoArgs;
+
+    fn from_bytes<V: Version>(data: &[u8], size: Self::InArgs) -> Result<Self> {
+        if size%V::size::<AtlasUVVal>() != 0 {
+            return Err(anyhow!("Invalid UV Atlas size {}", size))
+        }
+        let num = size / V::size::<AtlasUVVal>();
+        let vals = from_bytes!(V, &data[..], num)?;
+        Ok(Self { vals })
+    }
+
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
+        dump_bytes!(V, self.vals)
+    }
+
+    fn size<V: Version>(&self) -> usize {
+        self.vals.size::<V>()
+    }
+}
+
 impl AtlasUV {
     pub const KEY1: u32 = hash_string("atlas_1.uv".as_bytes(), None);
     pub const KEY2: u32 = hash_string("atlas_2.uv".as_bytes(), None);
 
-    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize, size: usize) -> Result<Self> {
-        assert!(size%AtlasUVVal::size::<O>() == 0, "Invalid UV Atlas size");
-        let num = size / AtlasUVVal::size::<O>();
-        let vals = OrderedDataVec::from_bytes::<O>(&data[offset..], num)?;
-
-        Ok(Self { vals })
+    pub fn to_file(&self, writer: Writer) -> Result<()> {
+        writer.with_extension("json").write(&to_vec_pretty(self)?)?;
+        Ok(())
     }
 
-    pub fn dump<O: Version + 'static>(&self) -> Vec<u8> {
-        self.vals.dump_bytes::<O>()
+    pub fn from_file(reader: Reader) -> Result<Self> {
+        Ok(from_slice(&reader.with_extension("json").read()?)?)
+    }
+}
+
+#[basicpymethods(no_bytes)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PyMethods)]
+#[pyclass(module="types", get_all, set_all)]
+pub struct PFieldVal {
+    pub link_guid: u32,
+    pub vals: Vec<(HashSet<u32>, Vec<u8>)>,
+    pub width: u32,
+    pub height: u32,
+}
+
+use serde_with::serde_as;
+#[serde_as]
+#[basicpymethods]
+#[derive(Debug, Clone, Serialize, Deserialize, PyMethods)]
+#[pyclass(module="types", get_all, set_all)]
+pub enum PFields {
+    Vals(IndexMap<u32, PFieldVal>),
+    RawData(
+        #[serde_as(as = "serde_with::hex::Hex")]
+        Vec<u8>
+    ),
+}
+
+impl PFields {
+    pub const KEY: u32 = hash_string("PFields".as_bytes(), None);
+    pub fn parse(&mut self, infos: Vec<PFieldInfo>) {
+        match self {
+            Self::RawData(data) => {
+                let mut offset_maps: HashMap<u32, HashMap<u32, usize>> = HashMap::new();
+                let mut pfields = IndexMap::new();
+                for info in infos {
+                    if !pfields.contains_key(&info.link_guid) {
+                        pfields.insert(info.link_guid, PFieldVal {
+                            link_guid: info.link_guid,
+                            width: info.width,
+                            height: info.height,
+                            ..Default::default()
+                        });
+                        offset_maps.insert(info.link_guid, HashMap::new());
+                    }
+                    let val = pfields.get_mut(&info.link_guid).unwrap();
+                    let offset_map = offset_maps.get_mut(&info.link_guid).unwrap();
+                    if let Some(&index) = offset_map.get(&info.offset) {
+                        val.vals[index].0.insert(info.gamemode_guid);
+                    } else {
+                        offset_map.insert(info.offset, val.vals.len());
+                        let mut gamemodes = HashSet::new();
+                        gamemodes.insert(info.gamemode_guid);
+                        let offset = info.offset as usize;
+                        let size = (info.width * info.height) as usize;
+                        let vals = data[offset..offset+size].to_vec();
+                        val.vals.push((gamemodes, vals));
+                    }
+                }
+                *self = Self::Vals(pfields);
+            },
+            _ => ()
+        }
+    }
+
+    pub fn infos(&self) -> Vec<PFieldInfo> {
+        match self {
+            Self::Vals(vals) => {
+                let mut infos = vec![];
+                let mut offset = 0u32;
+                for pfield in vals.values() {
+                    for (gamemodes, _) in &pfield.vals {
+                        for &gamemode_guid in gamemodes {
+                            infos.push(PFieldInfo {
+                                link_guid: pfield.link_guid,
+                                width: pfield.width,
+                                height: pfield.height,
+                                gamemode_guid, offset
+                            });
+                        }
+                        offset += pfield.width * pfield.height;
+                    }
+                }
+                infos
+            },
+            _ => vec![]
+        }
     }
 
     pub fn to_file(&self, writer: Writer) -> Result<()> {
@@ -2115,14 +2503,50 @@ impl AtlasUV {
     }
 }
 
+impl <'a, 'b> AsData<'a, 'b> for PFields {
+    type InArgs = usize;
+    type OutArgs = NoArgs; 
+
+    fn from_bytes<V: Version>(data: &[u8], size: Self::InArgs) -> Result<Self> {
+        Ok(Self::RawData(data[..size].to_vec()))
+    }
+
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
+        match self {
+            Self::RawData(data) => data.clone(),
+            Self::Vals(vals) => {
+                let mut data = Vec::with_capacity(self.size::<V>());
+                for pfield in vals.values() {
+                    for (_, vals) in &pfield.vals {
+                        data.extend(dump_bytes!(V, vals));
+                    }
+                }
+                data
+            }
+        }
+    }
+
+    fn size<V: Version>(&self) -> usize {
+        match self {
+            Self::Vals(vals) => vals.values().flat_map(|x| x.vals.iter()).map(|(_, vals)| vals.size::<V>()).sum::<usize>(),
+            Self::RawData(data) => data.len()
+        }
+    }
+}
+
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Data {
     pub data: Vec<u8>,
 }
 
-impl IntoPy<PyObject> for Data {
-    fn into_py(self, py: Python<'_>) -> PyObject {
-        std::borrow::Cow::from(&self.data[..]).into_py(py)
+impl <'py> IntoPyObject<'py> for Data {
+    type Target = <Vec<u8> as IntoPyObject<'py>>::Target;
+    type Output = <Vec<u8> as IntoPyObject<'py>>::Output;
+    type Error = <Vec<u8> as IntoPyObject<'py>>::Error;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        self.data.into_pyobject(py)
     }
 }
 
@@ -2132,24 +2556,24 @@ impl <'py> FromPyObject<'py> for Data {
     }
 }
 
-impl Data {
-    pub const KEY_PFIELDS: u32 = hash_string("PFields".as_bytes(), None);
-    // PFields has data from obj12, 2D something
+impl AsData<'_, '_> for Data {
+    type InArgs = usize;
+    type OutArgs = NoArgs;
 
-    pub fn from_data(data: &[u8], offset: usize, size: usize) -> Self {
-        Self {
-            data: data[offset..offset+size].to_vec()
-        }
+    fn from_bytes<V: Version>(data: &[u8], size: Self::InArgs) -> Result<Self> {
+        Ok(Self { data: data[..size].to_vec()})
     }
 
-    pub fn into_data(&self, data: &mut[u8], offset: usize) {
-        data[offset..offset+self.data.len()].copy_from_slice(self.data.as_slice());
-    }
-
-    pub fn dump(&self) -> Vec<u8> {
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
         self.data.clone()
     }
 
+    fn size<V: Version>(&self) -> usize {
+        self.data.len()
+    }
+}
+
+impl Data {
     pub fn to_file(&self, writer: Writer) -> Result<()> {
         writer.write(&self.data)?;
         Ok(())

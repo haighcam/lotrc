@@ -26,13 +26,14 @@ with utils.reader(src_path) as src, utils.writer(dst_path) as dst:
         if obj['fields'].get('Name') == targ_clss: 
             print('found')
             break
-    
+     
     if 'Meshes' in vals['objs'][i]['fields']:
         old_model = vals['objs'][i]['fields']['Meshes'].pop()
         vals['objs'][i]['fields']['meshes'].append(new_model)
     else:
         old_model = vals['objs'][i]['fields']['Mesh']
         vals['objs'][i]['fields']['Mesh'] = new_model
+    
         
     to_remove.add('sub_blocks1/level.json')
     to_add[dst_files['sub_blocks1/level.json']] = json.dumps(vals, indent=1)
@@ -46,14 +47,14 @@ with utils.reader(src_path) as src, utils.writer(dst_path) as dst:
             obj = obj[:a] + str(gamemodemask | m).encode() + obj[b:]
             to_remove.add(dst_name)
             to_add[dst_name] = obj
-            textures.update([val.decode().casefold() for i in obj.split(b'tex_')[1:] if i[:4] != b'data' and (val:=i.split(b'"')[2]) != b''])
+            textures.update([val.decode().casefold() for i in obj.split(b'tex')[1:] if i[:4] != b'data' and (val:=i.split(b'"')[2]) != b''])
         elif (src_name := utils.get_model(src_files, k)) is not None:
             obj = src.read(src_name)
             _, a, b = utils.get_gamemodemask(obj)
             obj = obj[:a] + str(gamemodemask).encode() + obj[b:]
             to_add[src_name] = obj
-            textures.update([val.decode().casefold() for i in obj.split(b'tex_')[1:] if i[:4] != b'data' and (val:=i.split(b'"')[2]) != b''])
-    
+            textures.update([val.decode().casefold() for i in obj.split(b'tex')[1:] if i[:4] != b'data' and (val:=i.split(b'"')[2]) != b''])
+
     for k in textures:
         f_name = f"textures/{k}.json"
         f_name_alt = f"textures/{k}.dds"

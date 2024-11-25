@@ -8,7 +8,7 @@ use pyo3::prelude::*;
 
 use super::pak::TextureInfo;
 use lotrc_proc::{OrderedData, basicpymethods, PyMethods};
-use super::types::{OrderedDataVec, OrderedDataImpl, Version, PC, PS3};
+use super::types::{AsData, Version, PC, from_bytes, dump_bytes, NoArgs};
 use super::read_write::{Reader, Writer, PathStuff};
 
 #[basicpymethods]
@@ -79,17 +79,21 @@ pub struct Radiosity {
     pub usage: u32
 }
 
-impl Radiosity {
-    pub fn from_data<O: Version + 'static>(data: &[u8], usage: u32) -> Result<Self> {
+impl AsData<'_, '_> for Radiosity {
+    type InArgs = u32;
+    type OutArgs = NoArgs;
+    fn from_bytes<V: Version>(data: &[u8], usage: Self::InArgs) -> Result<Self> {
         if data.len() % 4 != 0 {
             warn!("Radiosity length is incorrect?")
         }
-        let data = OrderedDataVec::from_bytes::<O>(data, data.len()/4)?;
+        let data = from_bytes!(V, &data[..], data.len()/4)?;
         Ok(Self { data, usage })
     }
-
-    pub fn dump<O: Version + 'static>(&self) -> Vec<u8> {
-        self.data.dump_bytes::<O>()
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
+        dump_bytes!(V, self.data)
+    }
+    fn size<V: Version>(&self) -> usize {
+        self.data.size::<V>()
     }
 }
 
@@ -162,15 +166,15 @@ pub enum Tex {
 #[pymethods]
 impl Tex {
     #[getter]
-    fn get_data(&self) -> Vec<std::borrow::Cow<[u8]>> {
+    fn get_data(&self) -> Vec<Vec<u8>> {
         match self {
-            Self::Texture { levels, .. } => levels.iter().map(|x| std::borrow::Cow::from(&x[..])).collect(),
-            Self::CubeTexture { faces, .. } => faces.iter().map(|x| std::borrow::Cow::from(&x[..])).collect(),
-            Self::Unknown { vals, .. } => vals.iter().map(|x| std::borrow::Cow::from(&x[..])).collect(),
+            Self::Texture { levels, .. } => levels.clone(),
+            Self::CubeTexture { faces, .. } => faces.clone(),
+            Self::Unknown { vals, .. } => vals.clone(),
         }
     }
 
-    fn get_img(&self, i: usize) -> Result<(std::borrow::Cow<[u8]>, usize, usize, u32)> {
+    fn get_img(&self, i: usize) -> Result<(Vec<u8>, usize, usize, u32)> {
         match self {
             Self::Texture { levels, info, format, .. } => {
                 let height = (info.height >> i) as usize; 
@@ -187,9 +191,45 @@ impl Tex {
             _ => Err(anyhow::anyhow!("Unsupported Texture Type"))
         }
     }
-}  
+}
 
-impl Tex { 
+impl AsData<'_, '_> for Tex {
+    type InArgs = (usize, TextureInfo);
+    type OutArgs = NoArgs;
+    fn from_bytes<V: Version>(data: &[u8], (i, mut info): Self::InArgs) -> Result<Self> {
+        Ok(match info.kind {
+            0 | 7 | 8 => Self::texture_from_data::<V>(&data[..i], &data[i..], &mut info),
+            1 | 9 => Self::cube_from_data::<V>(&data[..i], &data[i..], &mut info)?,
+            _ => {
+                warn!("Unsupported Texture Type {} for texture {:?}", info.kind, info.key);
+                Self::Unknown { vals: vec![data[..i].to_vec(), data[i..].to_vec()], info: info.clone() }
+            } 
+        })
+    }
+
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
+        if !V::pc() {
+            warn!("Exporting Textures to Xbox format is not supported");
+            return vec![];
+        }
+        match self {
+            Self::Texture { levels, .. } => levels.iter().flatten().cloned().collect(),
+            Self::CubeTexture { faces, .. } => faces.iter().flatten().cloned().collect(),
+            Self::Unknown { vals, .. } => vals.iter().flatten().cloned().collect(),
+        }
+    }
+
+    fn size<V: Version>(&self) -> usize {
+        match self {
+            Self::Texture { levels, .. } => levels.iter().map(|x| x.len()).sum::<usize>(),
+            Self::CubeTexture { faces, .. } => faces.iter().map(|x| x.len()).sum::<usize>(),
+            Self::Unknown { vals, .. } => vals.iter().map(|x| x.len()).sum::<usize>()
+        }
+    }
+
+}
+
+impl Tex {
     pub fn kind(&self) -> u32 {
         match self {
             Self::Texture { kind, .. } => *kind,
@@ -322,7 +362,7 @@ impl Tex {
         })
     }
 
-    fn texture_from_data<O: Version + 'static>(data0: &[u8], data1: &[u8], info: &mut TextureInfo) -> Self {
+    fn texture_from_data<O: Version>(data0: &[u8], data1: &[u8], info: &mut TextureInfo) -> Self {
         let sizes = (0..info.levels).map(|x| 2u32.pow(x as u32)).map(|x| (info.width as u32/x, info.height as u32/x)).collect::<Vec<_>>();
         let mut format = info.format;
         let kind = info.asset_type;
@@ -341,7 +381,7 @@ impl Tex {
 
         let block_sizes = sizes.iter().map(|(x,y)| ((x/s).max(1), (y/s).max(1))).collect::<Vec<_>>();
         let data = data0.iter().chain(data1.iter()).cloned().collect::<Vec<_>>();
-        let levels = if TypeId::of::<O>() == TypeId::of::<PC>() || TypeId::of::<O>() == TypeId::of::<PS3>() {
+        let levels = if O::pc() || O::ps3() {
             let data_sizes = block_sizes.iter().map(|(x,y)| (x * y * d) as usize).collect::<Vec<_>>();
             let mut levels = Vec::with_capacity(data_sizes.len());
             let mut offset = 0;
@@ -405,7 +445,7 @@ impl Tex {
         Self::Texture { levels, format, kind, info: info.clone() }
     }
 
-    pub fn cube_from_data<O: Version + 'static>(data0: &[u8], data1: &[u8], info: &TextureInfo) -> Result<Self> {
+    pub fn cube_from_data<O: Version>(data0: &[u8], data1: &[u8], info: &TextureInfo) -> Result<Self> {
         let format = info.format;
         let kind = info.asset_type;
         assert!(info.levels <= 1, "Cube Textures with > 1 level are unhanded");
@@ -426,7 +466,7 @@ impl Tex {
         let block_size = (size.0 as u32/s, size.1 as u32/s);
         let mut faces = Vec::with_capacity(6);
 
-        if TypeId::of::<O>() == TypeId::of::<PC>() || TypeId::of::<O>() == TypeId::of::<PS3>() {
+        if O::pc() || O::ps3() {
             let data_size = (block_size.0 * block_size.1 * d) as usize;
             data1.len().ge(&(data_size*6)).then_some(()).ok_or(anyhow::anyhow!("{:?}, texture data is too small. Expected {} got {}", info.key, data_size*6, data1.len()))?;
             for i in 0..6 {
@@ -449,7 +489,7 @@ impl Tex {
     }
 }
 
-pub fn get_img(data: &[u8], height: usize, width: usize, format: u32) -> Result<(std::borrow::Cow<[u8]>, usize, usize, u32)> {
+pub fn get_img(data: &[u8], height: usize, width: usize, format: u32) -> Result<(Vec<u8>, usize, usize, u32)> {
     Ok((match format {
         10 | 0xb | 0xc | 0x11 => bcndecode::decode(
             data,
@@ -457,15 +497,15 @@ pub fn get_img(data: &[u8], height: usize, width: usize, format: u32) -> Result<
             height,
             bcndecode::BcnEncoding::Bc3,
             bcndecode::BcnDecoderFormat::RGBA,
-        )?.into(),
+        )?,
         7 | 8 => bcndecode::decode(
             data, 
             width, 
             height,
             bcndecode::BcnEncoding::Bc1,
             bcndecode::BcnDecoderFormat::RGBA,
-        )?.into(),
-        _ => std::borrow::Cow::from(data)
+        )?,
+        _ => data.to_vec()
     }, height, width, format))
 }
 

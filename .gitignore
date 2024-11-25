@@ -16,3 +16,5 @@ Cargo.lock
 *.pyd
 *.zip
 *.bin
+*.idea
+**/__pycache__

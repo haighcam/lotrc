@@ -6,7 +6,7 @@ from .. import lotrc
 from ..loader import GEOM_TREES, LOADED_LEVELS
 from .conv import *
 
-class LoadModels(bpy.types.Operator):
+class DumpModels(bpy.types.Operator):
     """Load Models from a Lord of the Rings Conquest Level"""
     bl_idname = "lotrc.load_models"
     bl_label = "Load LOTRC Models"
@@ -23,7 +23,6 @@ class ClearModels(bpy.types.Operator):
 
     def execute(self, context):
         level = LOADED_LEVELS[context.scene.name]
-        if level.models_col is None: return {'FINISHED'}
         level.col.children.unlink(level.models_col)
         level.models_col = None
         bpy.ops.outliner.orphans_purge()
@@ -175,7 +174,7 @@ def add_mesh(info, vertex_data, index_data, usage, name, col, obj_arma, skin_bon
     offset = info.vbuff_info_offset_2
     if offset == 0xFFFFFFFF:
         offset = info.vbuff_info_offset
-    attrs = vertex_data[offset]
+    attrs = {i.usage: i.val for i in vertex_data[offset]}
     mesh.from_pydata(pos_to_blender(attrs.pop(lotrc.pak.VertexUsage.Position())), [], [inds[i:i+3] for i in range(0,len(inds),3)])
     normals = attrs.pop(lotrc.pak.VertexUsage.Normal(), None)
     if normals is not None:

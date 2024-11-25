@@ -51,9 +51,10 @@ def dump_level_block(level):
             type_fields.append(t)
         types[name] = type_fields
 
-    temp_objs = []
+    temp_objs = {}
     parents = {}
     inv_world = {}
+    world = {}
     blender_objs = list(level.level_col.children)
     while blender_objs != []:
         blender_obj = blender_objs.pop(0)
@@ -70,8 +71,8 @@ def dump_level_block(level):
         } 
         dump_fields['__type__'] = kind
         dump_fields['__layer__'] = lotrc.types.BaseTypes.Int.from_json(fields['__layer__'])[0]
+        guid = dump_fields['GUID'][0]
 
-        guid = fields['GUID'][0]
         if kind in ['Road', 'CPSpline']:
             road_meshes = []
             road_matrices = []
@@ -82,13 +83,14 @@ def dump_level_block(level):
             if child_obj.name == blender_obj.name:
                 dump_fields['WorldTransform'] = np.array(child_obj.matrix_world)
                 inv_world[guid] = np.array(child_obj.matrix_world.inverted())
+                world[guid] = np.array(child_obj.matrix_world)
             else:
                 vals = child_obj.name.split('.')
                 if vals[1] == 'RoadMeshes' and kind in ['Road', 'CPSpline']:
                     road_meshes.append(vals[3])
                     road_matrices.append(mat_from_blender(child_obj.matrix_world))
         
-        temp_objs.append(dump_fields)
+        temp_objs[guid] = dump_fields
 
         if kind in ['templateLevel', 'templateGroup', 'templateLayer', 'templateFolder']:
             blender_objs = list(blender_obj.children) + blender_objs
@@ -102,18 +104,22 @@ def dump_level_block(level):
         if (children := dump_fields.get('InitialChildObjects')) is not None:
             for child in children[0]:
                 parents[child] = guid
-
+        if (parent := dump_fields['ParentGUID'][0]) != 0:
+            parents[guid] = parent
     
-    objs = []
-    for fields in temp_objs:
+    objs = {}
+    for guid, fields in temp_objs.items():
         kind = fields['__type__']
         if kind in ['Road', 'CPSpline']:
             fields['RoadMeshes'] = lotrc.types.BaseTypes.CRCList(road_meshes)
             fields['RoadMatrices'] = lotrc.types.BaseTypes.MatrixList(road_matrices)
         if 'Transform' in fields:
-            t = fields['WorldTransform']
-            if (parent := parents.get(fields['GUID'][0])) is not None:
-                t = t @ inv_world[parent]
+            t = fields['WorldTransform'].copy()
+            if (parent := parents.get(guid)) is not None:
+                if kind == 'child_object':
+                    fields['WorldTransform'] = world[parent] @ t
+                else:
+                    t = inv_world[parent] @ t
             fields['Transform'] = lotrc.types.BaseTypes.Matrix4x4(mat_from_blender(t))
         if 'WorldTransform' in fields:
             fields['WorldTransform'] = lotrc.types.BaseTypes.Matrix4x4(mat_from_blender(
@@ -122,12 +128,14 @@ def dump_level_block(level):
         obj = lotrc.types.GameObj()
         obj.layer = fields['__layer__']
         obj.key = kind
-        obj.fields = [fields[i] for i in level.types[kind]]
-        objs.append(obj)
+        obj.fields = {i: fields[i] for i in level.types[kind]}
+        objs[guid] = obj
 
     gameobjs = lotrc.types.GameObjs()
     gameobjs.gamemodemask = -1
     gameobjs.types = types
     gameobjs.objs = objs
 
-    level.level.sub_blocks1.blocks[-1] = lotrc.types.SubBlock.GameObjs(gameobjs)
+    sub_blocks1 = level.level.sub_blocks1
+    sub_blocks1['level'] = lotrc.types.SubBlock.GameObjs(gameobjs)
+    level.level.sub_blocks1 = sub_blocks1

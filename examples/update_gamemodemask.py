@@ -31,12 +31,12 @@ with utils.writer(src_path) as src:
     # gmd['fields']['GameModeMask'] = -1
     processed = set()
     objs = utils.copy_tree(vals, gamemodeguid, processed=processed)
-    guids = set(i['fields']['guid'] for i in objs)
+    guids = set(i['fields']['GUID'] for i in objs)
     for i in utils.get_layer(vals, *gmd['fields']['Layers']):
-        if i['fields']['guid'] not in guids:
-            for j in utils.copy_tree(vals, i['fields']['guid'], processed=processed):
-                if j['fields']['guid'] not in guids:
-                    guids.add(j['fields']['guid'])
+        if i['fields']['GUID'] not in guids:
+            for j in utils.copy_tree(vals, i['fields']['GUID'], processed=processed):
+                if j['fields']['GUID'] not in guids:
+                    guids.add(j['fields']['GUID'])
                     objs.append(j)
     for obj in objs:
         obj['fields']['GameModeMask'] |= gamemodemask
@@ -50,7 +50,7 @@ with utils.writer(src_path) as src:
     infos = set()
     for i in vals['objs']:
         if 'GameModeMask' in i['fields'] and (i['fields']['GameModeMask'] & gamemodemask) == 0: continue
-        utils.scan(vals, i['fields']['guid'], infos=infos)
+        utils.scan(vals, i['fields']['GUID'], infos=infos)
 
     scripts = set([i for i in infos if f'sub_blocks1/{i}.lua' in files])
 
@@ -72,7 +72,7 @@ with utils.writer(src_path) as src:
             obj = obj[:a] + str(gamemodemask | m).encode() + obj[b:]
             to_remove.add(f_name)
             to_add[f_name] = obj
-            textures.update([val.decode().casefold() for i in obj.split(b'tex_')[1:] if i[:4] != b'data' and (val:=i.split(b'"')[2]) != b''])
+            textures.update([val.decode().casefold() for i in obj.split(b'tex')[1:] if i[:4] != b'data' and (val:=i.split(b'"')[2]) != b''])
         f_name = f"effects/{k}.json"
         if f_name in files:
             obj = src.read(files[f_name])

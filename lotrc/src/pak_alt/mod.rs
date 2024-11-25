@@ -1,1039 +1,30 @@
-use std::{any::TypeId, collections::{HashMap, HashSet}, iter::zip};
+use std::iter::zip;
 use itertools::Itertools;
 use log::warn;
 use serde::{Serialize, Deserialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use gltf::{
-    json::{Root, Index, validation::Checked, buffer::{View, Target, Buffer, Stride}, Accessor, accessor::GenericComponentType, Node},
+    json::{Root, Index, validation::Checked, buffer::{View, Target, Buffer, Stride}, Accessor, accessor::GenericComponentType},
     accessor::{DataType, Dimensions},
 };
 use anyhow::{anyhow, Result};
 use pyo3::prelude::*;
+use indexmap::IndexMap;
 
 use lotrc_proc::{OrderedData, basicpymethods, PyMethods};
 use crate::{
-    types::{Crc, OrderedData, Vector4, Matrix4x4, OrderedDataVec, OrderedDataImpl, Version, PS3, PC},
+    types::{Crc, Vector4, Version, PC, from_bytes, dump_bytes, AsData, NoArgs, GameObj, BaseTypes, Color},
     pak::{
-        ModelInfo, ValA, model, MatExtra, VBuffInfo, IBuffInfo, BufferInfo, HkConstraintInfo, HkConstraintData,
-        VertexBuffer, IndexBuffer, ShapeInfo, VertexUsage, LodMeshes, Header, AnimationInfo, animation, 
-        Mat1, Mat2, Mat3, Mat4, MatBase, get_vertex_format
+        ModelInfo, MatExtra, VBuffInfo, IBuffInfo, BufferInfo, HkConstraintInfo, HkConstraintData,
+        ShapeInfo, Header, AnimationInfo, animation,  PFieldInfo,
+        Mat1, Mat2, Mat3, Mat4, MatBase, RadiosityValsInfo
     },
 };
 
 mod shape;
 pub use shape::*;
-
-#[basicpymethods]
-#[pyclass(module="pak_alt", name="Model", get_all, set_all)]
-#[derive(Default, Debug, Clone, Serialize, Deserialize, PyMethods)]
-pub struct Model {
-    pub info: ModelInfo,
-    pub bone_parents: Vec<i32>, // parent bone
-    pub bones: Vec<Crc>, // bone names
-    pub bone_transforms: Vec<Matrix4x4>, // relative bone transforms, used for static meshes 
-    pub vals_a: Vec<ValA>, // probably f32
-    pub mat_order: Vec<u32>,
-    pub mesh_order: Vec<u32>, // order of models (mapped to lod0, lod1, lod2, lod3)
-    pub vals_d: Vec<ValA>, // 1 per contained model, stores result of some absolute position calculation?
-    pub vbuff_order: Vec<u32>,
-    pub ibuff_order: Vec<u32>,
-    pub skin_binds: Vec<Matrix4x4>, // mat4, bind matrices or something??
-    pub vals_j: Vec<u32>, // bows & banners, maybe for strings?
-    pub val_k_header: Vec<u16>,
-    pub vals_k: Vec<u32>, // has to do with trees
-    pub skin_order: Vec<u32>, // bone mapping for vals_g, seems to be the mapping used for skinning
-    pub slots: Vec<Key2>, // attachment points
-    pub slot_map: Vec<u32>, // attachment bone mapping
-    pub block_header: Option<u32>, // has to do with havok cloth / hair stuff
-    pub block_offsets: Vec<u32>,
-    pub blocks: Vec<(model::BlockHeader, Vec<u32>, Vec<model::BlockVal>, Vec<u32>)>,
-    pub mats: Vec<Mat>,
-    pub mat_extras: Vec<Option<MatExtra>>,
-    pub vbuffs: Vec<VBuffInfo>,
-    pub ibuffs: Vec<IBuffInfo>,
-    pub buffer_infos: Vec<BufferInfo>,
-    pub hk_constraint: Option<HkConstraint>, // stores bone transforms used for ragdoll ??
-    pub hk_constraint_datas: Vec<HkConstraintData>,
-    pub shapes: Vec<Shape>,
-    pub vertex_data: Vec<VertexBuffer>,
-    pub index_data: Vec<IndexBuffer>,
-}
-
-impl Model {
-    pub fn from_data<O: Version + 'static>(info: ModelInfo, data: &[u8]) -> Result<Self> {
-        let bone_parents: Vec<i32> = OrderedDataVec::from_bytes::<O>(&data[info.bone_parents_offset as usize..], info.bones_num as usize)?;
-        let bones: Vec<Crc> = if info.bones_offset != 0 {
-            OrderedDataVec::from_bytes::<O>(&data[info.bones_offset as usize..], info.bones_num as usize)?
-        } else { vec![Crc::Key(0); info.bones_num as usize] };
-        let bone_transforms: Vec<Matrix4x4> = OrderedDataVec::from_bytes::<O>(&data[info.bone_transforms_offset as usize..], info.bones_num as usize)?;
-        let vals_a: Vec<ValA> = OrderedDataVec::from_bytes::<O>(&data[info.vals_a_offset as usize..], info.bones_num as usize)?;
-        let mut mat_order: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[info.mat_offset as usize..], info.mat_num as usize)?;
-        let mesh_order: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[info.mesh_order_offset as usize..], info.lod3.breakable_end as usize)?;
-        let vals_d: Vec<ValA> = OrderedDataVec::from_bytes::<O>(&data[info.vals_d_offset as usize..], info.lod3.breakable_end as usize)?;
-        let mut vbuff_order: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[info.vbuff_offset as usize..], info.vbuff_num as usize)?;
-        let mut ibuff_order: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[info.ibuff_offset as usize..], info.ibuff_num as usize)?;
-        let skin_binds: Vec<Matrix4x4> = OrderedDataVec::from_bytes::<O>(&data[info.skin_binds_offset as usize..], info.skin_binds_num as usize)?;
-        let vals_j: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[info.vals_j_offset as usize..], info.vals_j_num as usize)?;
-        let (val_k_header, vals_k) = if info.vals_k_offset != 0 {(
-            OrderedDataVec::from_bytes::<O>(&data[info.vals_k_offset as usize..], 2)?,
-            OrderedDataVec::from_bytes::<O>(&data[info.vals_k_offset as usize + 4..], 35)?
-        )} else {(
-            Vec::new(), Vec::new()
-        )};
-        let skin_order = if info.skin_order_offset != 0 {
-            OrderedDataVec::from_bytes::<O>(&data[info.skin_order_offset as usize..], info.skin_binds_num as usize)?
-        } else {
-            Vec::new()
-        };
-        let (slots, slot_map) = if info.slots_offset != 0 {
-            assert!(info.slot_map_offset != 0);
-            let mut i = 0;
-            {
-                while u32::from_bytes::<O>(&data[info.slots_offset as usize + i * 8..])? != 0 {
-                    i += 1;
-                }
-                i += 1;
-            }
-            let keys2: Vec<Key2> = OrderedDataVec::from_bytes::<O>(&data[info.slots_offset as usize..], i)?;
-            let keys2_order = OrderedDataVec::from_bytes::<O>(&data[info.slot_map_offset as usize..], keys2.last().unwrap().val as usize)?;
-            (keys2, keys2_order)
-        } else {(
-            Vec::new(), Vec::new()
-        )};
-        let (block_header, block_offsets, blocks) = if info.block_offset != 0 {
-            let block_header = OrderedData::from_bytes::<O>(&data[info.block_offset as usize..])?;
-            let n = (info.lod0.physics_end - info.lod0.skinned_end) as usize;
-            let block_offsets: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[info.block_offset as usize + 4..], n+1)?;
-            let mut blocks = Vec::with_capacity(n);
-            for i in 0..n {
-                let size = (block_offsets[i+1] - block_offsets[i]) as usize;
-                let offset = (block_offsets[i] + info.block_offset) as usize;
-                let header: model::BlockHeader = OrderedData::from_bytes::<O>(&data[offset..])?;
-                let mut s = model::BlockHeader::size::<O>();
-                let vals_a: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[offset+s..], (header.a + header.b) as usize * 12)?;
-                s += vals_a.size::<O>();
-                let vals_b: Vec<model::BlockVal> = OrderedDataVec::from_bytes::<O>(&data[offset+s..], (size - s)/model::BlockVal::size::<O>())?;
-                s += vals_b.size::<O>();
-                let extra = OrderedDataVec::from_bytes::<O>(&data[offset+s..], (size - s)/4)?;
-                blocks.push((header, vals_a, vals_b, extra));
-            }
-            (Some(block_header), block_offsets, blocks)
-        } else {(
-            None, Vec::new(), Vec::new()
-        )};
-
-        assert!(bone_parents[0] == -1);
-
-        let shapes = (0..info.shape_num as usize).map(|i| 
-            Shape::from_data::<O>(data, info.shape_offset as usize + i * ShapeInfo::size::<O>())
-        ).collect::<Result<Vec<_>>>()?;
-
-        let hk_constraint = if info.hk_constraint_offset != 0 {
-            Some(HkConstraint::from_data::<O>(data, info.hk_constraint_offset as usize)?) 
-        } else { None };
-        let hk_constraint_datas: Vec<HkConstraintData> = OrderedDataVec::from_bytes::<O>(&data[info.hk_constraint_data_offset as usize..], info.hk_constraint_data_num as usize)?;
-        
-        let mats = HashSet::<u32>::from_iter(mat_order.iter().cloned()).into_iter().sorted().collect::<Vec<_>>();
-        let mat_map: HashMap<_, _> = mats.iter().enumerate().map(|(i, x)| (*x, i as u32)).collect();
-        mat_order.iter_mut().for_each(|x| *x = *mat_map.get(x).unwrap());
-        let mats: Vec<Mat> = mats.into_iter().map(|off| Mat::from_data::<O>(data, off as usize)).collect::<Result<Vec<_>>>()?;
-        let mat_extras: Vec<_> = mats.iter().map(|x| 
-            Ok(if x.base().mat_extra_offset != 0 { Some(OrderedData::from_bytes::<O>(&data[x.base().mat_extra_offset as usize..])?) } else { None })
-        ).collect::<Result<Vec<_>>>()?;
-
-        let vbuffs = HashSet::<u32>::from_iter(vbuff_order.iter().cloned()).into_iter().sorted().collect::<Vec<_>>();
-        let mut vbuff_map: HashMap<_, _> = vbuffs.iter().enumerate().map(|(i, x)| (*x, i as u32)).collect();
-        vbuff_order.iter_mut().for_each(|x| *x = *vbuff_map.get(x).unwrap());
-        let vbuffs: Vec<VBuffInfo> = vbuffs.into_iter().map(|off| OrderedData::from_bytes::<O>(&data[off as usize..])).collect::<Result<Vec<_>>>()?;
-        let vertex_data = Vec::with_capacity(vbuffs.len());
-
-        let ibuffs = HashSet::<u32>::from_iter(ibuff_order.iter().cloned()).into_iter().sorted().collect::<Vec<_>>();
-        let mut ibuff_map: HashMap<_, _> = ibuffs.iter().enumerate().map(|(i, x)| (*x, i as u32)).collect();
-        ibuff_order.iter_mut().for_each(|x| *x = *ibuff_map.get(x).unwrap());
-        let ibuffs: Vec<IBuffInfo> = ibuffs.into_iter().map(|off| OrderedData::from_bytes::<O>(&data[off as usize..])).collect::<Result<Vec<_>>>()?;
-        let index_data = Vec::with_capacity(ibuffs.len());
-
-        ibuff_map.insert(0, 0xFFFFFFFF);
-        vbuff_map.insert(0, 0xFFFFFFFF);
-        let mut buffer_infos: Vec<BufferInfo> = OrderedDataVec::from_bytes::<O>(&data[info.buffer_info_offset as usize..], info.mat_num as usize)?;
-        buffer_infos.iter_mut().for_each(|buff| {
-            buff.vbuff_info_offset = *vbuff_map.get(&buff.vbuff_info_offset).unwrap_or(&buff.vbuff_info_offset);
-            buff.vbuff_info_offset_2 = *vbuff_map.get(&buff.vbuff_info_offset_2).unwrap_or(&buff.vbuff_info_offset_2);
-            buff.vbuff_info_offset_3 = *vbuff_map.get(&buff.vbuff_info_offset_3).unwrap_or(&buff.vbuff_info_offset_3);
-            buff.ibuff_info_offset = *ibuff_map.get(&buff.ibuff_info_offset).unwrap_or(&buff.ibuff_info_offset);
-        });
-
-        Ok(Self {
-            info,
-            bone_parents,
-            bones,
-            bone_transforms,
-            mat_order,
-            vals_a,
-            mesh_order,
-            vals_d,
-            vbuff_order,
-            ibuff_order,
-            skin_binds,
-            vals_j,
-            val_k_header,
-            vals_k,
-            skin_order,
-            slots,
-            slot_map,
-            block_header,
-            block_offsets,
-            blocks,
-            mats,
-            mat_extras,
-            vbuffs,
-            ibuffs,
-            buffer_infos,
-            shapes,
-            hk_constraint,
-            hk_constraint_datas,
-            vertex_data,
-            index_data,
-        })
-    }
-
-    pub fn dump<O: Version + 'static>(&self, mut offset: usize, infos: &mut DumpInfos) -> Vec<u8> {
-        let mut info = self.info.clone();
-        let mut data = vec![];
-
-        let mut mat_order = self.mat_order.clone();
-        let mut mat_map = HashMap::with_capacity(self.mats.len());
-        for (i, (mat, mat_extra)) in zip(&self.mats, &self.mat_extras).enumerate() {
-            let mut mat = mat.clone();
-            if let Some(mat_extra) = mat_extra {
-                mat.base_mut().mat_extra_offset = infos.header.mat_extra_offset + (MatExtra::size::<O>() * infos.mat_extra.len()) as u32;
-                infos.mat_extra.push(mat_extra.clone())
-            }
-            match mat {
-                Mat::Mat1(mat) => {
-                    mat_map.insert(i as u32, infos.header.mat1_offset + (Mat1::size::<O>() * infos.mat1.len()) as u32);
-                    infos.mat1.push(mat);
-                },
-                Mat::Mat2(mat) => {
-                    mat_map.insert(i as u32, infos.header.mat2_offset + (Mat2::size::<O>() * infos.mat2.len()) as u32);
-                    infos.mat2.push(mat);
-                },
-                Mat::Mat3(mat) => {
-                    mat_map.insert(i as u32, infos.header.mat3_offset + (Mat3::size::<O>() * infos.mat3.len()) as u32);
-                    infos.mat3.push(mat);
-                },
-                Mat::Mat4(mat) => {
-                    mat_map.insert(i as u32, infos.header.mat4_offset + (Mat4::size::<O>() * infos.mat4.len()) as u32);
-                    infos.mat4.push(mat);
-                },
-            }
-        }
-        mat_order.iter_mut().for_each(|x| *x = *mat_map.get(x).unwrap());
-
-        let mut vbuff_map: HashMap<_, _> = (0..self.vbuffs.len()).map(|x| (x as u32, infos.header.vbuff_info_offset + (VBuffInfo::size::<O>() * (infos.vbuff.len() + x)) as u32)).collect();
-        let vbuff_order: Vec<u32> = self.vbuff_order.iter().map(|x| *vbuff_map.get(x).unwrap()).collect();
-        infos.vbuff.extend(self.vbuffs.clone());
-
-        let mut ibuff_map: HashMap<_, _> = (0..self.ibuffs.len()).map(|x| (x as u32, infos.header.ibuff_info_offset + (IBuffInfo::size::<O>() * (infos.ibuff.len() + x)) as u32)).collect();
-        let ibuff_order: Vec<u32> = self.ibuff_order.iter().map(|x| *ibuff_map.get(x).unwrap()).collect();
-        infos.ibuff.extend(self.ibuffs.clone());
-
-        ibuff_map.insert(0xFFFFFFFF, 0);
-        vbuff_map.insert(0xFFFFFFFF, 0);
-        let buffer_infos: Vec<_> = self.buffer_infos.iter().map(|buff| {
-            let mut buff = buff.clone();
-            buff.vbuff_info_offset = *vbuff_map.get(&buff.vbuff_info_offset).unwrap();
-            buff.vbuff_info_offset_2 = *vbuff_map.get(&buff.vbuff_info_offset_2).unwrap();
-            buff.vbuff_info_offset_3 = *vbuff_map.get(&buff.vbuff_info_offset_3).unwrap();
-            buff.ibuff_info_offset = *ibuff_map.get(&buff.ibuff_info_offset).unwrap();
-            buff
-        }).collect();
-        info.buffer_info_offset = infos.header.buffer_info_offset + (BufferInfo::size::<O>() * infos.buffer.len()) as u32;
-        infos.buffer.extend(buffer_infos);
-
-        info.hk_constraint_data_num = self.hk_constraint_datas.len() as u32;
-        info.hk_constraint_data_offset = if self.hk_constraint_datas.len() != 0 {
-            infos.header.hk_constraint_data_offset + (HkConstraintData::size::<O>() * infos.hk_constraint_data.len()) as u32
-        } else { 0 };
-        infos.hk_constraint_data.extend(self.hk_constraint_datas.clone());
-
-        info.bones_offset = offset as u32;
-        info.bones_num = self.bones.len() as u32;
-        let vals = self.bones.dump_bytes::<O>();
-        offset += vals.len();
-        data.extend(vals);
-
-        let off = (offset+ 15) & 0xFFFFFFF0;
-        data.extend(vec![0u8; off-offset]);
-        offset = off;
-
-        info.vals_a_offset = offset as u32;
-        let vals = self.vals_a.dump_bytes::<O>();
-        offset += vals.len();
-        data.extend(vals);
-
-        info.vals_j_offset = offset as u32;
-        info.vals_j_num = self.vals_j.len() as u32;
-        let vals = self.vals_j.dump_bytes::<O>();
-        offset += vals.len();
-        data.extend(vals);
-
-        if let Some(hk_constraint) = &self.hk_constraint {
-            info.hk_constraint_offset = infos.header.hk_constraint_info_offset + (HkConstraintInfo::size::<O>() * infos.hk_constraint.len()) as u32;
-            let vals = hk_constraint.dump::<O>(offset, info.bones_offset, info.bones_num, infos);
-            offset += vals.len();
-            data.extend(vals);
-        } else {
-            info.hk_constraint_offset = 0;
-        }
-
-        let off = (offset+ 15) & 0xFFFFFFF0;
-        data.extend(vec![0u8; off-offset]);
-        offset = off;
-
-        info.skin_binds_offset = offset as u32;
-        info.skin_binds_num = self.skin_binds.len() as u32;
-        let vals = self.skin_binds.dump_bytes::<O>();
-        offset += vals.len();
-        data.extend(vals);
-
-        if self.skin_order.len() != 0 {
-            info.skin_order_offset = offset as u32;
-            let vals = self.skin_order.dump_bytes::<O>();
-            offset += vals.len();
-            data.extend(vals);
-        } else {
-            info.skin_order_offset = 0;
-        }
-
-        info.bone_parents_offset = offset as u32;
-        let vals = self.bone_parents.dump_bytes::<O>();
-        offset += vals.len();
-        data.extend(vals);
-
-        let off = (offset+ 15) & 0xFFFFFFF0;
-        data.extend(vec![0u8; off-offset]);
-        offset = off;
-
-        info.bone_transforms_offset = offset as u32;
-        let vals = self.bone_transforms.dump_bytes::<O>();
-        offset += vals.len();
-        data.extend(vals);
-
-        info.mat_offset = offset as u32;
-        info.mat_num = mat_order.len() as u32;
-        infos.block2_offsets.extend((0..mat_order.len() as u32).map(|x| offset as u32 + x * 4));
-        let vals = mat_order.dump_bytes::<O>();
-        offset += vals.len();
-        data.extend(vals);
-
-        info.shape_num = self.shapes.len() as u32;
-        info.shape_offset = if self.shapes.len() != 0 {
-            infos.header.shape_info_offset + (ShapeInfo::size::<O>() * infos.shape.len()) as u32
-        } else { 0 };
-        for shape in &self.shapes {
-            let vals = shape.dump::<O>(offset, None, infos);
-            offset += vals.len();
-            data.extend(vals);    
-        }
-
-        info.mesh_order_offset = offset as u32;
-        //info.lod3.breakable_end = self.mesh_order.len() as u32;
-        let vals = self.mesh_order.dump_bytes::<O>();
-        offset += vals.len();
-        data.extend(vals);
-
-        let off = (offset+ 15) & 0xFFFFFFF0;
-        data.extend(vec![0u8; off-offset]);
-        offset = off;
-
-        info.vals_d_offset = offset as u32;
-        let vals = self.vals_d.dump_bytes::<O>();
-        offset += vals.len();
-        data.extend(vals);    
-
-        info.vbuff_offset = offset as u32;
-        info.vbuff_num = vbuff_order.len() as u32;
-        infos.block2_offsets.extend((0..vbuff_order.len() as u32).map(|x|  offset as u32 + x * 4));
-        let vals = vbuff_order.dump_bytes::<O>();
-        offset += vals.len();
-        data.extend(vals);
-
-        info.ibuff_offset = offset as u32;
-        info.ibuff_num = ibuff_order.len() as u32;
-        infos.block2_offsets.extend((0..ibuff_order.len() as u32).map(|x|  offset as u32 + x * 4));
-        let vals = ibuff_order.dump_bytes::<O>();
-        offset += vals.len();
-        data.extend(vals);
-
-        if self.val_k_header.len() != 0 {
-            let off = (offset+ 15) & 0xFFFFFFF0;
-            data.extend(vec![0u8; off-offset]);
-            offset = off;
-
-            info.vals_k_offset = offset as u32;
-            let vals = self.val_k_header.dump_bytes::<O>();
-            offset += vals.len();
-            data.extend(vals);
-            let vals = self.vals_k.dump_bytes::<O>();
-            offset += vals.len();
-            data.extend(vals);
-        }
-
-        if self.slots.len() != 0 {
-            info.slots_offset = offset as u32;
-            let vals = self.slots.dump_bytes::<O>();
-            offset += vals.len();
-            data.extend(vals);
-            info.slot_map_offset = offset as u32;
-            let vals = self.slot_map.dump_bytes::<O>();
-            offset += vals.len();
-            data.extend(vals);
-        }
-
-        if let Some(block_header) = self.block_header {
-            let off = (offset+ 15) & 0xFFFFFFF0;
-            data.extend(vec![0u8; off-offset]);
-            offset = off;
-
-            info.block_offset = offset as u32;
-            let vals = block_header.dump_bytes::<O>();
-            offset += vals.len();
-            data.extend(vals);
-            let vals = self.block_offsets.dump_bytes::<O>();
-            offset += vals.len();
-            data.extend(vals);
-
-            for (i, (header, vals_a, vals_b, extra)) in self.blocks.iter().enumerate() {
-                let off = (self.block_offsets[i] + info.block_offset) as usize;
-                data.extend(vec![0u8; off-offset]);
-                offset = off;
-                let vals = header.dump_bytes::<O>();
-                offset += vals.len();
-                data.extend(vals);
-                let vals = vals_a.dump_bytes::<O>();
-                offset += vals.len();
-                data.extend(vals);
-                let vals = vals_b.dump_bytes::<O>();
-                offset += vals.len();
-                data.extend(vals);
-                let vals = extra.dump_bytes::<O>();
-                offset += vals.len();
-                data.extend(vals);
-            }
-        }
-
-        infos.model.push(info);
-        data
-    }
-
-    pub fn dump_terrain<O: Version + 'static>(&self, mut offset: usize, indices_offset: u32, infos: &mut DumpInfos) -> Vec<u8> {
-        let mut info = self.info.clone();
-        let mut data = vec![];
-
-        let mut mat_order = self.mat_order.clone();
-        let mut mat_map = HashMap::with_capacity(self.mats.len());
-        for (i, (mat, mat_extra)) in zip(&self.mats, &self.mat_extras).enumerate() {
-            let mut mat = mat.clone();
-            if let Some(mat_extra) = mat_extra {
-                mat.base_mut().mat_extra_offset = infos.header.mat_extra_offset + (MatExtra::size::<O>() * infos.mat_extra.len()) as u32;
-                infos.mat_extra.push(mat_extra.clone())
-            }
-            match mat {
-                Mat::Mat1(mat) => {
-                    mat_map.insert(i as u32, infos.header.mat1_offset + (Mat1::size::<O>() * infos.mat1.len()) as u32);
-                    infos.mat1.push(mat);
-                },
-                Mat::Mat2(mat) => {
-                    mat_map.insert(i as u32, infos.header.mat2_offset + (Mat2::size::<O>() * infos.mat2.len()) as u32);
-                    infos.mat2.push(mat);
-                },
-                Mat::Mat3(mat) => {
-                    mat_map.insert(i as u32, infos.header.mat3_offset + (Mat3::size::<O>() * infos.mat3.len()) as u32);
-                    infos.mat3.push(mat);
-                },
-                Mat::Mat4(mat) => {
-                    mat_map.insert(i as u32, infos.header.mat4_offset + (Mat4::size::<O>() * infos.mat4.len()) as u32);
-                    infos.mat4.push(mat);
-                },
-            }
-        }
-        mat_order.iter_mut().for_each(|x| *x = *mat_map.get(x).unwrap());
-
-        let mut vbuff_map: HashMap<_, _> = (0..self.vbuffs.len()).map(|x| (x as u32, infos.header.vbuff_info_offset + (VBuffInfo::size::<O>() * (infos.vbuff.len() + x)) as u32)).collect();
-        let vbuff_order: Vec<u32> = self.vbuff_order.iter().map(|x| *vbuff_map.get(x).unwrap()).collect();
-        infos.vbuff.extend(self.vbuffs.clone());
-
-        let mut ibuff_map: HashMap<_, _> = (0..self.ibuffs.len()).map(|x| (x as u32, infos.header.ibuff_info_offset + (IBuffInfo::size::<O>() * (infos.ibuff.len() + x)) as u32)).collect();
-        let ibuff_order: Vec<u32> = self.ibuff_order.iter().map(|x| *ibuff_map.get(x).unwrap()).collect();
-        infos.ibuff.extend(self.ibuffs.clone());
-
-        ibuff_map.insert(0xFFFFFFFF, 0);
-        vbuff_map.insert(0xFFFFFFFF, 0);
-        let buffer_infos: Vec<_> = self.buffer_infos.iter().map(|buff| {
-            let mut buff = buff.clone();
-            buff.vbuff_info_offset = *vbuff_map.get(&buff.vbuff_info_offset).unwrap();
-            buff.vbuff_info_offset_2 = *vbuff_map.get(&buff.vbuff_info_offset_2).unwrap();
-            buff.vbuff_info_offset_3 = *vbuff_map.get(&buff.vbuff_info_offset_3).unwrap();
-            buff.ibuff_info_offset = *ibuff_map.get(&buff.ibuff_info_offset).unwrap();
-            buff
-        }).collect();
-        info.buffer_info_offset = infos.header.buffer_info_offset + (BufferInfo::size::<O>() * infos.buffer.len()) as u32;
-        infos.buffer.extend(buffer_infos);
-
-        info.hk_constraint_data_num = self.hk_constraint_datas.len() as u32;
-        info.hk_constraint_data_offset = if self.hk_constraint_datas.len() != 0 {
-            infos.header.hk_constraint_data_offset + (HkConstraintData::size::<O>() * infos.hk_constraint_data.len()) as u32
-        } else { 0 };
-        infos.hk_constraint_data.extend(self.hk_constraint_datas.clone());
-
-        info.bones_offset = 0;
-        info.bones_num = self.vals_a.len() as u32;
-
-        info.vals_a_offset = infos.header.model_info_offset + (infos.model.len() * ModelInfo::size::<O>()) as u32 + 16;
-
-        info.skin_binds_offset = indices_offset as u32;
-        info.skin_binds_num = 0;
-        info.skin_order_offset = 0;
-        info.bone_parents_offset = indices_offset as u32;
-
-        if let Some(hk_constraint) = &self.hk_constraint {
-            info.hk_constraint_offset = infos.header.hk_constraint_info_offset + (HkConstraintInfo::size::<O>() * infos.hk_constraint.len()) as u32;
-            let vals = hk_constraint.dump::<O>(offset, info.bones_offset, info.bones_num, infos);
-            offset += vals.len();
-            data.extend(vals);    
-        } else {
-            info.hk_constraint_offset = 0;
-        }
-
-        let mut shape_offsets = Vec::with_capacity(self.shapes.len());
-        for shape in &self.shapes {
-            if let Some(extra) = &shape.extra {
-                shape_offsets.push(Some(offset as u32));
-                let vals = extra.dump::<O>();
-                offset += vals.len();
-                data.extend(vals);
-            } else {
-                shape_offsets.push(None);
-            }
-        }
-
-        let off = (offset+ 15) & 0xFFFFFFF0;
-        data.extend(vec![0u8; off-offset]);
-        offset = off;
-
-        info.vals_d_offset = offset as u32;
-        let vals = self.vals_d.dump_bytes::<O>();
-        offset += vals.len();
-        data.extend(vals);    
-
-        info.bone_transforms_offset = offset as u32;
-        let vals = self.bone_transforms.dump_bytes::<O>();
-        offset += vals.len();
-        data.extend(vals);
-
-        info.mat_offset = offset as u32;
-        info.mat_num = mat_order.len() as u32;
-        infos.block2_offsets.extend((0..mat_order.len() as u32).map(|x| offset as u32 + x * 4));
-        let vals = mat_order.dump_bytes::<O>();
-        offset += vals.len();
-        data.extend(vals);
-        
-        info.mesh_order_offset = offset as u32;
-        //info.lod3.breakable_end = self.mesh_order.len() as u32;
-        let vals = self.mesh_order.dump_bytes::<O>();
-        offset += vals.len();
-        data.extend(vals);
-
-        info.vbuff_offset = offset as u32;
-        info.vbuff_num = vbuff_order.len() as u32;
-        infos.block2_offsets.extend((0..vbuff_order.len() as u32).map(|x|  offset as u32 + x * 4));
-        let vals = vbuff_order.dump_bytes::<O>();
-        offset += vals.len();
-        data.extend(vals);
-
-        let off_dest = offset + 320;
-        info.ibuff_offset = offset as u32;
-        info.ibuff_num = ibuff_order.len() as u32;
-        infos.block2_offsets.extend((0..ibuff_order.len() as u32).map(|x|  offset as u32 + x * 4));
-        let vals = ibuff_order.dump_bytes::<O>();
-        offset += vals.len();
-        data.extend(vals);
-
-        if self.val_k_header.len() != 0 {
-            let off = (offset+ 15) & 0xFFFFFFF0;
-            data.extend(vec![0u8; off-offset]);
-            offset = off;
-
-            info.vals_k_offset = offset as u32;
-            let vals = self.val_k_header.dump_bytes::<O>();
-            offset += vals.len();
-            data.extend(vals);
-            let vals = self.vals_k.dump_bytes::<O>();
-            offset += vals.len();
-            data.extend(vals);
-        }
-
-        if self.slots.len() != 0 {
-            info.slots_offset = offset as u32;
-            let vals = self.slots.dump_bytes::<O>();
-            offset += vals.len();
-            data.extend(vals);
-            info.slot_map_offset = offset as u32;
-            let vals = self.slot_map.dump_bytes::<O>();
-            offset += vals.len();
-            data.extend(vals);
-        }
-
-        if let Some(block_header) = self.block_header {
-            let off = (offset+ 15) & 0xFFFFFFF0;
-            data.extend(vec![0u8; off-offset]);
-            offset = off;
-
-            info.block_offset = offset as u32;
-            let vals = block_header.dump_bytes::<O>();
-            offset += vals.len();
-            data.extend(vals);
-            let vals = self.block_offsets.dump_bytes::<O>();
-            offset += vals.len();
-            data.extend(vals);
-
-            for (i, (header, vals_a, vals_b, extra)) in self.blocks.iter().enumerate() {
-                let off = (self.block_offsets[i] + info.block_offset) as usize;
-                data.extend(vec![0u8; off-offset]);
-                offset = off;
-                let vals = header.dump_bytes::<O>();
-                offset += vals.len();
-                data.extend(vals);
-                let vals = vals_a.dump_bytes::<O>();
-                offset += vals.len();
-                data.extend(vals);
-                let vals = vals_b.dump_bytes::<O>();
-                offset += vals.len();
-                data.extend(vals);
-                let vals = extra.dump_bytes::<O>();
-                offset += vals.len();
-                data.extend(vals);
-            }
-        }
-
-        data.extend(vec![0u8; off_dest - offset]);
-        offset = off_dest;
-
-        info.shape_num = self.shapes.len() as u32;
-        info.shape_offset = if self.shapes.len() != 0 {
-            infos.header.shape_info_offset + (ShapeInfo::size::<O>() * infos.shape.len()) as u32
-        } else { 0 };
-        for (shape, off) in zip(&self.shapes, shape_offsets) {
-            let vals = shape.dump::<O>(offset, off, infos);
-            offset += vals.len();
-            data.extend(vals);    
-        }
-
-
-        infos.model.push(info);
-        data
-    }
-
-    pub fn infos_count(&self) -> (u32, u32, u32, u32, u32, u32, u32, u32, u32, u32, u32, u32) {
-        let hk_shapes = self.shapes.iter().map(|shape| shape.hk_shapes.len()).sum::<usize>();
-        let (mut mat1_num, mut mat2_num, mut mat3_num, mut mat4_num) = (0u32, 0u32, 0u32, 0u32);
-        for mat in &self.mats {
-            match mat {
-                Mat::Mat1(_) => { mat1_num += 1; },
-                Mat::Mat2(_) => { mat2_num += 1; },
-                Mat::Mat3(_) => { mat3_num += 1; },
-                Mat::Mat4(_) => { mat4_num += 1; },
-            }
-        }
-        return (
-            self.shapes.len() as u32,
-            hk_shapes as u32,
-            if self.hk_constraint.is_some() { 1u32 } else { 0 },
-            self.hk_constraint_datas.len() as u32,
-            mat1_num, mat2_num, mat3_num, mat4_num,
-            self.mat_extras.iter().map(|x| if x.is_some() { 1 } else { 0 }).sum::<u32>(),
-            self.buffer_infos.len() as u32,
-            self.vbuffs.len() as u32,
-            self.ibuffs.len() as u32,
-        )
-    }
-
-    pub fn to_gltf(&self) -> Result<gltf::Glb> {
-        let mut root = gltf::json::root::Root::default();
-        let mut bin = Vec::new();
-
-        // add index data
-        let ibuffs: Vec<_> = self.index_data.iter().map(|ibuff| match ibuff {
-            IndexBuffer::U16 { vals } => GltfAsset { data: vals.dump_bytes::<PC>(), count: vals.len(), ty: DataType::U16, dim: Dimensions::Scalar,  target: Some(Target::ElementArrayBuffer), ..Default::default() },
-            IndexBuffer::U32 { vals } => GltfAsset { data: vals.dump_bytes::<PC>(), count: vals.len(), ty: DataType::U32, dim: Dimensions::Scalar,  target: Some(Target::ElementArrayBuffer), ..Default::default() },
-        }.to_gltf(&mut root, &mut bin)).collect();
-
-        let vbuffs: Vec<HashMap<VertexUsage, Index<Accessor>>> = self.vertex_data.iter().map(|vbuff| 
-            vbuff.vals.iter().map(|val| (val.usage.clone(), GltfAsset { 
-                data: val.gltf_data(),
-                count: val.val.len(),
-                stride: val.stride(),
-                target: Some(Target::ArrayBuffer),
-                ty: val.component_type(),
-                dim: val.dimensions(),
-                min: val.min(),
-                max: val.max(),
-                normalized: val.normalized(),
-                extras: Some(json!(val.usage.clone())),
-            }.to_gltf(&mut root, &mut bin))).collect()
-        ).collect();
-
-        // add skeleton data if relevant
-        let mut children = self.bones.iter().map(|_| Vec::new()).collect::<Vec<_>>();
-        for (i, &parent) in self.bone_parents.iter().enumerate() {
-            if parent == -1 { continue }
-            children[parent as usize].push(Index::<Node>::new((root.nodes.len() + i) as u32));
-        }
-
-        let bones: Vec<_> = self.bones.iter().zip(self.bone_transforms.iter().zip(children)).map(|(bone, (mat, children))| {
-            let children = if children.is_empty() {
-                None 
-            } else {
-                Some(children)
-            };
-            root.push(Node {
-                name: Some(bone.to_string()),
-                children,
-                matrix: Some(mat.into()),
-                ..Default::default()
-            })
-        }).collect();
-
-        // add skin if relevant
-        let skin = if self.skin_order.len() != 0 {
-            let joints: Vec<_> = self.skin_order.iter().map(|&x| bones[x as usize]).collect();
-            let accessor = GltfAsset { 
-                data: self.skin_binds.dump_bytes::<PC>(), 
-                count: joints.len(), 
-                ty: DataType::F32,
-                dim: Dimensions::Mat4, 
-                ..Default::default()
-            }.to_gltf(&mut root, &mut bin);
-            let skeleton = bones.first().copied();
-
-            Some(root.push(gltf::json::Skin {
-                name: None,
-                extensions: None,
-                extras: Default::default(),
-                inverse_bind_matrices: Some(accessor),
-                joints,
-                skeleton,
-            }))
-        } else {
-            None
-        };
-
-        // add meshesand nodes
-
-        let mut i = 0;
-        let mut uses = vec![0u32; self.buffer_infos.len()];
-        for (lod, f) in [&self.info.lod0, &self.info.lod1, &self.info.lod2, &self.info.lod3].iter().zip(
-            [LodMeshes::LOD0, LodMeshes::LOD1, LodMeshes::LOD2, LodMeshes::LOD3]
-        ) {
-            for i in i..lod.start { 
-                uses[(self.mesh_order[i as usize] & 0x3FFFFFFF) as usize] |= f | LodMeshes::UNKNOWN; 
-            }
-            for i in lod.start..lod.static_end {
-                uses[(self.mesh_order[i as usize] & 0x3FFFFFFF) as usize] |= f | LodMeshes::STATIC;
-            }
-            for i in lod.static_end..lod.skinned_end {
-                uses[(self.mesh_order[i as usize] & 0x3FFFFFFF) as usize] |= f | LodMeshes::SKINNED;
-            }
-            for i in lod.skinned_end..lod.physics_end {
-                uses[(self.mesh_order[i as usize] & 0x3FFFFFFF) as usize] |= f | LodMeshes::PHYSICS;
-            }
-            for i in lod.physics_end..lod.breakable_end {
-                uses[(self.mesh_order[i as usize] & 0x3FFFFFFF) as usize] |= f | LodMeshes::BREAKABLE;
-            }
-            i = lod.breakable_end;
-        }
-
-        let mut nodes: Vec<_> = self.buffer_infos.iter().zip(uses).enumerate().map(|(i, (info, usage))| {
-            let vbuff = &vbuffs[info.vbuff_info_offset as usize];
-            let indices = ibuffs.get(info.ibuff_info_offset as usize).copied();
-            //let i_size = root.accessors[indices.unwrap().value()].max.as_ref().unwrap().as_u64().unwrap();
-            let mut attributes = std::collections::BTreeMap::new();
-            let skinned = usage & LodMeshes::SKINNED != 0;
-            //let skinned = vbuff.contains_key(&VertexUsage::BlendWeight) && vbuff.contains_key(&VertexUsage::BlendIndices);
-            for (k, v) in vbuff.iter() {
-                match k {
-                    VertexUsage::Position() => {
-                        attributes.insert(Checked::Valid(gltf::mesh::Semantic::Positions), v.clone());
-                    },
-                    VertexUsage::Normal() => {
-                        attributes.insert(Checked::Valid(gltf::mesh::Semantic::Normals), v.clone());
-                    },
-                    VertexUsage::TextureCoord(i) => {
-                        attributes.insert(Checked::Valid(gltf::mesh::Semantic::TexCoords(*i as u32)), v.clone());
-                    },
-                    VertexUsage::BlendIndices() => if skinned { 
-                        attributes.insert(Checked::Valid(gltf::mesh::Semantic::Joints(0)), v.clone());
-                    } else {
-                        attributes.insert(Checked::Valid(gltf::mesh::Semantic::Extras(k.to_string())), v.clone());
-                    },
-                    VertexUsage::BlendWeight() => if skinned {
-                        attributes.insert(Checked::Valid(gltf::mesh::Semantic::Weights(0)), v.clone());
-                    } else {
-                        attributes.insert(Checked::Valid(gltf::mesh::Semantic::Extras(k.to_string())), v.clone());
-                    },
-                    VertexUsage::Tangent() => {
-                        attributes.insert(Checked::Valid(gltf::mesh::Semantic::Tangents), v.clone());
-                    },
-                    _ => {
-                        attributes.insert(Checked::Valid(gltf::mesh::Semantic::Extras(k.to_string())), v.clone());
-                    }
-                }
-            }
-            let skin = if skinned { skin } else { None };
-
-            let mut name = String::new() + "(";
-            if usage & LodMeshes::LOD0 != 0 { name += "Lod0, "; }
-            if usage & LodMeshes::LOD1 != 0 { name += "Lod1, "; }
-            if usage & LodMeshes::LOD2 != 0 { name += "Lod2, "; }
-            if usage & LodMeshes::LOD3 != 0 { name += "Lod3, "; }
-            name.truncate(name.len() - 2);
-            name += format!(") Mesh {} [", i).as_str();
-            if usage & LodMeshes::UNKNOWN != 0 { name += "Unknown, "; }
-            if usage & LodMeshes::STATIC != 0 { name += "Static, "; }
-            if usage & LodMeshes::SKINNED != 0 { name += "Skinned, "; }
-            if usage & LodMeshes::PHYSICS != 0 { name += "Physics, "; }
-            if usage & LodMeshes::BREAKABLE != 0 { name += "Breakable, "; }
-            name.truncate(name.len() - 2);
-            name += "]";
-
-            let mesh = root.push(gltf::json::Mesh {
-                name: None,
-                extensions: None,
-                extras: Default::default(),
-                primitives: vec![gltf::json::mesh::Primitive {
-                    attributes,
-                    extensions: None,
-                    extras: Default::default(),
-                    indices, 
-                    material: None,
-                    mode: Checked::Valid(gltf::json::mesh::Mode::Triangles),
-                    targets: None,
-                }],
-                weights: None,
-            });
-
-            let skin = if let Some(skin) = skin {
-                let skin_start = info.skin_offset as usize;
-                let skin_end = (info.skin_offset + info.skin_size) as usize;
-                let skin = root.get(skin).unwrap();
-                let joints = skin.joints[skin_start..skin_end].to_vec();
-                let skeleton = skin.skeleton;
-                let inverse_bind_matrices = if let Some(accessor) = skin.inverse_bind_matrices {
-                    let mut accessor = root.get(accessor).unwrap().clone();
-                    accessor.count = (info.skin_size as usize).into();
-                    accessor.byte_offset = Some((info.skin_offset as usize * 64).into());
-                    Some(root.push(accessor))
-                } else {
-                    None
-                };
-
-                Some(root.push(gltf::json::Skin {
-                    name: None,
-                    extensions: None,
-                    extras: Default::default(),
-                    inverse_bind_matrices,
-                    joints,
-                    skeleton,
-                }))
-            } else { None };
-
-            root.push(Node {
-                name: Some(name),
-                skin,
-                mesh: Some(mesh),
-                ..Default::default()
-            })
-        }).collect();
-
-        // construct scene
-    
-        if let Some(node) = bones.first() {
-            nodes.push(node.clone());
-        }
-        
-        root.push(gltf::json::Scene {
-            name: None,
-            extensions: None,
-            extras: Default::default(),
-            nodes
-        });
-
-        root.push(gltf::json::Buffer {
-            name: None,
-            byte_length: bin.len().into(),
-            extensions: None,
-            extras: Default::default(),
-            uri: None,
-        });
-            
-        root.extensions_used.push("KHR_mesh_quantization".into());
-        root.extensions_required.push("KHR_mesh_quantization".into());
-        root.extras = Some(serde_json::value::to_raw_value(&json!(ModelGltf {
-            info: self.info.clone(),
-            vals_a: self.vals_a.clone(),
-            mat_order: self.mat_order.clone(),
-            mesh_order: self.mesh_order.clone(),
-            vals_d: self.vals_d.clone(),
-            vbuff_order: self.vbuff_order.clone(),
-            ibuff_order: self.ibuff_order.clone(),
-            vals_j: self.vals_j.clone(),
-            val_k_header: self.val_k_header.clone(),
-            vals_k: self.vals_k.clone(),
-            slots: self.slots.clone(),
-            slot_map: self.slot_map.clone(),
-            block_header: self.block_header.clone(),
-            block_offsets: self.block_offsets.clone(),
-            blocks: self.blocks.clone(),
-            mats: self.mats.clone(),
-            mat_extras: self.mat_extras.clone(),
-            vbuffs: self.vbuffs.clone(),
-            ibuffs: self.ibuffs.clone(),
-            buffer_infos: self.buffer_infos.clone(),
-            hk_constraint: self.hk_constraint.clone(),
-            hk_constraint_datas: self.hk_constraint_datas.clone(),
-            shapes: self.shapes.iter().map(|x| x.to_gltf(&mut root, &mut bin)).collect(),
-            index_data: ibuffs,
-            vertex_data: vbuffs,
-            bones,
-        }))?);
-
-        // decode and reformat so that extras are properly formatted in the result
-        let json = serde_json::to_vec_pretty(&serde_json::from_slice::<serde_json::Value>(root.to_vec()?.as_slice())?)?;
-        let length = json.len();
-        //json.extend(vec![' ' as u8; ((json.len() + 3) & 0xFFFFFFFC) - json.len()]);
-    
-        let header = gltf::binary::Header {
-            magic: *b"GLTF",
-            version: 2,
-            length: (length + bin.len()) as u32,
-        };
-
-        Ok(gltf::Glb {
-            header,
-            bin: Some(bin.into()),
-            json: json.into(),
-        })
-    }
-
-    pub fn from_gltf(root: &Root, bin: &[u8]) -> Result<Self> {
-        let model: ModelGltf = serde_json::from_str(root.extras.as_ref().unwrap().get())?;
-
-        // get vertex / index data
-        let index_data = model.ibuffs.iter().zip(model.index_data).map(|(info, i)| match info.format {
-            0x10 => IndexBuffer::U16 { vals: GltfData::from_buffer(i, root, bin).u16().unwrap() },
-            _ => IndexBuffer::U32 { vals: GltfData::from_buffer(i, root, bin).u32().unwrap() },
-        }).collect();
-
-        let mut formats = HashMap::new();
-        let vertex_data = model.vbuffs.iter().zip(model.vertex_data).map(|(info, data)| {
-            let fmt = formats.entry((info.fmt1, info.fmt2)).or_insert_with(|| {
-                get_vertex_format::<PC>(info.fmt1, info.fmt2).0
-            });
-
-            let mut vals = fmt.clone();
-            for val in &mut vals {
-                let i = data.get(&val.usage).unwrap();
-                val.from_gltf(GltfData::from_buffer(*i, root, bin)).unwrap();
-            }
-            VertexBuffer { vals }
-        }).collect();
-
-        let mut bones = Vec::with_capacity(model.bones.len());
-        let mut bone_parents = vec![-1; model.bones.len()];
-        let mut bone_transforms = Vec::with_capacity(model.bones.len());
-        let bone_map: HashMap<Index<Node>, usize> = model.bones.iter().cloned().enumerate().map(|(x,y)| (y,x)).collect();
-        for (i, node) in model.bones.into_iter().map(|x| root.get(x).unwrap()).enumerate() {
-            if let Some(children) = &node.children {
-                for j in children {
-                    bone_parents[*bone_map.get(j).unwrap()] = i as i32;
-                }
-            }
-            bones.push(Crc::from_string(node.name.as_ref().unwrap().as_str()));
-            bone_transforms.push(node.matrix.as_ref().unwrap().into());
-        }
-        
-        let mut skin_order = Vec::new();
-        let mut skin_binds = Vec::new();
-        if let Some(skin) = root.skins.first() {
-            skin_order.extend(skin.joints.iter().map(|x| *bone_map.get(x).unwrap() as u32));
-            skin_binds.extend(GltfData::from_buffer(skin.inverse_bind_matrices.unwrap(), root, bin).f32().unwrap().as_slice().chunks_exact(16).map(|x| x.try_into().unwrap()));
-        }
-
-        Ok(Self {
-            bones,
-            bone_parents,
-            bone_transforms,
-            skin_order,
-            skin_binds,
-            vertex_data,
-            index_data,
-            info: model.info,
-            vals_a: model.vals_a,
-            mat_order: model.mat_order,
-            mesh_order: model.mesh_order,
-            vals_d: model.vals_d,
-            vbuff_order: model.vbuff_order,
-            ibuff_order: model.ibuff_order,
-            vals_j: model.vals_j,
-            val_k_header: model.val_k_header,
-            vals_k: model.vals_k,
-            slots: model.slots,
-            slot_map: model.slot_map,
-            block_header: model.block_header,
-            block_offsets: model.block_offsets,
-            blocks: model.blocks,
-            mats: model.mats,
-            mat_extras: model.mat_extras,
-            vbuffs: model.vbuffs,
-            ibuffs: model.ibuffs,
-            buffer_infos: model.buffer_infos,
-            hk_constraint: model.hk_constraint,
-            hk_constraint_datas: model.hk_constraint_datas,
-            shapes: model.shapes.into_iter().map(|x| x.parse(root, bin)).collect(),
-        })
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ModelGltf {
-    pub info: ModelInfo,
-    pub vals_a: Vec<ValA>,
-    pub mat_order: Vec<u32>,
-    pub mesh_order: Vec<u32>, // order of meshes (mapped to lod0, lod1, lod2, lod3)
-    pub vals_d: Vec<ValA>, // 1 per contained mesh, stores result of some absolute position calculation?
-    pub vbuff_order: Vec<u32>,
-    pub ibuff_order: Vec<u32>,
-    pub vals_j: Vec<u32>,
-    pub val_k_header: Vec<u16>,
-    pub vals_k: Vec<u32>,
-    pub slots: Vec<Key2>, // attachment points
-    pub slot_map: Vec<u32>, // attachment bone mapping
-    pub block_header: Option<u32>, // has to do with havok cloth / hair stuff
-    pub block_offsets: Vec<u32>,
-    pub blocks: Vec<(model::BlockHeader, Vec<u32>, Vec<model::BlockVal>, Vec<u32>)>,
-    pub mats: Vec<Mat>,
-    pub mat_extras: Vec<Option<MatExtra>>,
-    pub vbuffs: Vec<VBuffInfo>,
-    pub ibuffs: Vec<IBuffInfo>,
-    pub buffer_infos: Vec<BufferInfo>,
-    pub hk_constraint: Option<HkConstraint>,
-    pub hk_constraint_datas: Vec<HkConstraintData>,
-    pub shapes: Vec<ShapeGltf>,
-    pub index_data: Vec<Index<Accessor>>,
-    pub vertex_data: Vec<HashMap<VertexUsage, Index<Accessor>>>,
-    pub bones: Vec<Index<Node>>,
-}
+mod model;
+pub use model::*;
 
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
 pub struct Key2 {
@@ -1041,9 +32,13 @@ pub struct Key2 {
     pub val: u32,
 }
 
-impl IntoPy<PyObject> for Key2 {
-    fn into_py(self, py: Python<'_>) -> PyObject {
-        (self.key, self.val).into_py(py)
+impl <'py> IntoPyObject<'py> for Key2 {
+    type Target = <(Crc, u32) as IntoPyObject<'py>>::Target;
+    type Output = <(Crc, u32) as IntoPyObject<'py>>::Output;
+    type Error = <(Crc, u32) as IntoPyObject<'py>>::Error;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        (self.key, self.val).into_pyobject(py)
     }
 }
 
@@ -1063,7 +58,7 @@ pub struct TRS {
     pub scale: Vector4,
 }
 
-#[basicpymethods]
+#[basicpymethods(no_bytes)]
 #[pyclass(module="pak_alt", name="HkConstraint", get_all, set_all)]
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PyMethods)]
 pub struct HkConstraint {
@@ -1075,20 +70,23 @@ pub struct HkConstraint {
     pub bone_order: Vec<Key2>, // bones in order of increasing crc, number is index unsorted order
 }
 
-impl HkConstraint {
-    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize) -> Result<Self> {
-        let info: HkConstraintInfo = OrderedData::from_bytes::<O>(&data[offset..])?;
+impl <'a> AsData<'_, 'a> for HkConstraint {
+    type InArgs = usize;
+    type OutArgs = (usize, u32, u32, &'a mut DumpInfos);
+
+    fn from_bytes<O: Version>(data: &[u8], offset: Self::InArgs) -> Result<Self> {
+        let info: HkConstraintInfo = from_bytes!(O, &data[offset..])?;
         if info.kind != 0 { panic!("Unknown & Unhandled HkConstraint type {} at offset {}", info.kind, offset); }
 
-        let bone_parents: Vec<i16> = OrderedDataVec::from_bytes::<O>(&data[info.bone_parents_offset as usize..], info.bone_parents_num as usize)?;
+        let bone_parents: Vec<i16> = from_bytes!(O, &data[info.bone_parents_offset as usize..], info.bone_parents_num as usize)?;
         assert!(bone_parents[0] == -1);
 
         
-        let string_offsets: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[info.bone_names_offset as usize..], info.bone_names_num as usize)?;
+        let string_offsets: Vec<u32> = from_bytes!(O, &data[info.bone_names_offset as usize..], info.bone_names_num as usize)?;
         let mut bone_names = Vec::with_capacity(string_offsets.len());
         for offset_ in string_offsets.iter() {
             let (mut offset, val) = { 
-                let vals: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[*offset_ as usize..], 2)?;
+                let vals: Vec<u32> = from_bytes!(O, &data[*offset_ as usize..], 2)?;
                 (vals[0], vals[1])
             };
             let start = offset;
@@ -1096,15 +94,15 @@ impl HkConstraint {
             let string = String::from_utf8(data[start as usize..offset as usize].to_vec()).unwrap();
             bone_names.push((string, val));
         }
-        let bone_transforms = OrderedDataVec::from_bytes::<O>(&data[info.bone_transforms_offset as usize..], info.bone_transforms_num as usize)?;
-        let vals2 = OrderedDataVec::from_bytes::<O>(&data[info.vals2_offset as usize..], info.vals2_num as usize * 42)?;
-        let bone_order = OrderedDataVec::from_bytes::<O>(&data[info.bone_order_offset as usize..], info.bone_order_num as usize)?;
+        let bone_transforms = from_bytes!(O, &data[info.bone_transforms_offset as usize..], info.bone_transforms_num as usize)?;
+        let vals2 = from_bytes!(O, &data[info.vals2_offset as usize..], info.vals2_num as usize * 42)?;
+        let bone_order = from_bytes!(O, &data[info.bone_order_offset as usize..], info.bone_order_num as usize)?;
         Ok(Self {
             info, bone_parents, bone_names, bone_transforms, vals2, bone_order
         })
     }
 
-    pub fn dump<O: Version + 'static>(&self, mut offset: usize, bones_offset: u32, bones_num: u32, infos: &mut DumpInfos) -> Vec<u8> {
+    fn dump_bytes<O: Version>(&self, (mut offset, bones_offset, bones_num, infos): Self::OutArgs) -> Vec<u8> {
         let mut info = self.info.clone();
         info.bones_num = bones_num as u16;
         info.bones_offset = bones_offset;
@@ -1119,19 +117,19 @@ impl HkConstraint {
 
         info.bone_transforms_offset = offset as u32;
         info.bone_transforms_num = self.bone_transforms.len() as u32;
-        let vals = self.bone_transforms.dump_bytes::<O>();
+        let vals = dump_bytes!(O, self.bone_transforms);
         offset += vals.len();
         data.extend(vals);
 
         info.bone_order_offset = offset as u32;
         info.bone_order_num = self.bone_order.len() as u16;
-        let vals = self.bone_order.dump_bytes::<O>();
+        let vals = dump_bytes!(O, self.bone_order);
         offset += vals.len();
         data.extend(vals);
 
         info.bone_parents_offset = offset as u32;
         info.bone_parents_num = self.bone_parents.len() as u32;
-        let vals = self.bone_parents.dump_bytes::<O>();
+        let vals = dump_bytes!(O, self.bone_parents);
         offset += vals.len();
         data.extend(vals);
 
@@ -1163,7 +161,7 @@ impl HkConstraint {
         if self.vals2.len() != 0 {
             info.vals2_offset = offset as u32;
             info.vals2_num = self.vals2.len() as u32 / 42;
-            let vals = self.vals2.dump_bytes::<O>();
+            let vals = dump_bytes!(O, self.vals2);
             data.extend(vals);
         } else {
             info.vals2_num = 0;
@@ -1171,9 +169,14 @@ impl HkConstraint {
         }
 
         infos.hk_constraint.push(info);
-        offsets.dump_bytes::<O>().into_iter().chain(string_offsets.dump_bytes::<O>()).chain(data).collect()
+        dump_bytes!(O, offsets).into_iter().chain(dump_bytes!(O, string_offsets)).chain(data).collect()
+    }
+
+    fn size<V: Version>(&self) -> usize {
+        panic!("not implemented")
     }
 }
+
 
 #[basicpymethods]
 #[pyclass(module="pak_alt", get_all, set_all)]
@@ -1186,21 +189,6 @@ pub enum Mat {
 }
 
 impl Mat {
-    pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize) -> Result<Self> {
-        let ty: u32 = if TypeId::of::<O>() == TypeId::of::<PS3>() {
-            OrderedData::from_bytes::<O>(&data[offset + 200..])?
-        } else {
-            OrderedData::from_bytes::<O>(&data[offset + 208..])?
-        };
-        Ok(match ty {
-            0 => Self::Mat1(OrderedData::from_bytes::<O>(&data[offset..])?),
-            1 => Self::Mat4(OrderedData::from_bytes::<O>(&data[offset..])?),
-            2 => Self::Mat2(OrderedData::from_bytes::<O>(&data[offset..])?),
-            3 => Self::Mat3(OrderedData::from_bytes::<O>(&data[offset..])?),
-            _ => panic!("Unknown Mat Type {} at offset {}", ty, offset)
-        })
-    }
-
     pub fn base(&self) -> &MatBase {
         match self {
             Self::Mat1(mat) => &mat.base,
@@ -1220,19 +208,318 @@ impl Mat {
     }
 }
 
-#[basicpymethods]
+impl AsData<'_, '_> for Mat {
+    type InArgs = NoArgs;
+    type OutArgs = NoArgs;
+
+    fn from_bytes<V: Version>(data: &[u8], _args: Self::InArgs) -> Result<Self> {
+        let ty: u32 = if V::ps3() {
+            from_bytes!(V, &data[200..])?
+        } else {
+            from_bytes!(V, &data[208..])?
+        };
+        Ok(match ty {
+            0 => Self::Mat1(from_bytes!(V, &data[..])?),
+            1 => Self::Mat4(from_bytes!(V, &data[..])?),
+            2 => Self::Mat2(from_bytes!(V, &data[..])?),
+            3 => Self::Mat3(from_bytes!(V, &data[..])?),
+            _ => return Err(anyhow::anyhow!("Unknown Mat Type {}", ty))
+        })
+    }
+
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
+        match self {
+            Self::Mat1(mat) => dump_bytes!(V, mat),
+            Self::Mat2(mat) => dump_bytes!(V, mat),
+            Self::Mat3(mat) => dump_bytes!(V, mat),
+            Self::Mat4(mat) => dump_bytes!(V, mat),
+        }
+    }
+
+    fn size<V: Version>(&self) -> usize {
+        match self {
+            Self::Mat1(mat) => mat.size::<V>(),
+            Self::Mat2(mat) => mat.size::<V>(),
+            Self::Mat3(mat) => mat.size::<V>(),
+            Self::Mat4(mat) => mat.size::<V>(),
+        }
+    }
+}
+
+#[basicpymethods(no_bytes)]
+#[derive(Debug, Clone, Serialize, Deserialize, PyMethods)]
+#[pyclass(module="pak_alt", get_all, set_all)]
+pub enum RadiosityVal {
+    Radiosity(Vec<Color>),
+    NoRadiosity(u32),
+}
+
+impl RadiosityVal {
+    fn size<V: Version>(&self) -> usize {
+        match self {
+            Self::Radiosity(vals) => vals.size::<V>(),
+            Self::NoRadiosity(_) => 0
+        }
+    }
+}
+
+#[basicpymethods(no_bytes)]
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PyMethods)]
-#[pyclass(module="pak_alt", name="Animation", get_all, set_all)]
+#[pyclass(module="pak_alt", get_all, set_all)]
+pub struct Radiosity {
+    pub vals: IndexMap<u32, Vec<RadiosityVal>>,
+    pub usage: u32,
+}
+
+impl Radiosity {
+    pub fn rad_size<V: Version>(&self) -> usize {
+        self.vals.values().flat_map(|rads| rads.iter().map(|rad| rad.size::<V>())).sum::<usize>()
+    }
+}
+
+impl <'a, 'b> AsData<'a, 'b> for Radiosity {
+    type InArgs = (u32, Vec<RadiosityValsInfo>, &'a IndexMap<Crc, Model>, &'a IndexMap<u32, GameObj>, &'a Vec<u8>);
+    type OutArgs = (usize, &'b mut Vec<u8>, &'b mut DumpInfos);
+
+    fn from_bytes<V: Version>(data: &[u8], (usage, infos, models, objs, rad_data): Self::InArgs) -> Result<Self> {
+        let mut vals = IndexMap::with_capacity(infos.len());
+        for info in infos {
+            let obj = objs.get(&info.guid).unwrap();
+            let mesh = if let Some(BaseTypes::CRC(val)) = obj.fields.get(&Crc::Key(2550505638)) {
+                Some(val)
+            } else { None }.expect("level block obj mesh missing");
+            let model = models.get(mesh).expect("model missing");
+            let sizes: Vec<_> = model.vertex_data.iter().map(|x| x.len()).collect();
+            let offsets = from_bytes!(V, Vec<u32>, &data[info.offset as usize..], info.num as usize)?;
+            let rads: Vec<_> = zip(offsets, sizes).map(|(offset, size)| {
+                Ok(if offset & 0xFF000000 != 0 {
+                    RadiosityVal::NoRadiosity(offset)
+                } else {
+                    RadiosityVal::Radiosity(from_bytes!(V, &rad_data[(offset * 4) as usize..], size)?)
+                })
+            }).collect::<Result<_>>()?;
+
+            vals.insert(info.guid, rads);
+        }
+        Ok(Self { vals, usage })
+    }
+
+    fn dump_bytes<V: Version>(&self, (mut offset, rad_data, infos): Self::OutArgs) -> Vec<u8> {
+        let mut data = vec![];
+        for (&guid, vals) in self.vals.iter() {
+            let mut offsets = Vec::with_capacity(vals.len());
+            for val in vals {
+                let off = match val {
+                    RadiosityVal::NoRadiosity(val) => *val,
+                    RadiosityVal::Radiosity(val) => {
+                        let off = rad_data.len();
+                        let vals = dump_bytes!(V, val);
+                        rad_data.extend(vals);
+                        off as u32 / 4
+                    }
+                };
+                offsets.push(off);
+            }
+            infos.radiosity_vals.push(RadiosityValsInfo { 
+                guid, 
+                num: vals.len() as u32, 
+                offset: offset as u32,
+            });
+            let vals = dump_bytes!(V, offsets);
+            offset += vals.len();
+            data.extend(vals);
+        }
+        data
+    }
+
+    fn size<V: Version>(&self) -> usize {
+        self.vals.values().map(|x| x.len() * V::size::<u32>()).sum::<usize>()
+    }
+}
+
+#[basicpymethods(no_bytes)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PyMethods)]
+#[pyclass(module="pak_alt", get_all, set_all)]
 pub struct Animation {
     pub info: AnimationInfo,
     pub obj1: Vec<u32>,
     pub obj2: Vec<u32>,
     pub obj3: Vec<animation::Obj3>,
-    pub keys: Vec<Crc>,
-    pub obj5_header: Option<animation::Obj5Header>,
-    pub obj5_a: Vec<u32>,
-    pub obj5_b: Vec<u32>,
-    pub obj_c: Option<animation::HkaSplineSkeletalAnimation>,
+    pub bones: Vec<Crc>,
+    pub obj5_a: Vec<animation::Obj5Val>,
+    pub obj5_b: Vec<animation::Obj5Val>,
+    pub obj_c3: Vec<u32>,
+    pub obj_c4: Vec<u32>,
+    pub blocks: Vec<(
+        Vec<(
+            animation::HkaSplineSkeletalAnimationObj1,
+            animation::HkaSplineSkeletalAnimationObj2,
+            animation::HkaSplineSkeletalAnimationObj1
+        )>, 
+        Vec<animation::HkaSplineSkeletalAnimationObj1>
+    )>,
+}
+
+impl <'a, 'b> AsData<'a, 'b> for Animation {
+    type InArgs = AnimationInfo;
+    type OutArgs = (usize, &'b mut DumpInfos);
+
+    fn from_bytes<V: Version>(data: &[u8], info: Self::InArgs) -> Result<Self> {
+        let obj1 = from_bytes!(V, &data[info.obj1_offset as usize..], info.obj1_num as usize * 2)?;
+        let obj2 = from_bytes!(V, &data[info.obj2_offset as usize..], info.obj2_num as usize * 4)?;
+        let obj3 = from_bytes!(V, &data[info.obj3_offset as usize..], info.obj3_num as usize)?;
+        let bones = from_bytes!(V, &data[info.bones_offset as usize..], (info.vals_num + info.obj1_num) as usize)?;
+        let (obj5_a, obj5_b) = if info.obj5_offset != 0 {
+            let obj5_header: animation::Obj5Header = from_bytes!(V, &data[info.obj5_offset as usize..])?;
+            let obj5_a = from_bytes!(V, &data[obj5_header.obj_a_offset as usize..], obj5_header.obj_a_num as usize)?;
+            let obj5_b = from_bytes!(V, &data[obj5_header.obj_b_offset as usize..], obj5_header.obj_b_num as usize)?;
+            (obj5_a, obj5_b)
+        } else {
+            (vec![], vec![])
+        };
+        let (obj_c3, obj_c4, blocks) = if info.kind == 3 {
+            let block_starts: Vec<u32> = from_bytes!(V, &data[info.block_starts_offset as usize..], info.block_starts_num as usize)?;
+            let block_starts2: Vec<u32> = from_bytes!(V, &data[info.block_starts2_offset as usize..], info.block_starts2_num as usize)?;
+            let obj_c3 = from_bytes!(V, &data[info.obj_c3_offset as usize..], info.obj_c3_num as usize)?;
+            let obj_c4 = from_bytes!(V, &data[info.obj_c4_offset as usize..], info.obj_c4_num as usize)?;
+            let mut blocks = Vec::with_capacity(block_starts.len());
+            for (start, start2) in zip(block_starts, block_starts2) {
+                let mut off = (start + info.block_offset) as usize;
+                let flags: Vec<animation::HkaSplineSkeletalAnimationFlags> = from_bytes!(V, &data[off..], info.vals_num as usize)?;
+                let flags2: Vec<u8> = from_bytes!(V, &data[off + flags.size::<V>()..], info.vals2_num as usize)?;
+                off = (info.block_offset + start + info.data_offset) as usize;
+                let mut vals = Vec::with_capacity(flags.len());
+                for flag in flags {
+                    let a = from_bytes!(V, animation::HkaSplineSkeletalAnimationObj1, &data[off..], flag.a, flag.f & 3)?;
+                    off += a.size::<V>();
+                    off = (off + 3) & 0xfffffffc;
+                    let b = from_bytes!(V, animation::HkaSplineSkeletalAnimationObj2, &data[off..], flag.b, (flag.f >> 2) & 0xf)?;
+                    off += b.size::<V>();
+                    off = (off + 3) & 0xfffffffc;
+                    let c = from_bytes!(V, animation::HkaSplineSkeletalAnimationObj1, &data[off..], flag.c, (flag.f >> 6) & 3)?;
+                    off += c.size::<V>();
+                    off = (off + 3) & 0xfffffffc;
+                    vals.push((a, b, c));
+                }
+                off = (info.block_offset + start + start2) as usize;
+                let mut vals2 = Vec::with_capacity(flags2.len());
+                for flag in flags2 {
+                    let d = from_bytes!(V, animation::HkaSplineSkeletalAnimationObj1, &data[off..], flag & 0xf9, (flag >> 1) & 3)?;
+                    off += d.size::<V>();
+                    off = (off + 3) & 0xfffffffc;
+                    vals2.push(d)
+                }
+                blocks.push((vals, vals2));
+            }
+            (obj_c3, obj_c4, blocks)
+        } else if info.kind < 3 {
+            warn!("Unhandled animation type {}", info.kind);
+            (vec![], vec![], vec![])
+        } else {
+            warn!("Unknown animation type {}", info.kind);
+            (vec![], vec![], vec![])
+        };
+        Ok(Self { info, obj1, obj2, obj3, bones, obj5_a, obj5_b, obj_c3, obj_c4, blocks })
+    }
+
+    fn dump_bytes<V: Version>(&self, (offset, infos): Self::OutArgs) -> Vec<u8> {
+        let mut info = self.info.clone();
+        let mut data = vec![];
+        info.offset = offset as u32;
+        info.obj1_offset = data.len() as u32;
+        info.obj1_num = self.obj1.len() as u32 / 2;
+        data.extend(dump_bytes!(V, self.obj1));
+        info.obj2_offset = data.len() as u32;
+        info.obj2_num = self.obj2.len() as u32 / 4;
+        data.extend(dump_bytes!(V, self.obj2));
+        
+        info.vals_num = self.blocks[0].0.len() as u32;
+        info.vals2_num = self.blocks[0].1.len() as u32;
+        info.data_offset = ((self.blocks[0].0.len() * V::size::<animation::HkaSplineSkeletalAnimationFlags>()) + self.blocks[0].1.len()) as u32;
+        let mut block_starts = Vec::with_capacity(self.blocks.len());
+        let mut block_starts2 = Vec::with_capacity(self.blocks.len());
+        let mut block = vec![];
+        for (vals, vals2) in &self.blocks {
+            let block_start = block.len() as u32;
+            block_starts.push(block_start);
+            let flags: Vec<_> = vals.iter().map(|(a,b,c)| {
+                let f = a.vals.kind() | (b.vals.kind() << 2) | (c.vals.kind() << 6);
+                animation::HkaSplineSkeletalAnimationFlags { a: a.flags, b: b.flags, c: c.flags, f }
+            }).collect();
+            let flags2: Vec<_> = vals2.iter().map(|d| d.flags | (d.vals.kind() << 1)).collect();
+            block.extend(dump_bytes!(V, flags));
+            block.extend(dump_bytes!(V, flags2));
+            let off = (block.len() + 3) & 0xfffffffc;
+            block.extend(vec![0u8; off-block.len()]);
+            for (a, b, c) in vals {
+                block.extend(dump_bytes!(V, a));
+                let off = (block.len() + 3) & 0xfffffffc;
+                block.extend(vec![0u8; off-block.len()]);
+                block.extend(dump_bytes!(V, b));
+                let off = (block.len() + 3) & 0xfffffffc;
+                block.extend(vec![0u8; off-block.len()]);
+                block.extend(dump_bytes!(V, c));
+                let off = (block.len() + 3) & 0xfffffffc;
+                block.extend(vec![0u8; off-block.len()]);
+            }
+            block_starts2.push(block.len() as u32 - block_start);
+            for d in vals2 {
+                block.extend(dump_bytes!(V, d));
+                let off = (block.len() + 3) & 0xfffffffc;
+                block.extend(vec![0u8; off-block.len()]);
+            }
+            let off = (block.len() + 15) & 0xfffffff0;
+            block.extend(vec![0u8; off-block.len()]);
+        }
+        info.block_starts_offset = data.len() as u32;
+        info.block_starts_num = self.blocks.len() as u32;
+        data.extend(dump_bytes!(V, block_starts));
+        info.block_starts_offset = data.len() as u32;
+        info.block_starts_num = self.blocks.len() as u32;
+        data.extend(dump_bytes!(V, block_starts));
+        info.obj_c3_offset = data.len() as u32;
+        info.obj_c3_num = self.obj_c3.len() as u32;
+        data.extend(dump_bytes!(V, self.obj_c3));
+        info.obj_c4_offset = data.len() as u32;
+        info.obj_c4_num = self.obj_c4.len() as u32;
+        data.extend(dump_bytes!(V, self.obj_c4));
+        info.block_size = block.len() as u32;
+        info.block_offset = data.len() as u32;
+        data.extend(block);
+        if self.obj3.is_empty() {
+            info.obj3_offset = 0;
+            info.obj3_num = 0;
+        } else {
+            info.obj3_offset = data.len() as u32;
+            info.obj3_num = self.obj3.len() as u32;
+            data.extend(dump_bytes!(V, self.obj3));
+        }
+        info.bones_offset = data.len() as u32;
+        data.extend(dump_bytes!(V, self.bones));
+        if !self.obj5_a.is_empty() || !self.obj5_b.is_empty() {
+            info.obj5_offset = data.len() as u32;
+            let header = animation::Obj5Header {
+                obj_a_num: self.obj5_a.len() as u32,
+                obj_a_offset: (data.len() + V::size::<animation::Obj5Header>()) as u32,
+                obj_b_num: self.obj5_b.len() as u32,
+                obj_b_offset: (data.len() + V::size::<animation::Obj5Header>() + (self.obj5_a.len() * V::size::<animation::Obj5Val>())) as u32
+            };
+            data.extend(dump_bytes!(V, header));
+            data.extend(dump_bytes!(V, self.obj5_a));
+            data.extend(dump_bytes!(V, self.obj5_b));
+        } else {
+            info.obj5_offset = 0;
+        }
+        let off = (data.len() + 15) & 0xfffffff0;
+        data.extend(vec![0u8; off-data.len()]);
+        info.size = data.len() as u32;
+        infos.animation.push(info);
+        data
+    }
+
+    fn size<V: Version>(&self) -> usize {
+        panic!("not implemented")
+    }
 }
 
 impl Animation {
@@ -1240,53 +527,15 @@ impl Animation {
         let (_, (offset, block)) = zip(offsets.iter().cloned(), blocks.iter()).enumerate().find(|(i, _)| {
             info.gamemodemask & (1 << i) != 0
         }).unwrap();
-        let obj1 = OrderedDataVec::from_bytes::<O>(&block[offset + info.obj1_offset as usize..], info.obj1_num as usize * 2)?;
-        let obj2 = OrderedDataVec::from_bytes::<O>(&block[offset + info.obj2_offset as usize..], info.obj2_num as usize * 4)?;
-        let obj3 = OrderedDataVec::from_bytes::<O>(&block[offset + info.obj3_offset as usize..], info.obj3_num as usize)?;
-        let keys = OrderedDataVec::from_bytes::<O>(&block[offset + info.keys_offset as usize..], (info.keys_num + info.obj1_num) as usize)?;
-        let (obj5_header, obj5_a, obj5_b) = if info.obj5_offset != 0 {
-            let obj5_header: animation::Obj5Header = OrderedData::from_bytes::<O>(&block[offset + info.obj5_offset as usize..])?;
-            let obj5_a = OrderedDataVec::from_bytes::<O>(&block[offset + obj5_header.obj_a_offset as usize..], obj5_header.obj_a_num as usize * 7)?;
-            let obj5_b = OrderedDataVec::from_bytes::<O>(&block[offset + obj5_header.obj_b_offset as usize..], obj5_header.obj_b_num as usize * 7)?;
-            (Some(obj5_header), obj5_a, obj5_b)
-        } else {(
-            None, vec![], vec![]
-        )};
-        let obj_c = if info.kind == 3 {
-            Some(animation::HkaSplineSkeletalAnimation::from_data::<O>(&block[..], offset, &info)?)
-        } else if info.kind < 3 {
-            warn!("Unhandled animation type {} at offset {}", info.kind, offset);
-            None
-        } else {
-            warn!("Unknown animation type {} at offset {}", info.kind, offset);
-            None
-        };
-        offsets.iter_mut().enumerate().filter(|(i, _)| info.gamemodemask & (1 << i) != 0).for_each(|(_, x)| *x += info.size as usize );
-        Ok(Self { info, obj1, obj2, obj3, keys, obj5_a, obj5_b, obj5_header, obj_c })
-    }
-
-    pub fn dump<O: Version + 'static>(&self, offset: usize, infos: &mut DumpInfos) -> Result<Vec<u8>> {
-        let mut info = self.info.clone();
-        info.offset = offset as u32;
-        let mut data = vec![0u8; info.size as usize];
-        self.obj1.to_bytes::<O>(&mut data[info.obj1_offset as usize..])?;
-        self.obj2.to_bytes::<O>(&mut data[info.obj2_offset as usize..])?;
-        self.obj3.to_bytes::<O>(&mut data[info.obj3_offset as usize..])?;
-        self.keys.to_bytes::<O>(&mut data[info.keys_offset as usize..])?;
-        if let Some(obj5_header) = &self.obj5_header {
-            obj5_header.to_bytes::<O>(&mut data[info.obj5_offset as usize..])?;
-            self.obj5_a.to_bytes::<O>(&mut data[obj5_header.obj_a_offset as usize..])?;
-            self.obj5_b.to_bytes::<O>(&mut data[obj5_header.obj_b_offset as usize..])?;
-        }
-        if let Some(obj_c) = &self.obj_c {
-            obj_c.into_data::<O>(&mut data, 0, &info)?;
-        }
-        infos.animation.push(info);
-        Ok(data)
+        let val = from_bytes!(O, Animation, &block[offset..], info)?;
+        offsets.iter_mut().enumerate().filter(|(i, _)| val.info.gamemodemask & (1 << i) != 0).for_each(|(_, x)| *x += val.info.size as usize );
+        Ok(val)
     }
 }
 
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[basicpymethods(no_bytes)]
+#[pyclass(get_all, set_all)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize, PyMethods)]
 pub struct DumpInfos {
     pub header: Header,
     pub animation: Vec<AnimationInfo>,
@@ -1303,6 +552,8 @@ pub struct DumpInfos {
     pub vbuff: Vec<VBuffInfo>,
     pub ibuff: Vec<IBuffInfo>,
     pub buffer: Vec<BufferInfo>,
+    pub radiosity_vals: Vec<RadiosityValsInfo>,
+    pub pfields: Vec<PFieldInfo>,
     pub block2_offsets: Vec<u32>,
 }
 

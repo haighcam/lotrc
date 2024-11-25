@@ -1,12 +1,12 @@
 use std::fs;
 use serde::{Serialize, Deserialize};
 use std::path::Path;
-use log::{error, info};
+use log::info;
 use anyhow::Result;
 use pyo3::prelude::*;
 
 use lotrc_proc::{OrderedData, basicpymethods, PyMethods};
-use super::types::{OrderedData, OrderedDataVec, Crc, OrderedDataImpl, Version, PC, XBOX};
+use super::types::{Crc, Version, PC, XBOX, from_bytes, dump_bytes, AsData, NoArgs};
 
 #[basicpymethods]
 #[pyclass(module="audio", get_all, set_all)]
@@ -72,57 +72,40 @@ impl AudioTable {
     }
 }
 
-impl AudioTable {
-    pub fn parse<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let path = path.as_ref();
-        info!("Parsing audio table {}", path.file_stem().unwrap().to_str().unwrap());   
-        let data = fs::read(path).unwrap();
-        if data[0] == 2 {
-            Self::from_data::<PC>(&data[..])
-        } else if data[3] == 2 {
-            Self::from_data::<XBOX>(&data[..])
-        } else {
-            error!("Invalid audio table data");
-            Ok(Default::default())
-        }
-    }
-
-    pub fn dump<O: Version + 'static, P: AsRef<Path>>(&self, path: P) {
-        path.as_ref().parent().map(fs::create_dir_all);
-        fs::write(path.as_ref().with_extension("bin"), self.to_data::<O>()).unwrap();
-    }
-
-    pub fn from_data<O: Version + 'static>(data: &[u8]) -> Result<Self> {
-        let header: Header = OrderedData::from_bytes::<O>(&data)?;
-        let mut offset = Header::size::<O>();
-        let obj1s: Vec<Obj1> = OrderedDataVec::from_bytes::<O>(&data[offset..], header.n1 as usize)?;
+impl AsData<'_, '_> for AudioTable {
+    type InArgs = NoArgs;
+    type OutArgs = NoArgs;
+    fn from_bytes<O: Version>(data: &[u8], _args: Self::InArgs) -> Result<Self> {
+        let header: Header = from_bytes!(O, &data)?;
+        let mut offset = header.size::<O>();
+        let obj1s: Vec<Obj1> = from_bytes!(O, &data[offset..], header.n1 as usize)?;
         offset += obj1s.size::<O>();
         let mut obj2s = Vec::with_capacity(header.n2 as usize);
         for _ in 0..header.n2 {
-            let obj: Obj2 = OrderedData::from_bytes::<O>(&data[offset..])?;
-            offset += Obj2::size::<O>();
-            let objs: Vec<Obj1> = OrderedDataVec::from_bytes::<O>(&data[offset..], obj.n as usize)?;
+            let obj: Obj2 = from_bytes!(O, &data[offset..])?;
+            offset += obj.size::<O>();
+            let objs: Vec<Obj1> = from_bytes!(O, &data[offset..], obj.n as usize)?;
             offset += objs.size::<O>();
             obj2s.push((obj, objs));
         }
         let mut obj3s = Vec::with_capacity(header.n3 as usize);
         for _ in 0..header.n3 {
-            let obj: Obj2 = OrderedData::from_bytes::<O>(&data[offset..])?;
-            offset += Obj2::size::<O>();
-            let objs: Vec<Obj1> = OrderedDataVec::from_bytes::<O>(&data[offset..], obj.n as usize)?;
+            let obj: Obj2 = from_bytes!(O, &data[offset..])?;
+            offset += obj.size::<O>();
+            let objs: Vec<Obj1> = from_bytes!(O, &data[offset..], obj.n as usize)?;
             offset += objs.size::<O>();
             obj3s.push((obj, objs));
         }
-        let obj4s: Vec<Obj1> = OrderedDataVec::from_bytes::<O>(&data[offset..], header.n4 as usize)?;
+        let obj4s: Vec<Obj1> = from_bytes!(O, &data[offset..], header.n4 as usize)?;
         offset += obj4s.size::<O>();
-        let obj5s: Vec<Obj1> = OrderedDataVec::from_bytes::<O>(&data[offset..], header.n5 as usize)?;
+        let obj5s: Vec<Obj1> = from_bytes!(O, &data[offset..], header.n5 as usize)?;
         offset += obj5s.size::<O>();
-        let obj6s: Vec<Obj1> = OrderedDataVec::from_bytes::<O>(&data[offset..], header.n6 as usize)?;
+        let obj6s: Vec<Obj1> = from_bytes!(O, &data[offset..], header.n6 as usize)?;
         offset += obj6s.size::<O>();
-        let obj7s: Vec<Obj1> = OrderedDataVec::from_bytes::<O>(&data[offset..], header.n7 as usize)?;
+        let obj7s: Vec<Obj1> = from_bytes!(O, &data[offset..], header.n7 as usize)?;
         offset += obj7s.size::<O>();
         let n = (data.len() - offset) / 4;
-        let extra: Vec<Crc> = OrderedDataVec::from_bytes::<O>(&data[offset..], n)?;
+        let extra: Vec<Crc> = from_bytes!(O, &data[offset..], n)?;
 
         Ok(Self {
             header,
@@ -137,17 +120,49 @@ impl AudioTable {
         })
     }
 
-    pub fn to_data<O: Version + 'static>(&self) -> Vec<u8> {
-        self.header.dump_bytes::<O>().into_iter()
-        .chain(self.obj1s.dump_bytes::<O>())
-        .chain(self.obj2s.iter().flat_map(|(obj, objs)| obj.dump_bytes::<O>().into_iter().chain(objs.dump_bytes::<O>())))
-        .chain(self.obj3s.iter().flat_map(|(obj, objs)| obj.dump_bytes::<O>().into_iter().chain(objs.dump_bytes::<O>())))
-        .chain(self.obj4s.dump_bytes::<O>())
-        .chain(self.obj5s.dump_bytes::<O>())
-        .chain(self.obj6s.dump_bytes::<O>())
-        .chain(self.obj7s.dump_bytes::<O>())
-        .chain(self.extra.dump_bytes::<O>())
+    fn dump_bytes<O: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
+        dump_bytes!(O, self.header).into_iter()
+        .chain(dump_bytes!(O, self.obj1s))
+        .chain(self.obj2s.iter().flat_map(|(obj, objs)| dump_bytes!(O, obj).into_iter().chain(dump_bytes!(O, objs))))
+        .chain(self.obj3s.iter().flat_map(|(obj, objs)| dump_bytes!(O, obj).into_iter().chain(dump_bytes!(O, objs))))
+        .chain(dump_bytes!(O, self.obj4s))
+        .chain(dump_bytes!(O, self.obj5s))
+        .chain(dump_bytes!(O, self.obj6s))
+        .chain(dump_bytes!(O, self.obj7s))
+        .chain(dump_bytes!(O, self.extra))
         .collect()
+    }
+
+    fn size<V: Version>(&self) -> usize {
+        self.header.size::<V>()
+            + self.obj1s.size::<V>()
+            + self.obj2s.iter().map(|(obj, objs)| obj.size::<V>() + objs.size::<V>()).sum::<usize>()
+            + self.obj3s.iter().map(|(obj, objs)| obj.size::<V>() + objs.size::<V>()).sum::<usize>()
+            + self.obj4s.size::<V>()
+            + self.obj5s.size::<V>()
+            + self.obj6s.size::<V>()
+            + self.obj7s.size::<V>()
+            + self.extra.size::<V>()
+    }
+}
+
+impl AudioTable {
+    pub fn parse<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let path = path.as_ref();
+        info!("Parsing audio table {}", path.file_stem().unwrap().to_str().unwrap());   
+        let data = fs::read(path).unwrap();
+        if data[0] == 2 {
+            from_bytes!(PC, &data[..])
+        } else if data[3] == 2 {
+            from_bytes!(XBOX, &data[..])
+        } else {
+            Err(anyhow::anyhow!("Invalid audio table data"))
+        }
+    }
+
+    pub fn dump<O: Version + 'static, P: AsRef<Path>>(&self, path: P) {
+        path.as_ref().parent().map(fs::create_dir_all);
+        fs::write(path.as_ref().with_extension("bin"), dump_bytes!(O, self)).unwrap();
     }
 
     pub fn to_file<P: AsRef<Path>>(&self, path: P) {

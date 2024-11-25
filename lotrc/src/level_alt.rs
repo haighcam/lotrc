@@ -9,12 +9,11 @@ use anyhow::{Result, Context};
 use indicatif::{ProgressBar, ProgressStyle, MultiProgress};
 use pyo3::prelude::*;
 use lotrc_proc::{basicpymethods, PyMethods};
-
-use crate::types::BaseTypes;
+use indexmap::IndexMap;
 
 use super::{
     pak, bin, lua_stuff, pak_alt::*,
-    types::{self, hash_string, GameObjs, OrderedData, OrderedDataVec, CompressedBlock, Crc, Version, PC, XBOX, PS3, SubBlock},
+    types::{self, hash_string, GameObjs, CompressedBlock, Crc, Version, PC, XBOX, PS3, SubBlock, from_bytes, to_bytes, dump_bytes, AsData, BaseTypes},
     read_write::{Reader, Writer, PathStuff},
 };
 
@@ -31,29 +30,29 @@ pub struct Level {
 
     pub objas: Vec<pak::ObjA>,
     pub obj0s: Vec<pak::Obj0>,
-    pub models: HashMap<Crc, Model>,
-    pub textures: HashMap<Crc, bin::Tex>,
-    pub animations: HashMap<Crc, Animation>,
-    pub foliages: HashMap<Crc, Vec<(pak::FoliageInfo, pak::Foliage)>>,
-    pub radiosity_vals: HashMap<u32, Vec<u32>>,
-    pub effects: HashMap<Crc, GameObjs>,
-    pub pfield_infos: Vec<pak::PFieldInfo>,
+    pub models: IndexMap<Crc, Model>,
+    pub textures: IndexMap<Crc, bin::Tex>,
+    pub animations: IndexMap<Crc, Animation>,
+    pub foliages: IndexMap<Crc, Vec<(pak::FoliageInfo, pak::Foliage)>>,
+    //pub radiosity_vals: IndexMap<u32, Vec<u32>>,
+    pub effects: IndexMap<Crc, GameObjs>,
+    //pub pfield_infos: Vec<pak::PFieldInfo>,
     pub animation_block_infos: Vec<pak::AnimationBlockInfo>,
-    pub gfx_blocks: HashMap<Crc, Vec<u8>>,
+    pub gfx_blocks: IndexMap<Crc, Vec<u8>>,
 
     pub string_keys: types::StringKeys,
     pub sub_blocks1: types::SubBlocks,
     pub sub_blocks2: types::SubBlocks,
     pub block2_offsets: Vec<u32>,
 
-    pub radiosity: HashMap<Crc, bin::Radiosity>,
+    pub radiosity: Option<Radiosity>,
 
     //pub vertex_formats: HashMap<(u32, u32), (Vec<pak::VertexData>, usize)>,
 
     pub pak_vals_a: Vec<pak::BlockAVal>,
 }
 
-#[basicpymethods]
+#[basicpymethods(no_bytes)]
 #[pymethods]
 impl Level {
     #[staticmethod]
@@ -116,16 +115,15 @@ impl Level {
 
         bar.as_ref().map(|x| { x.inc(1); x.set_message("bin headers") });
         sub_bar.as_ref().map(|x| { x.set_length(0); x.reset() });
-        let lua = lua_stuff::LuaCompiler::new().unwrap();
-        let bin_header: bin::Header = OrderedData::from_bytes::<O>(bin_data)?;
-        let bin_strings = types::Strings::from_data::<O>(bin_data, bin_header.strings_offset as usize, bin_header.strings_num as usize)?;
+        let bin_header: bin::Header = from_bytes!(O, bin_data)?;
+        let bin_strings = from_bytes!(O, types::Strings, &bin_data[bin_header.strings_offset as usize..], bin_header.strings_num as usize)?;
         types::update_strings(&bin_strings.strings);
         info!("bin headers in {:?}", time.elapsed());
 
         bar.as_ref().map(|x| { x.inc(1); x.set_message("bin") });
         sub_bar.as_ref().map(|x| { x.set_length(bin_header.asset_handle_num as u64); x.reset() });
 
-        let asset_handles: Vec<bin::AssetHandle> = OrderedDataVec::from_bytes::<O>(&bin_data[bin_header.asset_handle_offset as usize..], bin_header.asset_handle_num as usize)?;
+        let asset_handles: Vec<bin::AssetHandle> = from_bytes!(O, &bin_data[bin_header.asset_handle_offset as usize..], bin_header.asset_handle_num as usize)?;
         let model_data = HashMap::<Crc, Vec<u8>>::from_iter(
             asset_handles.iter().map(|info| (info.key.clone(), {
                 sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(info.key.to_string())});
@@ -138,25 +136,21 @@ impl Level {
                 (info.key.clone(), types::CompressedBlock::from_data::<O>(bin_data, info.size as usize, info.size_comp as usize, info.offset as usize).data)
             })
         );
-
-        let radiosity = model_data.iter().filter(|(key, _)| key.str().map(|x| x.ends_with("_radiosity")).unwrap_or(false)).map(|(key, data)| Ok((
-            key.clone(), bin::Radiosity::from_data::<O>(&data[..], 0)?
-        ))).collect::<Result<HashMap<Crc, bin::Radiosity>>>()?;
-        
+ 
         info!("bin parsed in {:?}", time.elapsed());
 
         bar.as_ref().map(|x| { x.inc(1); x.set_message("pak headers") });
         sub_bar.as_ref().map(|x| { x.set_length(0); x.reset() });
-        let pak_header: pak::Header = OrderedData::from_bytes::<O>(pak_data)?;
-        let pak_strings = types::Strings::from_data::<O>(pak_data, pak_header.strings_offset as usize, pak_header.strings_num as usize)?;
+        let pak_header: pak::Header = from_bytes!(O, pak_data)?;
+        let pak_strings = from_bytes!(O, types::Strings, &pak_data[pak_header.strings_offset as usize..], pak_header.strings_num as usize)?;
         types::update_strings(&pak_strings.strings);
         info!("pak headers in {:?}", time.elapsed());
 
         bar.as_ref().map(|x| { x.inc(1); x.set_message("block2") });
         sub_bar.as_ref().map(|x| { x.set_length(0); x.reset() });
         let block2 = types::CompressedBlock::from_data::<O>(pak_data, pak_header.block2_size as usize, pak_header.block2_size_comp as usize, pak_header.block2_offset as usize).data;
-        let sub_blocks2 = types::SubBlocks::from_data::<O>(&block2[..], pak_header.sub_blocks2_offset as usize, &lua, sub_bar.as_ref())?;
-        let block2_offsets = OrderedDataVec::from_bytes::<O>(&block2[pak_header.block2_offsets_offset as usize..], pak_header.block2_offsets_num as usize)?;
+        let mut sub_blocks2 = from_bytes!(O, types::SubBlocks, &block2[pak_header.sub_blocks2_offset as usize..], sub_bar.clone().into())?;
+        let block2_offsets = from_bytes!(O, &block2[pak_header.block2_offsets_offset as usize..], pak_header.block2_offsets_num as usize)?;
         info!("block2 parsed in {:?}", time.elapsed());
 
         bar.as_ref().map(|x| { x.inc(1); x.set_message("main blocks") });
@@ -172,82 +166,96 @@ impl Level {
         ) as u64); x.reset() });
         let block1 = types::CompressedBlock::from_data::<O>(pak_data, pak_header.block1_size as usize, pak_header.block1_size_comp as usize, pak_header.block1_offset as usize).data;
         info!("main blocks parsed in {:?}", time.elapsed());
+
+        bar.as_ref().map(|x| { x.inc(1); x.set_message("sub blocks") });
+        sub_bar.as_ref().map(|x| { x.set_length(0); x.reset() });
+        let sub_blocks1 = from_bytes!(O, types::SubBlocks, &block1[pak_header.sub_blocks1_offset as usize..], sub_bar.clone().into())?;
+        let string_keys = from_bytes!(O, types::StringKeys, &block1[pak_header.string_keys_offset as usize..])?;
+        info!("sub blocks parsed in {:?}", time.elapsed());
         
         bar.as_ref().map(|x| { x.inc(1); x.set_message("items") });
         sub_bar.as_ref().map(|x| { x.set_length(bin_header.asset_handle_num as u64); x.reset() });
 
-        let objas = OrderedDataVec::from_bytes::<O>(&block1[pak_header.obja_offset as usize..], pak_header.obja_num as usize)?;
-        let obj0s = OrderedDataVec::from_bytes::<O>(&block1[pak_header.obj0_offset as usize..], pak_header.obj0_num as usize)?;
-        let animation_block_infos: Vec<pak::AnimationBlockInfo> = OrderedDataVec::from_bytes::<O>(&block1[pak_header.animation_block_info_offset as usize..], pak_header.animation_block_info_num as usize)?;
-        let pfield_infos = OrderedDataVec::from_bytes::<O>(&block1[pak_header.pfield_info_offset as usize..], pak_header.pfield_info_num as usize)?;
+        let objas = from_bytes!(O, &block1[pak_header.obja_offset as usize..], pak_header.obja_num as usize)?;
+        let obj0s = from_bytes!(O, &block1[pak_header.obj0_offset as usize..], pak_header.obj0_num as usize)?;
+        let animation_block_infos: Vec<pak::AnimationBlockInfo> = from_bytes!(O, &block1[pak_header.animation_block_info_offset as usize..], pak_header.animation_block_info_num as usize)?;
+        let pfield_infos = from_bytes!(O, &block1[pak_header.pfield_info_offset as usize..], pak_header.pfield_info_num as usize)?;
+        if let Some(types::SubBlock::PFields(val)) = sub_blocks2.blocks.get_mut(&Crc::Key(types::PFields::KEY)) {
+            val.parse(pfield_infos);
+        }
 
-        let mut vertex_formats = HashMap::new();
-        let models = <Vec<pak::ModelInfo> as OrderedDataVec>::from_bytes::<O>(&block1[pak_header.model_info_offset as usize..], pak_header.model_info_num as usize)?.into_iter().map(|info| {
+        let models = from_bytes!(O, Vec<pak::ModelInfo>, &block1[pak_header.model_info_offset as usize..], pak_header.model_info_num as usize)?.into_iter().map(|info| {
             sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(info.key.to_string())});
             let mut model = Model::from_data::<O>(info, &block1[..])?;
             if model.info.vbuff_num != 0 || model.info.ibuff_num != 0 {
                 let buffer = model_data.get(&model.info.asset_key.clone()).unwrap();
-                model.vertex_data.extend(model.vbuffs.iter_mut().map(|info| pak::VertexBuffer::from_data::<O>(&buffer[..], info, &mut vertex_formats)).collect::<Result<Vec<_>>>()?);
-                model.index_data.extend(model.ibuffs.iter().map(|info| pak::IndexBuffer::from_data::<O>(&buffer[..], info)).collect::<Result<Vec<_>>>()?);    
+                model.vertex_data.extend(model.vbuffs.iter_mut().map(|info| from_bytes!(O, pak::VertexBuffer, &buffer[..], info)).collect::<Result<Vec<_>>>()?);
+                model.index_data.extend(model.ibuffs.iter().map(|info| from_bytes!(O, pak::IndexBuffer, &buffer[..], info)).collect::<Result<Vec<_>>>()?);    
             }
             Ok((model.info.key.clone(), model))
-        }).collect::<Result<HashMap<_, _>>>()?;
+        }).collect::<Result<IndexMap<_, _>>>()?;
 
-        let effects = <Vec<pak::EffectInfo> as OrderedDataVec>::from_bytes::<O>(&block1[pak_header.effect_info_offset as usize..], pak_header.effect_info_num as usize)?.into_iter().map(|info| {
+        let effects = from_bytes!(O, Vec<pak::EffectInfo>, &block1[pak_header.effect_info_offset as usize..], pak_header.effect_info_num as usize)?.into_iter().map(|info| {
             sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(info.key.to_string())});
-            Ok((info.key, GameObjs::from_data::<O>(&block1[..], info.offset as usize, info.size as usize, info.gamemodemask)?))
-        }).collect::<Result<HashMap<_, _>>>()?;
+            Ok((info.key, from_bytes!(O, GameObjs, &block1[info.offset as usize..], info.gamemodemask)?))
+        }).collect::<Result<IndexMap<_, _>>>()?;
 
-        let gfx_blocks = <Vec<pak::GFXBlockInfo> as OrderedDataVec>::from_bytes::<O>(&block1[pak_header.gfx_block_info_offset as usize..], pak_header.gfx_block_info_num as usize)?.into_iter().map(|info| {
+        let gfx_blocks = from_bytes!(O, Vec<pak::GFXBlockInfo>, &block1[pak_header.gfx_block_info_offset as usize..], pak_header.gfx_block_info_num as usize)?.into_iter().map(|info| {
             sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(info.key.to_string())});
             (info.key, block1[info.offset as usize..(info.offset + info.size) as usize].to_vec())
-        }).collect::<HashMap<_, _>>();
-
-        let radiosity_vals = <Vec<pak::RadiosityValsInfo> as OrderedDataVec>::from_bytes::<O>(&block1[pak_header.radiosity_vals_info_offset as usize..], pak_header.radiosity_vals_info_num as usize)?.into_iter().map(|info| {
-            sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(format!("{}", info.guid))});
-            Ok((info.guid, <Vec<u32> as OrderedDataVec>::from_bytes::<O>(&block1[info.offset as usize..], info.num as usize)?))
-        }).collect::<Result<HashMap<_, _>>>()?;
-
-        let mut foliages: HashMap<Crc, Vec<(pak::FoliageInfo, pak::Foliage)>> = HashMap::with_capacity(pak_header.foliage_info_num as usize);
-        for info in <Vec<pak::FoliageInfo> as OrderedDataVec>::from_bytes::<O>(&block1[pak_header.foliage_info_offset as usize..], pak_header.foliage_info_num as usize)? {        
+        }).collect::<IndexMap<_, _>>();
+        
+        let mut foliages: IndexMap<Crc, Vec<(pak::FoliageInfo, pak::Foliage)>> = IndexMap::with_capacity(pak_header.foliage_info_num as usize);
+        for info in from_bytes!(O, Vec<pak::FoliageInfo>, &block1[pak_header.foliage_info_offset as usize..], pak_header.foliage_info_num as usize)? {        
             sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(info.key.to_string())});
             foliages.entry(info.key.clone()).or_default().push((
                 info.clone(), 
-                pak::Foliage::from_data::<O>(&block1[..], &info)?
+                from_bytes!(O, pak::Foliage, &block1[..], &info)?
             ))
         }
 
-        let textures = <Vec<pak::TextureInfo> as OrderedDataVec>::from_bytes::<O>(&block1[pak_header.texture_info_offset as usize..], pak_header.texture_info_num as usize)?.into_iter().map(|mut info| {
+        let textures = from_bytes!(O, Vec<pak::TextureInfo>, &block1[pak_header.texture_info_offset as usize..], pak_header.texture_info_num as usize)?.into_iter().map(|mut info| {
             sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(info.key.to_string())});
             let data0 = texture_data.get(&info.asset_key).expect(format!("could not find texture data {}", info.asset_key.to_string()).as_str());
             let data1 = texture_data.get(&Crc::Key(hash_string("*".as_bytes(), Some(info.asset_key.key())))).unwrap();
             let tex = bin::Tex::from_data::<O>(data0, data1, &mut info)?;
             let key = info.key.clone();
             Ok((key, tex))
-        }).collect::<Result<HashMap<_, _>>>()?;
+        }).collect::<Result<IndexMap<_, _>>>()?;
 
         let blocks = animation_block_infos.iter().map(|info| { 
             sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(info.key.to_string())});
             types::CompressedBlock::from_data::<O>(&pak_data[..], info.size as usize, info.size_comp as usize, info.offset as usize).data
         }).collect::<Vec<_>>();
         let mut offsets = blocks.iter().map(|_| 0usize).collect::<Vec<_>>();
-        let animations = <Vec<pak::AnimationInfo> as OrderedDataVec>::from_bytes::<O>(&block1[pak_header.animation_info_offset as usize..], pak_header.animation_info_num as usize)?.into_iter().map(|info| {
+        let animations = from_bytes!(O, Vec<pak::AnimationInfo>, &block1[pak_header.animation_info_offset as usize..], pak_header.animation_info_num as usize)?.into_iter().map(|info| {
             sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(info.key.to_string())});
             let anim = Animation::from_data::<O>(info, &mut offsets, &blocks)?;
             Ok((anim.info.key.clone(), anim))
-        }).collect::<Result<HashMap<_, _>>>()?;
+        }).collect::<Result<IndexMap<_, _>>>()?;
+
+        let gameobjs = if let Some(SubBlock::GameObjs(objs)) = sub_blocks1.blocks.get(&Crc::Key(2083108783)) {
+            Some(objs)
+        } else {
+            None
+        }.unwrap();
+        let level_name = if let Some(BaseTypes::CRC(val)) = gameobjs.objs.first().unwrap().1.fields.get(&Crc::Key(2970763744)) {
+            Some(val.clone())
+        } else { None }.unwrap();
+        let infos = from_bytes!(O, Vec<pak::RadiosityValsInfo>, &block1[pak_header.radiosity_vals_info_offset as usize..], pak_header.radiosity_vals_info_num as usize)?;
+        let rad_name = Crc::Key(hash_string(b"_radiosity", Some(level_name.key())));
+        let radiosity = if let Some(rad_data) = model_data.get(&rad_name) {
+            let rad_usage = asset_handles.iter().find(|x| x.key == rad_name).unwrap().kind;
+            Some(from_bytes!(O, Radiosity, &block1[..], rad_usage, infos, &models, &gameobjs.objs, rad_data)?)
+        } else {
+            None
+        };
 
         info!("items parsed in {:?}", time.elapsed());
 
-        bar.as_ref().map(|x| { x.inc(1); x.set_message("sub blocks") });
-        sub_bar.as_ref().map(|x| { x.set_length(0); x.reset() });
-        let sub_blocks1 = types::SubBlocks::from_data::<O>(&block1[..], pak_header.sub_blocks1_offset as usize, &lua, sub_bar.as_ref())?;
-        let string_keys = types::StringKeys::from_data::<O>(&block1[..], pak_header.string_keys_offset as usize)?;
-        info!("sub blocks parsed in {:?}", time.elapsed());
-
         bar.as_ref().map(|x| { x.inc(1); x.set_message("pak") });
         sub_bar.as_ref().map(|x| { x.set_length(0); x.reset() });
-        let pak_vals_a = OrderedDataVec::from_bytes::<O>(&pak_data[pak_header.block_a_offset as usize..], pak_header.block_a_num as usize)?;
+        let pak_vals_a = from_bytes!(O, &pak_data[pak_header.block_a_offset as usize..], pak_header.block_a_num as usize)?;
         info!("pak parsed in {:?}", time.elapsed());
 
         bar.as_ref().map(|x| x.finish_and_clear());
@@ -264,9 +272,7 @@ impl Level {
             textures,
             animations,
             foliages,
-            radiosity_vals,
             effects,
-            pfield_infos,
             animation_block_infos,
             string_keys,
             sub_blocks1,
@@ -290,7 +296,7 @@ impl Level {
                     Entry::Vacant(val) => {
                         data.extend(vec![0u8; ((data.len() + 15) & 0xFFFFFFF0) - data.len()]);
                         let info = &mut vbuffs[i];
-                        let vals = vertex_data[i].dump::<O>();
+                        let vals = dump_bytes!(O, vertex_data[i]);
                         info.offset = data.len() as u32;
                         info.size = vals.len() as u32;
                         data.extend(vals);
@@ -323,7 +329,7 @@ impl Level {
                         ibuffs.insert(i);
                         data.extend(vec![0u8; ((data.len() + 15) & 0xFFFFFFF0) - data.len()]);
                         let info = &mut model.ibuffs[i];
-                        let vals = model.index_data[i].dump::<O>();
+                        let vals = dump_bytes!(O, model.index_data[i]);
                         info.offset = data.len() as u32;
                         info.size = vals.len() as u32;
                         data.extend(vals);
@@ -349,8 +355,6 @@ impl Level {
         bar.as_ref().map(|x| { x.inc(1); x.set_message("textures") });
         sub_bar.as_ref().map(|x| { x.set_length(self.textures.len() as u64); x.reset() });
 
-        let lua: lua_stuff::LuaCompiler = lua_stuff::LuaCompiler::new().unwrap();
-        
         let mut texture_data = vec![];
         let mut seen_textures = HashSet::new();
         fn sort_texture(tex: &&bin::Tex) -> u32 {
@@ -401,7 +405,7 @@ impl Level {
         } else {
             panic!("Unsupported format")
         };
-        let mut pak_data = vec![0u8; pak::Header::size::<O>()];
+        let mut pak_data = vec![0u8; O::size::<pak::Header>()];
 
         // block1 stuff
         
@@ -422,83 +426,89 @@ impl Level {
                 a
             }
         );
+        let pfield_infos = if let Some(types::SubBlock::PFields(val)) = self.sub_blocks2.blocks.get(&Crc::Key(types::PFields::KEY)) {
+            val.infos()
+        } else {
+            vec![]
+        };
         pak_header.model_info_num = self.models.len() as u32;
         pak_header.texture_info_num = self.textures.len() as u32;
         pak_header.effect_info_num = self.effects.len() as u32;
         pak_header.gfx_block_info_num = self.gfx_blocks.len() as u32;
-        pak_header.radiosity_vals_info_num = self.radiosity_vals.len() as u32;
+        pak_header.radiosity_vals_info_num = self.radiosity.as_ref().map(|x| x.vals.len() as u32).unwrap_or(0);
         pak_header.foliage_info_num = self.foliages.iter().map(|(_, x)| x.len()).sum::<usize>() as u32;
         pak_header.animation_info_num = self.animations.len() as u32;
+        pak_header.pfield_info_num = pfield_infos.len() as u32;
 
         let mut block1: Vec<u8> = vec![];
         pak_header.obja_offset = block1.len() as u32;
-        block1.extend(vec![0u8; pak_header.obja_num as usize * pak::ObjA::size::<O>()]);
+        block1.extend(vec![0u8; pak_header.obja_num as usize * O::size::<pak::ObjA>()]);
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         pak_header.obj0_offset = block1.len() as u32;
-        block1.extend(vec![0u8; pak_header.obj0_num as usize * pak::Obj0::size::<O>()]);
+        block1.extend(vec![0u8; pak_header.obj0_num as usize * O::size::<pak::Obj0>()]);
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         pak_header.model_info_offset = block1.len() as u32;
-        block1.extend(vec![0u8; pak_header.model_info_num as usize * pak::ModelInfo::size::<O>()]);
+        block1.extend(vec![0u8; pak_header.model_info_num as usize * O::size::<pak::ModelInfo>()]);
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         pak_header.buffer_info_offset = block1.len() as u32;
-        block1.extend(vec![0u8; pak_header.buffer_info_num as usize * pak::BufferInfo::size::<O>()]);
+        block1.extend(vec![0u8; pak_header.buffer_info_num as usize * O::size::<pak::BufferInfo>()]);
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         pak_header.mat1_offset = block1.len() as u32;
-        block1.extend(vec![0u8; pak_header.mat1_num as usize * pak::MatBase::size::<O>()]);
+        block1.extend(vec![0u8; pak_header.mat1_num as usize * O::size::<pak::MatBase>()]);
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         pak_header.mat2_offset = block1.len() as u32;
-        block1.extend(vec![0u8; pak_header.mat2_num as usize * pak::Mat2::size::<O>()]);
+        block1.extend(vec![0u8; pak_header.mat2_num as usize * O::size::<pak::Mat2>()]);
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         pak_header.mat3_offset = block1.len() as u32;
-        block1.extend(vec![0u8; pak_header.mat3_num as usize * pak::Mat3::size::<O>()]);
+        block1.extend(vec![0u8; pak_header.mat3_num as usize * O::size::<pak::Mat3>()]);
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         pak_header.mat4_offset = block1.len() as u32;
-        block1.extend(vec![0u8; pak_header.mat4_num as usize * pak::Mat4::size::<O>()]);
+        block1.extend(vec![0u8; pak_header.mat4_num as usize * O::size::<pak::Mat4>()]);
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         pak_header.mat_extra_offset = block1.len() as u32;
-        block1.extend(vec![0u8; pak_header.mat_extra_num as usize * pak::MatExtra::size::<O>()]);
+        block1.extend(vec![0u8; pak_header.mat_extra_num as usize * O::size::<pak::MatExtra>()]);
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         pak_header.shape_info_offset = block1.len() as u32;
-        block1.extend(vec![0u8; pak_header.shape_info_num as usize * pak::ShapeInfo::size::<O>()]);
+        block1.extend(vec![0u8; pak_header.shape_info_num as usize * O::size::<pak::ShapeInfo>()]);
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         pak_header.hk_shape_info_offset = block1.len() as u32;
-        block1.extend(vec![0u8; pak_header.hk_shape_info_num as usize * HkShape0::size::<O>()]);
+        block1.extend(vec![0u8; pak_header.hk_shape_info_num as usize * O::size::<HkShape0>()]);
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         pak_header.hk_constraint_data_offset = block1.len() as u32;
-        block1.extend(vec![0u8; pak_header.hk_constraint_data_num as usize * pak::HkConstraintData::size::<O>()]);
+        block1.extend(vec![0u8; pak_header.hk_constraint_data_num as usize * O::size::<pak::HkConstraintData>()]);
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         pak_header.vbuff_info_offset = block1.len() as u32;
-        block1.extend(vec![0u8; pak_header.vbuff_info_num as usize * pak::VBuffInfo::size::<O>()]);
+        block1.extend(vec![0u8; pak_header.vbuff_info_num as usize * O::size::<pak::VBuffInfo>()]);
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         pak_header.ibuff_info_offset = block1.len() as u32;
-        block1.extend(vec![0u8; pak_header.ibuff_info_num as usize * pak::IBuffInfo::size::<O>()]);
+        block1.extend(vec![0u8; pak_header.ibuff_info_num as usize * O::size::<pak::IBuffInfo>()]);
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         pak_header.texture_info_offset = block1.len() as u32;
-        block1.extend(vec![0u8; pak_header.texture_info_num as usize * pak::TextureInfo::size::<O>()]);
+        block1.extend(vec![0u8; pak_header.texture_info_num as usize * O::size::<pak::TextureInfo>()]);
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         pak_header.animation_info_offset = block1.len() as u32;
-        block1.extend(vec![0u8; pak_header.animation_info_num as usize * pak::AnimationInfo::size::<O>()]);
+        block1.extend(vec![0u8; pak_header.animation_info_num as usize * O::size::<pak::AnimationInfo>()]);
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         pak_header.hk_constraint_info_offset = block1.len() as u32;
-        block1.extend(vec![0u8; pak_header.hk_constraint_info_num as usize * pak::HkConstraintInfo::size::<O>()]);
+        block1.extend(vec![0u8; pak_header.hk_constraint_info_num as usize * O::size::<pak::HkConstraintInfo>()]);
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         pak_header.effect_info_offset = block1.len() as u32;
-        block1.extend(vec![0u8; pak_header.effect_info_num as usize * pak::EffectInfo::size::<O>()]);
+        block1.extend(vec![0u8; pak_header.effect_info_num as usize * O::size::<pak::EffectInfo>()]);
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         pak_header.pfield_info_offset = block1.len() as u32;
-        block1.extend(vec![0u8; pak_header.pfield_info_num as usize * pak::PFieldInfo::size::<O>()]);
+        block1.extend(vec![0u8; pak_header.pfield_info_num as usize * O::size::<pak::PFieldInfo>()]);
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         pak_header.gfx_block_info_offset = block1.len() as u32;
-        block1.extend(vec![0u8; pak_header.gfx_block_info_num as usize * pak::GFXBlockInfo::size::<O>()]);
+        block1.extend(vec![0u8; pak_header.gfx_block_info_num as usize * O::size::<pak::GFXBlockInfo>()]);
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         pak_header.animation_block_info_offset = block1.len() as u32;
-        block1.extend(vec![0u8; pak_header.animation_block_info_num as usize * pak::AnimationBlockInfo::size::<O>()]);
+        block1.extend(vec![0u8; pak_header.animation_block_info_num as usize * O::size::<pak::AnimationBlockInfo>()]);
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         pak_header.foliage_info_offset = block1.len() as u32;
-        block1.extend(vec![0u8; pak_header.foliage_info_num as usize * pak::FoliageInfo::size::<O>()]);
+        block1.extend(vec![0u8; pak_header.foliage_info_num as usize * O::size::<pak::FoliageInfo>()]);
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         pak_header.radiosity_vals_info_offset = block1.len() as u32;
-        block1.extend(vec![0u8; pak_header.radiosity_vals_info_num as usize * pak::RadiosityValsInfo::size::<O>()]);
+        block1.extend(vec![0u8; pak_header.radiosity_vals_info_num as usize * O::size::<pak::RadiosityValsInfo>()]);
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
 
         let mut infos = DumpInfos {
@@ -510,10 +520,10 @@ impl Level {
         let mut offset = 0;
         let animation_vals = self.animations.iter().sorted_by(|a, b| a.0.key().cmp(&b.0.key())).map(|(key, anim)| {
             sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string())});
-            let vals = anim.dump::<O>(offset, &mut infos)?;
+            let vals = dump_bytes!(O, anim, offset, &mut infos);
             offset += vals.len();
-            Ok((vals, anim.info.gamemodemask))
-        }).collect::<Result<Vec<_>>>()?;
+            (vals, anim.info.gamemodemask)
+        }).collect::<Vec<_>>();
         let animations_blocks = (0..self.animation_block_infos.len() as u32).map(|i| {
             let gamemodemask = 1i32 << i;
             animation_vals.iter().filter(|(_, k)| k & gamemodemask != 0).flat_map(|(x, _)| x).cloned().collect::<Vec<_>>()
@@ -536,7 +546,7 @@ impl Level {
 
         let effects = self.effects.iter().sorted_by(|a, b| a.0.key().cmp(&b.0.key())).map(|(key, effect)| {
             sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string())});
-            let vals = effect.dump::<O>()?;
+            let vals = dump_bytes!(O, effect);
             let effect = pak::EffectInfo { key: key.clone(), gamemodemask: effect.gamemodemask, offset: block1.len() as u32, size: vals.len() as u32 };
             block1.extend(vals);
             Ok(effect)
@@ -569,21 +579,10 @@ impl Level {
         terrain.sort_unstable_by_key(|x|
             x.str().and_then(|x| x.split('_').last().and_then(|x| x.parse::<usize>().ok())).unwrap_or_default()
         );
-        if let Some(SubBlock::GameObjs(objs)) = self.sub_blocks1.blocks.last() {
-            let guid_order: HashMap<usize, usize> = HashMap::from_iter(objs.objs.iter().enumerate().map(|(i, obj)|{
-                let ts = objs.types.get(&obj.key).unwrap();
-                (ts.iter().zip(&obj.fields).find_map(|(ty, val)| {
-                    if let BaseTypes::GUID(guid) = val {
-                        (ty.key.key() == 3482846511).then_some(*guid as usize)
-                    } else {
-                        None
-                    }
-                }).unwrap(), i)
-            }));
+        if let Some(SubBlock::GameObjs(objs)) = self.sub_blocks1.blocks.get(&Crc::Key(2083108783)) {
             collision_road.sort_unstable_by_key(|x| 
-                guid_order.get(&x.str().and_then(|x| x.split('_').last().and_then(|x| x.parse::<usize>().ok())).unwrap_or_default())
-            );    
-
+                objs.objs.get_index_of(&x.str().and_then(|x| x.split('_').last().and_then(|x| x.parse::<u32>().ok())).unwrap_or_default())
+            );
         } else {
             collision_road.sort_unstable_by_key(|x| 
                 x.str().and_then(|x| x.split('_').last().and_then(|x| x.parse::<usize>().ok())).unwrap_or_default()
@@ -617,7 +616,7 @@ impl Level {
         }).map(|(info, val)| {
             let mut info = info.clone();
             info.offset = block1.len() as u32;
-            block1.extend(val.dump::<O>());
+            block1.extend(dump_bytes!(O, val));
             block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
             info
         }).collect::<Vec<_>>();
@@ -633,7 +632,7 @@ impl Level {
         }
         info!("models & foliages in {:?}", time.elapsed());
         bar.as_ref().map(|x| { x.inc(1); x.set_message("block1 objs") }); 
-        sub_bar.as_ref().map(|x| { x.set_length((self.gfx_blocks.len() + self.radiosity_vals.len()) as u64); x.reset() });
+        sub_bar.as_ref().map(|x| { x.set_length((self.gfx_blocks.len() + 1) as u64); x.reset() });
 
         let gfx_blocks = self.gfx_blocks.iter().sorted_by(|a,b| a.0.cmp(&b.0)).map(|(key, val)| {
             sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string())});
@@ -643,13 +642,23 @@ impl Level {
             gfx_block
         }).collect::<Vec<_>>();
 
-        let radiosity_vals = self.radiosity_vals.iter().sorted_by_key(|(_, val)| val.first()).map(|(&guid, val)| {
-            sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(format!("{}", guid))});
-            let radiosity_vals = pak::RadiosityValsInfo { guid, num: val.len() as u32, offset: block1.len() as u32 };
-            block1.extend(val.dump_bytes::<O>());
+        let gameobjs = if let Some(SubBlock::GameObjs(objs)) = self.sub_blocks1.blocks.get(&Crc::Key(2083108783)) {
+            Some(objs)
+        } else {
+            None
+        }.unwrap();
+        let level_name = if let Some(BaseTypes::CRC(val)) = gameobjs.objs.first().unwrap().1.fields.get(&Crc::Key(2970763744)) {
+            Some(val.clone())
+        } else { None }.unwrap();
+        let rad_name = Crc::Key(hash_string(b"_radiosity", Some(level_name.key())));
+        let rad_data = self.radiosity.as_ref().map(|radiosity| {
+            let mut rad_data = Vec::with_capacity(radiosity.rad_size::<O>());
             block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
-            radiosity_vals
-        }).collect::<Vec<_>>();
+            block1.extend(dump_bytes!(O, radiosity, block1.len(), &mut rad_data, &mut infos));
+            block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
+            rad_data
+        });
+
         info!("block1 objs in {:?}", time.elapsed());
         bar.as_ref().map(|x| { x.inc(1); x.set_message("block1") }); 
         sub_bar.as_ref().map(|x| { x.set_length(0); x.reset() });
@@ -657,35 +666,35 @@ impl Level {
 
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         pak_header.sub_blocks1_offset = block1.len() as u32;
-        block1.extend(self.sub_blocks1.dump::<O>(&lua, sub_bar.as_ref())?);
+        block1.extend(dump_bytes!(O, self.sub_blocks1, sub_bar.clone().into()));
         pak_header.string_keys_offset = block1.len() as u32;
-        block1.extend(self.string_keys.dump::<O>());
+        block1.extend(dump_bytes!(O, self.string_keys));
 
-        self.objas.to_bytes::<O>(&mut block1[pak_header.obja_offset as usize..])?;
-        self.obj0s.to_bytes::<O>(&mut block1[pak_header.obj0_offset as usize..])?;
-        infos.model.to_bytes::<O>(&mut block1[pak_header.model_info_offset as usize..])?;
-        infos.buffer.to_bytes::<O>(&mut block1[pak_header.buffer_info_offset as usize..])?;
-        infos.mat1.to_bytes::<O>(&mut block1[pak_header.mat1_offset as usize..])?;
-        infos.mat2.to_bytes::<O>(&mut block1[pak_header.mat2_offset as usize..])?;
-        infos.mat3.to_bytes::<O>(&mut block1[pak_header.mat3_offset as usize..])?;
-        infos.mat4.to_bytes::<O>(&mut block1[pak_header.mat4_offset as usize..])?;
-        infos.mat_extra.to_bytes::<O>(&mut block1[pak_header.mat_extra_offset as usize..])?;
-        infos.shape.to_bytes::<O>(&mut block1[pak_header.shape_info_offset as usize..])?;
+        to_bytes!(O, self.objas, &mut block1[pak_header.obja_offset as usize..])?;
+        to_bytes!(O, self.obj0s, &mut block1[pak_header.obj0_offset as usize..])?;
+        to_bytes!(O, infos.model, &mut block1[pak_header.model_info_offset as usize..])?;
+        to_bytes!(O, infos.buffer, &mut block1[pak_header.buffer_info_offset as usize..])?;
+        to_bytes!(O, infos.mat1, &mut block1[pak_header.mat1_offset as usize..])?;
+        to_bytes!(O, infos.mat2, &mut block1[pak_header.mat2_offset as usize..])?;
+        to_bytes!(O, infos.mat3, &mut block1[pak_header.mat3_offset as usize..])?;
+        to_bytes!(O, infos.mat4, &mut block1[pak_header.mat4_offset as usize..])?;
+        to_bytes!(O, infos.mat_extra, &mut block1[pak_header.mat_extra_offset as usize..])?;
+        to_bytes!(O, infos.shape, &mut block1[pak_header.shape_info_offset as usize..])?;
         for (i, hk_shape) in infos.hk_shape.iter().enumerate() {
-            hk_shape.to_bytes::<O>(&mut block1[pak_header.hk_shape_info_offset as usize + i * HkShape0::size::<O>()..])?;
+            to_bytes!(O, hk_shape, &mut block1[pak_header.hk_shape_info_offset as usize + i * O::size::<HkShape0>()..])?;
         }
-        infos.hk_constraint_data.to_bytes::<O>(&mut block1[pak_header.hk_constraint_data_offset as usize..])?;
-        infos.vbuff.to_bytes::<O>(&mut block1[pak_header.vbuff_info_offset as usize..])?;
-        infos.ibuff.to_bytes::<O>(&mut block1[pak_header.ibuff_info_offset as usize..])?;
-        texture_infos.to_bytes::<O>(&mut block1[pak_header.texture_info_offset as usize..])?;
-        infos.animation.to_bytes::<O>(&mut block1[pak_header.animation_info_offset as usize..])?;
-        infos.hk_constraint.to_bytes::<O>(&mut block1[pak_header.hk_constraint_info_offset as usize..])?;
-        effects.to_bytes::<O>(&mut block1[pak_header.effect_info_offset as usize..])?;
-        foliages.to_bytes::<O>(&mut block1[pak_header.foliage_info_offset as usize..])?;
-        self.pfield_infos.to_bytes::<O>(&mut block1[pak_header.pfield_info_offset as usize..])?;
-        gfx_blocks.to_bytes::<O>(&mut block1[pak_header.gfx_block_info_offset as usize..])?;
-        radiosity_vals.to_bytes::<O>(&mut block1[pak_header.radiosity_vals_info_offset as usize..])?;
-        animation_block_infos.to_bytes::<O>(&mut block1[pak_header.animation_block_info_offset as usize..])?;
+        to_bytes!(O, infos.hk_constraint_data, &mut block1[pak_header.hk_constraint_data_offset as usize..])?;
+        to_bytes!(O, infos.vbuff, &mut block1[pak_header.vbuff_info_offset as usize..])?;
+        to_bytes!(O, infos.ibuff, &mut block1[pak_header.ibuff_info_offset as usize..])?;
+        to_bytes!(O, texture_infos, &mut block1[pak_header.texture_info_offset as usize..])?;
+        to_bytes!(O, infos.animation, &mut block1[pak_header.animation_info_offset as usize..])?;
+        to_bytes!(O, infos.hk_constraint, &mut block1[pak_header.hk_constraint_info_offset as usize..])?;
+        to_bytes!(O, effects, &mut block1[pak_header.effect_info_offset as usize..])?;
+        to_bytes!(O, foliages, &mut block1[pak_header.foliage_info_offset as usize..])?;
+        to_bytes!(O, pfield_infos, &mut block1[pak_header.pfield_info_offset as usize..])?;
+        to_bytes!(O, gfx_blocks, &mut block1[pak_header.gfx_block_info_offset as usize..])?;
+        to_bytes!(O, infos.radiosity_vals, &mut block1[pak_header.radiosity_vals_info_offset as usize..])?;
+        to_bytes!(O, animation_block_infos, &mut block1[pak_header.animation_block_info_offset as usize..])?;
         info!("block1 in {:?}", time.elapsed());
         bar.as_ref().map(|x| { x.inc(1); x.set_message("block2") }); 
         sub_bar.as_ref().map(|x| { x.set_length(0); x.reset() });
@@ -693,128 +702,128 @@ impl Level {
         // block2
         for (i, model) in infos.model.iter().enumerate() {
             infos.block2_offsets.extend([
-                pak_header.model_info_offset + (i * pak::ModelInfo::size::<O>()) as u32 + 8,
-                pak_header.model_info_offset + (i * pak::ModelInfo::size::<O>()) as u32 + 12,
-                pak_header.model_info_offset + (i * pak::ModelInfo::size::<O>()) as u32 + 48,
-                pak_header.model_info_offset + (i * pak::ModelInfo::size::<O>()) as u32 + 140,
-                pak_header.model_info_offset + (i * pak::ModelInfo::size::<O>()) as u32 + 144,
-                pak_header.model_info_offset + (i * pak::ModelInfo::size::<O>()) as u32 + 152,
-                pak_header.model_info_offset + (i * pak::ModelInfo::size::<O>()) as u32 + 164,
-                pak_header.model_info_offset + (i * pak::ModelInfo::size::<O>()) as u32 + 172,
-                pak_header.model_info_offset + (i * pak::ModelInfo::size::<O>()) as u32 + 180,
-                pak_header.model_info_offset + (i * pak::ModelInfo::size::<O>()) as u32 + 252,
+                pak_header.model_info_offset + (i * O::size::<pak::ModelInfo>()) as u32 + 8,
+                pak_header.model_info_offset + (i * O::size::<pak::ModelInfo>()) as u32 + 12,
+                pak_header.model_info_offset + (i * O::size::<pak::ModelInfo>()) as u32 + 48,
+                pak_header.model_info_offset + (i * O::size::<pak::ModelInfo>()) as u32 + 140,
+                pak_header.model_info_offset + (i * O::size::<pak::ModelInfo>()) as u32 + 144,
+                pak_header.model_info_offset + (i * O::size::<pak::ModelInfo>()) as u32 + 152,
+                pak_header.model_info_offset + (i * O::size::<pak::ModelInfo>()) as u32 + 164,
+                pak_header.model_info_offset + (i * O::size::<pak::ModelInfo>()) as u32 + 172,
+                pak_header.model_info_offset + (i * O::size::<pak::ModelInfo>()) as u32 + 180,
+                pak_header.model_info_offset + (i * O::size::<pak::ModelInfo>()) as u32 + 252,
             ]);
             if model.bones_offset != 0 {
-                infos.block2_offsets.push(pak_header.model_info_offset + (i * pak::ModelInfo::size::<O>()) as u32 + 136);
+                infos.block2_offsets.push(pak_header.model_info_offset + (i * O::size::<pak::ModelInfo>()) as u32 + 136);
             }
             if model.skin_order_offset != 0 {
-                infos.block2_offsets.push(pak_header.model_info_offset + (i * pak::ModelInfo::size::<O>()) as u32 + 160);
+                infos.block2_offsets.push(pak_header.model_info_offset + (i * O::size::<pak::ModelInfo>()) as u32 + 160);
             }
             if model.vals_j_offset != 0 {
-                infos.block2_offsets.push(pak_header.model_info_offset + (i * pak::ModelInfo::size::<O>()) as u32 + 196);
+                infos.block2_offsets.push(pak_header.model_info_offset + (i * O::size::<pak::ModelInfo>()) as u32 + 196);
             }
             if model.block_offset != 0 {
-                infos.block2_offsets.push(pak_header.model_info_offset + (i * pak::ModelInfo::size::<O>()) as u32 + 200);
+                infos.block2_offsets.push(pak_header.model_info_offset + (i * O::size::<pak::ModelInfo>()) as u32 + 200);
             }
             if model.vals_k_offset != 0 {
-                infos.block2_offsets.push(pak_header.model_info_offset + (i * pak::ModelInfo::size::<O>()) as u32 + 204);
+                infos.block2_offsets.push(pak_header.model_info_offset + (i * O::size::<pak::ModelInfo>()) as u32 + 204);
             }
             if model.shape_offset != 0 {
-                infos.block2_offsets.push(pak_header.model_info_offset + (i * pak::ModelInfo::size::<O>()) as u32 + 224);
+                infos.block2_offsets.push(pak_header.model_info_offset + (i * O::size::<pak::ModelInfo>()) as u32 + 224);
             }
             if model.hk_constraint_data_offset != 0 {
-                infos.block2_offsets.push(pak_header.model_info_offset + (i * pak::ModelInfo::size::<O>()) as u32 + 232);
+                infos.block2_offsets.push(pak_header.model_info_offset + (i * O::size::<pak::ModelInfo>()) as u32 + 232);
             }
             if model.hk_constraint_offset != 0 {
-                infos.block2_offsets.push(pak_header.model_info_offset + (i * pak::ModelInfo::size::<O>()) as u32 + 240);
+                infos.block2_offsets.push(pak_header.model_info_offset + (i * O::size::<pak::ModelInfo>()) as u32 + 240);
             }
             if model.slots_offset != 0 {
-                infos.block2_offsets.push(pak_header.model_info_offset + (i * pak::ModelInfo::size::<O>()) as u32 + 244);
+                infos.block2_offsets.push(pak_header.model_info_offset + (i * O::size::<pak::ModelInfo>()) as u32 + 244);
             }
             if model.slot_map_offset != 0 {
-                infos.block2_offsets.push(pak_header.model_info_offset + (i * pak::ModelInfo::size::<O>()) as u32 + 248);
+                infos.block2_offsets.push(pak_header.model_info_offset + (i * O::size::<pak::ModelInfo>()) as u32 + 248);
             }
         }
         for (i, buffer) in infos.buffer.iter().enumerate() {
             infos.block2_offsets.extend([
-                pak_header.buffer_info_offset + (i * pak::BufferInfo::size::<O>()) as u32,
-                pak_header.buffer_info_offset + (i * pak::BufferInfo::size::<O>()) as u32 + 260,
+                pak_header.buffer_info_offset + (i * O::size::<pak::BufferInfo>()) as u32,
+                pak_header.buffer_info_offset + (i * O::size::<pak::BufferInfo>()) as u32 + 260,
             ]);
             if buffer.vbuff_info_offset_2 != 0 {
-                infos.block2_offsets.push(pak_header.buffer_info_offset + (i * pak::BufferInfo::size::<O>()) as u32 + 4);
+                infos.block2_offsets.push(pak_header.buffer_info_offset + (i * O::size::<pak::BufferInfo>()) as u32 + 4);
             }
             if buffer.vbuff_info_offset_3 != 0 {
-                infos.block2_offsets.push(pak_header.buffer_info_offset + (i * pak::BufferInfo::size::<O>()) as u32 + 8);
+                infos.block2_offsets.push(pak_header.buffer_info_offset + (i * O::size::<pak::BufferInfo>()) as u32 + 8);
             }
         }
         for (i, mat) in infos.mat1.iter().enumerate() {
             if mat.base.mat_extra_offset != 0 {
-                infos.block2_offsets.push(pak_header.mat1_offset + (i * pak::MatBase::size::<O>()) as u32 + 344);
+                infos.block2_offsets.push(pak_header.mat1_offset + (i * O::size::<pak::MatBase>()) as u32 + 344);
             }
         }
         for (i, mat) in infos.mat2.iter().enumerate() {
             if mat.base.mat_extra_offset != 0 {
-                infos.block2_offsets.push(pak_header.mat2_offset + (i * pak::Mat2::size::<O>()) as u32 + 344);
+                infos.block2_offsets.push(pak_header.mat2_offset + (i * O::size::<pak::Mat2>()) as u32 + 344);
             }
         }
         for (i, mat) in infos.mat3.iter().enumerate() {
             if mat.base.mat_extra_offset != 0 {
-                infos.block2_offsets.push(pak_header.mat3_offset + (i * pak::Mat3::size::<O>()) as u32 + 344);
+                infos.block2_offsets.push(pak_header.mat3_offset + (i * O::size::<pak::Mat3>()) as u32 + 344);
             }
         }
         for (i, mat) in infos.mat4.iter().enumerate() {
             if mat.base.mat_extra_offset != 0 {
-                infos.block2_offsets.push(pak_header.mat4_offset + (i * pak::Mat4::size::<O>()) as u32 + 344);
+                infos.block2_offsets.push(pak_header.mat4_offset + (i * O::size::<pak::Mat4>()) as u32 + 344);
             }
         }
         for (i, shape) in infos.shape.iter().enumerate() {
             if shape.hk_shape_offset != 0 {
-                infos.block2_offsets.push(pak_header.shape_info_offset + (i * pak::ShapeInfo::size::<O>()) as u32 + 112);
+                infos.block2_offsets.push(pak_header.shape_info_offset + (i * O::size::<pak::ShapeInfo>()) as u32 + 112);
             }
         }
         for (i, hk_shape) in infos.hk_shape.iter().enumerate() {
             infos.block2_offsets.extend(match hk_shape {
                 HkShapeInfo::ConvexVertices(_) => vec![
-                    pak_header.hk_shape_info_offset + (i * pak::HkShapeInfo::size::<O>()) as u32 + 44,
-                    pak_header.hk_shape_info_offset + (i * pak::HkShapeInfo::size::<O>()) as u32 + 52
+                    pak_header.hk_shape_info_offset + (i * O::size::<pak::HkShapeInfo>()) as u32 + 44,
+                    pak_header.hk_shape_info_offset + (i * O::size::<pak::HkShapeInfo>()) as u32 + 52
                 ],
                 HkShapeInfo::BVTreeMesh(_) => vec![
-                    pak_header.hk_shape_info_offset + (i * pak::HkShapeInfo::size::<O>()) as u32 + 60,
-                    pak_header.hk_shape_info_offset + (i * pak::HkShapeInfo::size::<O>()) as u32 + 68,
-                    pak_header.hk_shape_info_offset + (i * pak::HkShapeInfo::size::<O>()) as u32 + 76
+                    pak_header.hk_shape_info_offset + (i * O::size::<pak::HkShapeInfo>()) as u32 + 60,
+                    pak_header.hk_shape_info_offset + (i * O::size::<pak::HkShapeInfo>()) as u32 + 68,
+                    pak_header.hk_shape_info_offset + (i * O::size::<pak::HkShapeInfo>()) as u32 + 76
                 ],
                 _ => vec![]
             });
         }
         for (i, hk_constraint) in infos.hk_constraint.iter().enumerate() {
             infos.block2_offsets.extend([
-                pak_header.hk_constraint_info_offset + (i * pak::HkConstraintInfo::size::<O>()) as u32 + 4,
-                pak_header.hk_constraint_info_offset + (i * pak::HkConstraintInfo::size::<O>()) as u32 + 12,
-                pak_header.hk_constraint_info_offset + (i * pak::HkConstraintInfo::size::<O>()) as u32 + 20,
-                pak_header.hk_constraint_info_offset + (i * pak::HkConstraintInfo::size::<O>()) as u32 + 40,
-                pak_header.hk_constraint_info_offset + (i * pak::HkConstraintInfo::size::<O>()) as u32 + 48,
+                pak_header.hk_constraint_info_offset + (i * O::size::<pak::HkConstraintInfo>()) as u32 + 4,
+                pak_header.hk_constraint_info_offset + (i * O::size::<pak::HkConstraintInfo>()) as u32 + 12,
+                pak_header.hk_constraint_info_offset + (i * O::size::<pak::HkConstraintInfo>()) as u32 + 20,
+                pak_header.hk_constraint_info_offset + (i * O::size::<pak::HkConstraintInfo>()) as u32 + 40,
+                pak_header.hk_constraint_info_offset + (i * O::size::<pak::HkConstraintInfo>()) as u32 + 48,
             ]);
             if hk_constraint.vals2_offset != 0 {
-                infos.block2_offsets.push(pak_header.hk_constraint_info_offset + (i * pak::HkConstraintInfo::size::<O>()) as u32 + 64);
+                infos.block2_offsets.push(pak_header.hk_constraint_info_offset + (i * O::size::<pak::HkConstraintInfo>()) as u32 + 64);
             }
         }
         for i in 0..pak_header.effect_info_num as usize {
-            infos.block2_offsets.push(pak_header.effect_info_offset + (i * pak::EffectInfo::size::<O>()) as u32 + 8);
+            infos.block2_offsets.push(pak_header.effect_info_offset + (i * O::size::<pak::EffectInfo>()) as u32 + 8);
         }
         for i in 0..pak_header.gfx_block_info_num as usize {
-            infos.block2_offsets.push(pak_header.gfx_block_info_offset + (i * pak::GFXBlockInfo::size::<O>()) as u32 + 4);
+            infos.block2_offsets.push(pak_header.gfx_block_info_offset + (i * O::size::<pak::GFXBlockInfo>()) as u32 + 4);
         }
         for i in 0..pak_header.radiosity_vals_info_num as usize {
-            infos.block2_offsets.push(pak_header.radiosity_vals_info_offset + (i * pak::RadiosityValsInfo::size::<O>()) as u32 + 8);
+            infos.block2_offsets.push(pak_header.radiosity_vals_info_offset + (i * O::size::<pak::RadiosityValsInfo>()) as u32 + 8);
         }
         for i in 0..pak_header.foliage_info_num as usize {
-            infos.block2_offsets.push(pak_header.foliage_info_offset + (i * pak::FoliageInfo::size::<O>()) as u32 + 28);
+            infos.block2_offsets.push(pak_header.foliage_info_offset + (i * O::size::<pak::FoliageInfo>()) as u32 + 28);
         }
         pak_header.sub_blocks2_offset = 0;
-        let mut block2 = self.sub_blocks2.dump::<O>(&lua, sub_bar.as_ref())?;
+        let mut block2 = dump_bytes!(O, self.sub_blocks2, sub_bar.clone().into());
         pak_header.block2_offsets_offset = block2.len() as u32;
         pak_header.block2_offsets_num = infos.block2_offsets.len() as u32;
-        block2.extend(infos.block2_offsets.dump_bytes::<O>());
+        block2.extend(dump_bytes!(O, infos.block2_offsets));
         info!("block2 in {:?}", time.elapsed());
         bar.as_ref().map(|x| { x.inc(1); x.set_message("pak") }); 
         sub_bar.as_ref().map(|x| { x.set_length(4); x.reset() });
@@ -840,7 +849,7 @@ impl Level {
 
         sub_bar.as_ref().map(|x| { x.inc(1); x.set_message("strings")});
         pak_data.extend(vec![0u8; ((pak_data.len() + 4095) & 0xfffff000)-pak_data.len()]);
-        let data = self.pak_strings.dump::<O>();
+        let data = dump_bytes!(O, self.pak_strings);
         pak_header.strings_offset = pak_data.len() as u32;
         pak_header.strings_num = self.pak_strings.strings.len() as u32;
         pak_header.strings_size = data.len() as u32;
@@ -849,17 +858,17 @@ impl Level {
         sub_bar.as_ref().map(|x| { x.inc(1); x.set_message("vals_a")});
         pak_header.block_a_offset = pak_data.len() as u32;
         pak_header.block_a_num = self.pak_vals_a.len() as u32;
-        pak_data.extend(self.pak_vals_a.dump_bytes::<O>());
+        pak_data.extend(dump_bytes!(O, self.pak_vals_a));
 
         pak_data.extend(vec![0u8; ((pak_data.len() + 2047) & 0xfffff800)-pak_data.len()]);
-        pak_header.to_bytes::<O>(&mut pak_data)?;
+        to_bytes!(O, pak_header, &mut pak_data)?;
         info!("pak in {:?}", time.elapsed());
         bar.as_ref().map(|x| { x.inc(1); x.set_message("bin") }); 
-        sub_bar.as_ref().map(|x| { x.set_length((model_data.len() + texture_data.len() + self.radiosity.len() + 2) as u64); x.reset() });
+        sub_bar.as_ref().map(|x| { x.set_length((model_data.len() + texture_data.len() + 2 + rad_data.is_some().then_some(1).unwrap_or(0)) as u64); x.reset() });
 
         // bin_data
         let mut bin_header = self.bin_header.clone();
-        let mut bin_data = vec![0u8; bin::Header::size::<O>()];
+        let mut bin_data = vec![0u8; O::size::<bin::Header>()];
         bin_header.version = if TypeId::of::<O>() == TypeId::of::<PC>() { 
             1 
         } else if TypeId::of::<O>() == TypeId::of::<XBOX>() {
@@ -899,21 +908,23 @@ impl Level {
             bin::AssetHandle { key, offset, size, size_comp, kind }
         }).collect::<Vec<_>>();
 
-        model_asset_handles.extend(self.radiosity.iter().map(|(key, data)| {
-            sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string())});
-            let kind = data.usage;
-            let data = data.data.dump_bytes::<O>();
-            let size = data.len() as u32;
+        if let Some(rad_data) = rad_data {
+            sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(rad_name.to_string())});
+            let size = rad_data.len() as u32;
             let offset = bin_data.len() as u32;
             let size_comp = if size != 0 {
-                let data = CompressedBlock { data }.dump();
+                let data = CompressedBlock { data: rad_data }.dump();
                 let size_comp = data.len() as u32;
                 bin_data.extend(data);
                 bin_data.extend(vec![0u8; ((bin_data.len() + 2047) & 0xfffff800)-bin_data.len()]);
                 size_comp
             } else { 0 };
-            bin::AssetHandle { key: key.clone(), offset, size, size_comp, kind }
-        }));
+            model_asset_handles.push(bin::AssetHandle { 
+                key: rad_name, 
+                offset, size, size_comp, 
+                kind: self.radiosity.as_ref().unwrap().usage
+            });
+        }
 
         model_asset_handles.sort_by_key(|x| x.key.key());
         texture_asset_handles.sort_by_key(|x| x.key.key());
@@ -929,10 +940,10 @@ impl Level {
         bin_data.extend(vec![0u8; ((bin_data.len() + 2047) & 0xfffff800)-bin_data.len()]);
         bin_header.asset_handle_offset = bin_data.len() as u32;
         bin_header.asset_handle_num = asset_handles.len() as u32;
-        bin_data.extend(asset_handles.dump_bytes::<O>());
+        bin_data.extend(dump_bytes!(O, asset_handles));
 
         sub_bar.as_ref().map(|x| { x.inc(1); x.set_message("strings")});
-        let data = self.bin_strings.dump::<O>();
+        let data = dump_bytes!(O, self.bin_strings);
         bin_header.strings_offset = bin_data.len() as u32;
         bin_header.strings_size = data.len() as u32;
         bin_header.strings_num = self.bin_strings.strings.len() as u32;
@@ -940,7 +951,7 @@ impl Level {
         
         sub_bar.as_ref().map(|x| { x.inc(1); x.set_message("header")});
         bin_data.extend(vec![0u8; ((bin_data.len() + 2047) & 0xfffff800)-bin_data.len()]);
-        bin_header.to_bytes::<O>(&mut bin_data)?;
+        to_bytes!(O, bin_header, &mut bin_data)?;
         info!("bin in {:?}", time.elapsed());
         bar.as_ref().map(|x| x.finish_and_clear()); 
         sub_bar.as_ref().map(|x| x.finish_and_clear()); 
@@ -985,7 +996,7 @@ impl Level {
         info!("storing level");
 
         let (bar, sub_bar) = if let Some(mp) = mp {
-            let bar = ProgressBar::new(13 + types::ANIM_TABLES.lock().unwrap().then_some(1).unwrap_or(0)).with_style(ProgressStyle::with_template(BAR_FMT).unwrap());
+            let bar = ProgressBar::new(11 + types::ANIM_TABLES.lock().unwrap().then_some(1).unwrap_or(0)).with_style(ProgressStyle::with_template(BAR_FMT).unwrap());
             let sub_bar = ProgressBar::new(0).with_style(ProgressStyle::with_template(SUB_BAR_FMT).unwrap());
             mp.add(bar.clone());
             mp.add(sub_bar.clone());
@@ -1041,14 +1052,6 @@ impl Level {
         }
         info!("foliage objs in {:?}", time.elapsed());
 
-        bar.as_ref().map(|x| { x.inc(1); x.set_message("radiosity_vals") }); 
-        sub_bar.as_ref().map(|x| { x.set_length(self.radiosity_vals.len() as u64); x.reset() });
-        for (key, data) in self.radiosity_vals.iter() {
-            sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string())});
-            writer.join("radiosity_vals").join(format!("{}", key)).with_extension("bin").write(&data.dump_bytes::<PC>())?;
-        }
-        info!("radiosity vals in {:?}", time.elapsed());
-
         bar.as_ref().map(|x| { x.inc(1); x.set_message("gfxs") }); 
         sub_bar.as_ref().map(|x| { x.set_length(self.gfx_blocks.len() as u64); x.reset() });
         for (key, data) in self.gfx_blocks.iter() {
@@ -1075,19 +1078,11 @@ impl Level {
         }
         info!("textures in {:?}", time.elapsed());
 
-        bar.as_ref().map(|x| { x.inc(1); x.set_message("radiosity") }); 
-        sub_bar.as_ref().map(|x| { x.set_length(self.radiosity.len() as u64); x.reset() });
-        for (key, data) in self.radiosity.iter() {
-            sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string())});
-            writer.join("radiosity").join(key.to_string()).with_extension("json").write(&to_vec_pretty(&data)?)?;
+        bar.as_ref().map(|x| { x.inc(1); x.set_message("radiosity") });
+        if let Some(radiosity) = self.radiosity.as_ref() {
+            writer.join("radiosity.json").write(&to_vec_pretty(radiosity)?)?;
         }
         info!("radiosity in {:?}", time.elapsed());
-
-        bar.as_ref().map(|x| { x.inc(1); x.set_message("paked_items") }); 
-        sub_bar.as_ref().map(|x| { x.set_length(1); x.reset() });
-        writer.join("pfield_infos.json").write(&to_vec_pretty(&self.pfield_infos)?)?;
-
-        info!("packed items in {:?}", time.elapsed());
 
         bar.as_ref().map(|x| { x.inc(1); x.set_message("sub_blocks1") }); 
         sub_bar.as_ref().map(|x| { x.set_length(0); x.reset() });
@@ -1104,15 +1099,12 @@ impl Level {
             sub_bar.as_ref().map(|x| { x.set_length(self.sub_blocks1.blocks.len() as u64 * 2); x.reset() });
             let mut script_manager = HashMap::new();
             {
-                let lua = lua_stuff::LuaCompiler::new().unwrap();
-                for (block, info) in self.sub_blocks1.blocks.iter().zip(&self.sub_blocks1.block_headers) {
-                    sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(info.key.to_string())});
+                for (key, block) in &self.sub_blocks1.blocks {
+                    sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string())});
                     if let types::SubBlock::Lua(val) = block {
                         let mut name = val.name.clone();
                         name.truncate(name.len()-4);
-                        //println!("{:?}", val.data);
-                        script_manager.insert(Crc::from_string(&name), val.conv("L4808", &lua)?);
-                        //script_manager.insert(Crc::from_string(&name), lua.convert(&val.data, "L4808")?);
+                        script_manager.insert(Crc::from_string(&name), val.conv("L4808")?);
                     }
                 }
             }
@@ -1137,15 +1129,13 @@ impl Level {
         info!("Reading level {:?}", reader.full_path());        
 
         let (bar, sub_bar) = if let Some(mp) = mp {
-            let bar = ProgressBar::new(13).with_style(ProgressStyle::with_template(BAR_FMT).unwrap());
+            let bar = ProgressBar::new(11).with_style(ProgressStyle::with_template(BAR_FMT).unwrap());
             let sub_bar = ProgressBar::new(0).with_style(ProgressStyle::with_template(SUB_BAR_FMT).unwrap());
             mp.add(bar.clone());
             mp.add(sub_bar.clone());
             (Some(bar), Some(sub_bar))
         } else { (None, None) };
         
-        let lua: lua_stuff::LuaCompiler = lua_stuff::LuaCompiler::new().unwrap();
-
         bar.as_ref().map(|x| { x.inc(1); x.set_message("headers") }); 
         sub_bar.as_ref().map(|x| { x.set_length(0); x.reset() });
         let bin_header = serde_json::from_slice::<bin::Header>(&reader.join("bin_header.json").read()?)?;
@@ -1169,7 +1159,7 @@ impl Level {
         bar.as_ref().map(|x| { x.inc(1); x.set_message("models") }); 
         let data = reader.join("models").into_iter();
         sub_bar.as_ref().map(|x| { x.set_length(data.len() as u64); x.reset() });
-        let mut models = HashMap::new();
+        let mut models = IndexMap::new();
         for path in data {
             let key = Crc::from_string(path.name());
             sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string())});
@@ -1193,7 +1183,7 @@ impl Level {
         bar.as_ref().map(|x| { x.inc(1); x.set_message("effects") }); 
         let data = reader.join("effects").into_iter();
         sub_bar.as_ref().map(|x| { x.set_length(data.len() as u64); x.reset() });
-        let mut effects = HashMap::new();
+        let mut effects = IndexMap::new();
         for path in data {
             let key = Crc::from_string(path.name());
             sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string())});
@@ -1205,7 +1195,7 @@ impl Level {
         bar.as_ref().map(|x| { x.inc(1); x.set_message("foliage objs") }); 
         let data = reader.join("foliage").into_iter();
         sub_bar.as_ref().map(|x| { x.set_length(data.len() as u64); x.reset() });
-        let mut foliages = HashMap::new();
+        let mut foliages = IndexMap::new();
         for path in data {
             let key = Crc::from_string(path.name());
             sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string())});
@@ -1214,23 +1204,10 @@ impl Level {
         }
         info!("foliage objs in {:?}", time.elapsed());
 
-        bar.as_ref().map(|x| { x.inc(1); x.set_message("radiosity vals") }); 
-        let data = reader.join("radiosity_vals").into_iter();
-        sub_bar.as_ref().map(|x| { x.set_length(data.len() as u64); x.reset() });
-        let mut radiosity_vals = HashMap::new();
-        for path in data {
-            let key: u32 = path.name().parse().unwrap();
-            sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string())});
-            let dat = path.read()?;
-            let data = <Vec<u32> as OrderedDataVec>::from_bytes::<PC>(&dat, dat.len()/4)?;
-            radiosity_vals.insert(key, data);
-        }
-        info!("radiosity vals in {:?}", time.elapsed());
-
         bar.as_ref().map(|x| { x.inc(1); x.set_message("gfxs") }); 
         let data = reader.join("gfxs").into_iter();
         sub_bar.as_ref().map(|x| { x.set_length(data.len() as u64); x.reset() });
-        let mut gfx_blocks = HashMap::new();
+        let mut gfx_blocks = IndexMap::new();
         for path in data {
             let key = Crc::from_string(path.name());
             sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string())});
@@ -1243,7 +1220,7 @@ impl Level {
         let data = reader.join("animations").into_iter();
         sub_bar.as_ref().map(|x| { x.set_length(data.len() as u64); x.reset() });
         let animation_block_infos = serde_json::from_slice::<Vec<pak::AnimationBlockInfo>>(&reader.join("animation_block_infos.json").read()?)?;
-        let mut animations = HashMap::new();
+        let mut animations = IndexMap::new();
         for path in data {
             let key = Crc::from_string(path.name());
             sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string())});
@@ -1255,7 +1232,7 @@ impl Level {
         bar.as_ref().map(|x| { x.inc(1); x.set_message("textures") }); 
         let data = reader.join("textures").into_iter();
         sub_bar.as_ref().map(|x| { x.set_length(data.len() as u64); x.reset() });
-        let mut textures = HashMap::new();
+        let mut textures = IndexMap::new();
         for path in data.filter(|x| x.path().extension().unwrap_or(OsStr::new("")).to_str() == Some("json")) {
             let key = Crc::from_string(path.name());
             sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string())});
@@ -1265,30 +1242,22 @@ impl Level {
         info!("textures in {:?}", time.elapsed());
 
         bar.as_ref().map(|x| { x.inc(1); x.set_message("radiosity") }); 
-        let data = reader.join("radiosity").into_iter();
-        sub_bar.as_ref().map(|x| { x.set_length(data.len() as u64); x.reset() });
-        let mut radiosity = HashMap::new();
-        for path in data {
-            let key = Crc::from_string(path.name());
-            sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string())});
-            let data = serde_json::from_slice::<bin::Radiosity>(&path.read()?)?;
-            radiosity.insert(key, data);
-        }
+        let rad_path = reader.join("radiosity.json");
+        let radiosity = if rad_path.is_file() {
+            Some(serde_json::from_slice::<Radiosity>(&reader.join("radiosity.json").read()?)?)
+        } else {
+            None
+        };
         info!("radiosity in {:?}", time.elapsed());
-
-        bar.as_ref().map(|x| { x.inc(1); x.set_message("packed items") }); 
-        sub_bar.as_ref().map(|x| { x.set_length(0); x.reset() });
-        let pfield_infos = serde_json::from_slice::<Vec<pak::PFieldInfo>>(&reader.join("pfield_infos.json").read()?)?;
-        info!("packed items in {:?}", time.elapsed());
 
         bar.as_ref().map(|x| { x.inc(1); x.set_message("sub_blocks1") }); 
         sub_bar.as_ref().map(|x| { x.set_length(0); x.reset() });
-        let sub_blocks1 = types::SubBlocks::from_file(reader.join("sub_blocks1"), &lua, sub_bar.as_ref())?;
+        let sub_blocks1 = types::SubBlocks::from_file(reader.join("sub_blocks1"), sub_bar.as_ref())?;
         info!("sub_blocks1 in {:?}", time.elapsed());
 
         bar.as_ref().map(|x| { x.inc(1); x.set_message("sub_blocks2") }); 
         sub_bar.as_ref().map(|x| { x.set_length(0); x.reset() });
-        let sub_blocks2 = types::SubBlocks::from_file(reader.join("sub_blocks2"), &lua, sub_bar.as_ref())?;
+        let sub_blocks2 = types::SubBlocks::from_file(reader.join("sub_blocks2"), sub_bar.as_ref())?;
         info!("sub_blocks2 in {:?}", time.elapsed());
 
         bar.as_ref().map(|x| x.finish_and_clear());
@@ -1305,16 +1274,13 @@ impl Level {
             textures,
             animations,
             foliages,
-            radiosity_vals,
             effects,
-            pfield_infos,
             animation_block_infos,
             string_keys,
             sub_blocks1,
             sub_blocks2,
             block2_offsets: Vec::new(),
             radiosity,
-            //vertex_formats: HashMap::new(),
             pak_vals_a,
             gfx_blocks,
         })

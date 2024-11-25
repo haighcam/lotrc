@@ -19,6 +19,10 @@ pub trait PathStuff: Sized {
         self.path().file_stem().unwrap().to_str().unwrap()
     }
 
+    fn file_name(&self) -> &str {
+        self.path().file_name().unwrap().to_str().unwrap()
+    }
+
     fn with_file_name<S: AsRef<std::ffi::OsStr>>(&self, file_name: S) -> Self {
         self.with_path(self.path().with_file_name(file_name))
     }

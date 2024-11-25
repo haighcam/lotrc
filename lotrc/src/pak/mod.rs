@@ -1,4 +1,6 @@
-use std::{any::TypeId, collections::HashMap, fmt::Display, iter::zip, num::ParseIntError, ops::Div, str::FromStr};
+use std::{collections::HashMap, fmt::Display, iter::zip, num::ParseIntError, ops::Div, str::FromStr};
+use indexmap::IndexMap;
+use std::sync::Mutex;
 use log::warn;
 use serde::{Serialize, Deserialize};
 use serde_with::{SerializeDisplay, DeserializeFromStr};
@@ -10,10 +12,13 @@ use lotrc_proc::{OrderedData, basicpymethods, PyMethods};
 use crate::{
     pak_alt::GltfData,
     types::{
-        BaseTypes, Color, OrderedData, Vector4, Matrix4x4, OrderedDataVec, Vector2, 
-        Crc, Vector3, OrderedDataImpl, Version, XBOX, PS3, PC
+        BaseTypes, Color, Vector4, Matrix4x4, Vector2, AsData, NoArgs,
+        Crc, Vector3, Version, PC, from_bytes, to_bytes, dump_bytes
     }
 };
+
+pub mod animation;
+pub use animation::*;
 
 #[basicpymethods]
 #[pyclass(module="pak", get_all, set_all)]
@@ -196,15 +201,19 @@ impl LodMeshes {
 pub struct ValA(f32, f32, f32, f32, f32, f32, f32, f32);
 
 
-impl IntoPy<PyObject> for ValA {
-    fn into_py(self, py: Python<'_>) -> PyObject {
-        (self.0, self.1, self.2, self.3, self.4, self.5, self.6, self.7).into_py(py)
+impl <'py> IntoPyObject<'py> for ValA {
+    type Target = <(f32, f32, f32, f32, f32, f32, f32, f32) as IntoPyObject<'py>>::Target;
+    type Output = <(f32, f32, f32, f32, f32, f32, f32, f32) as IntoPyObject<'py>>::Output;
+    type Error = <(f32, f32, f32, f32, f32, f32, f32, f32) as IntoPyObject<'py>>::Error;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        (self.0, self.1, self.2, self.3, self.4, self.5, self.6, self.7).into_pyobject(py)
     }
 }
 
 impl <'py> FromPyObject<'py> for ValA {
     fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
-        let [a, b, c, d, e, f, g, h] = <[f32; 8]>::extract_bound(ob)?;
+        let (a, b, c, d, e, f, g, h) = <(f32, f32, f32, f32, f32, f32, f32, f32)>::extract_bound(ob)?;
         Ok(Self(a,b,c,d,e,f,g,h))
     }
 }
@@ -942,49 +951,6 @@ pub struct TextureInfo {
 #[basicpymethods]
 #[pyclass(module="pak", get_all, set_all)]
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
-pub struct AnimationInfo {
-    pub key: Crc,
-    pub gamemodemask: i32,
-    pub offset: u32,
-    pub size: u32,
-    pub kind: u32,
-    pub unk_5: u32,
-    pub keys_num: u32,
-    pub keys2_num: u32,
-    pub unk_8: u32,
-    pub vala: u32,
-    pub unk_10: u32,
-    pub unk_11: u32,
-    pub data_offset: u32,
-    pub unk_13: u32,
-    pub unk_14: u32,
-    pub unk_15: u32,
-    pub block_starts_offset: u32,
-    pub block_starts_num: u32,
-    pub block_starts2_offset: u32,
-    pub block_starts2_num: u32,
-    pub obj_c3_offset: u32,
-    pub obj_c3_num: u32,
-    pub obj_c4_offset: u32,
-    pub obj_c4_num: u32,
-    pub block_offset: u32,
-    pub block_size: u32,
-    pub obj3_num: u32,
-    pub obj3_offset: u32,
-    pub unk_28: u32,
-    pub unk_29: u32,
-    pub obj1_num: u32,
-    pub keys_offset: u32,
-    pub unk_32: u32,
-    pub obj1_offset: u32,
-    pub obj2_offset: u32,
-    pub obj2_num: u32,
-    pub obj5_offset: u32, // to some object that contains offsets in pos 1 and 2 and a value in pos 0
-}
-
-#[basicpymethods]
-#[pyclass(module="pak", get_all, set_all)]
-#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
 pub struct HkConstraintInfo {
     pub kind: u32,
     pub bone_parents_offset: u32, 
@@ -1021,8 +987,8 @@ pub struct EffectInfo {
 #[pyclass(module="pak", get_all, set_all)]
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
 pub struct PFieldInfo {
-    pub key1: Crc, 
-    pub key2: Crc, 
+    pub link_guid: u32, 
+    pub gamemode_guid: u32, 
     pub width: u32, 
     pub height: u32, 
     pub offset: u32, 
@@ -1154,25 +1120,28 @@ pub struct Model{
     pub val: Vec<u32>,
 }
 
-impl Model {
-    pub fn from_data<O: Version + 'static>(data: &[u8], info: &ModelInfo) -> Result<Self> {
+impl <'a, 'b> AsData<'a, 'b> for Model {
+    type InArgs = &'a ModelInfo;
+    type OutArgs = &'b ModelInfo;
+    
+    fn from_bytes<O: Version>(data: &[u8], info: Self::InArgs) -> Result<Self> {
         let mut val = Self::default();
 
-        val.indices = OrderedDataVec::from_bytes::<O>(&data[info.bone_parents_offset as usize..], info.bones_num.max(4) as usize)?;
+        val.indices = from_bytes!(O, &data[info.bone_parents_offset as usize..], info.bones_num.max(4) as usize)?;
         assert!(val.indices[0] == 0xffffffff);
-        val.keys = OrderedDataVec::from_bytes::<O>(&data[info.bones_offset as usize..], info.bones_num as usize)?;
-        val.matrices = OrderedDataVec::from_bytes::<O>(&data[info.bone_transforms_offset as usize..], info.bones_num as usize)?;
-        val.vals_a = OrderedDataVec::from_bytes::<O>(&data[info.vals_a_offset as usize..], info.bones_num as usize * 8)?;
-        val.mats = OrderedDataVec::from_bytes::<O>(&data[info.mat_offset as usize..], info.mat_num as usize)?;
-        val.vals_c = OrderedDataVec::from_bytes::<O>(&data[info.mesh_order_offset as usize..], info.lod3.breakable_end as usize)?;
-        val.vals_d = OrderedDataVec::from_bytes::<O>(&data[info.vals_d_offset as usize..], info.lod3.breakable_end as usize * 8)?;
-        val.vbuffs = OrderedDataVec::from_bytes::<O>(&data[info.vbuff_offset as usize..], info.vbuff_num as usize)?;
-        val.ibuffs = OrderedDataVec::from_bytes::<O>(&data[info.ibuff_offset as usize..], info.ibuff_num as usize)?;
-        val.vals_g = OrderedDataVec::from_bytes::<O>(&data[info.skin_binds_offset as usize..], info.skin_binds_num as usize * 16)?;
+        val.keys = from_bytes!(O, &data[info.bones_offset as usize..], info.bones_num as usize)?;
+        val.matrices = from_bytes!(O, &data[info.bone_transforms_offset as usize..], info.bones_num as usize)?;
+        val.vals_a = from_bytes!(O, &data[info.vals_a_offset as usize..], info.bones_num as usize * 8)?;
+        val.mats = from_bytes!(O, &data[info.mat_offset as usize..], info.mat_num as usize)?;
+        val.vals_c = from_bytes!(O, &data[info.mesh_order_offset as usize..], info.lod3.breakable_end as usize)?;
+        val.vals_d = from_bytes!(O, &data[info.vals_d_offset as usize..], info.lod3.breakable_end as usize * 8)?;
+        val.vbuffs = from_bytes!(O, &data[info.vbuff_offset as usize..], info.vbuff_num as usize)?;
+        val.ibuffs = from_bytes!(O, &data[info.ibuff_offset as usize..], info.ibuff_num as usize)?;
+        val.vals_g = from_bytes!(O, &data[info.skin_binds_offset as usize..], info.skin_binds_num as usize * 16)?;
         if (info.vals_j_num == 0) && (info.vals_j_offset != 0) && (info.vals_j_offset != info.skin_binds_offset) {
-            // val.vals_j = OrderedDataVec::from_bytes::<O>(&data[info.vals_j_offset as usize..], info.keys_num as usize);
+            // val.vals_j = from_bytes!(O, &data[info.vals_j_offset as usize..], info.keys_num as usize);
             // for v in &val.vals_j {
-            //     let mut offset: u32 = OrderedData::from_bytes::<O>(&data[*v as usize..]);
+            //     let mut offset: u32 = from_bytes!(O, &data[*v as usize..]);
             //     let start = offset;
             //     while data[offset as usize] != 0 { offset += 1; }
             //     let string = String::from_utf8(data[start as usize..offset as usize].to_vec()).unwrap();
@@ -1180,104 +1149,113 @@ impl Model {
             //     val.strings.push(string);
             // }
         } else {
-            val.vals_j = OrderedDataVec::from_bytes::<O>(&data[info.vals_j_offset as usize..], info.vals_j_num as usize)?;
+            val.vals_j = from_bytes!(O, &data[info.vals_j_offset as usize..], info.vals_j_num as usize)?;
         }
         if info.vals_k_offset != 0 {
-            val.val_k_header = OrderedDataVec::from_bytes::<O>(&data[info.vals_k_offset as usize..], 2)?;
+            val.val_k_header = from_bytes!(O, &data[info.vals_k_offset as usize..], 2)?;
             // if (val.val_k_header[0] != 3) || (val.val_k_header[0] != 6) {
             //     warn!("unexpected valsK data {:?}", info.key);
             // }
-            val.vals_k = OrderedDataVec::from_bytes::<O>(&data[info.vals_k_offset as usize + 4..], 35)?;
+            val.vals_k = from_bytes!(O, &data[info.vals_k_offset as usize + 4..], 35)?;
         }
         if info.skin_order_offset != 0 {
-            val.vals_i = OrderedDataVec::from_bytes::<O>(&data[info.skin_order_offset as usize..], info.skin_binds_num as usize)?;
+            val.vals_i = from_bytes!(O, &data[info.skin_order_offset as usize..], info.skin_binds_num as usize)?;
         }
         if info.slots_offset != 0 {
             assert!(info.slot_map_offset != 0);
             let mut i = 0;
             {
-                while u32::from_bytes::<O>(&data[info.slots_offset as usize + i * 8..])? != 0 {
+                while from_bytes!(O, u32, &data[info.slots_offset as usize + i * 8..])? != 0 {
                     i += 1;
                 }
                 i += 1;
             }
-            val.keys2 = OrderedDataVec::from_bytes::<O>(&data[info.slots_offset as usize..], i * 2)?;
-            val.keys2_order = OrderedDataVec::from_bytes::<O>(&data[info.slot_map_offset as usize..], *val.keys2.last().unwrap() as usize)?;
+            val.keys2 = from_bytes!(O, &data[info.slots_offset as usize..], i * 2)?;
+            val.keys2_order = from_bytes!(O, &data[info.slot_map_offset as usize..], *val.keys2.last().unwrap() as usize)?;
         }
         if info.block_offset != 0 {
-            val.block_header = OrderedData::from_bytes::<O>(&data[info.block_offset as usize..])?;
+            val.block_header = from_bytes!(O, &data[info.block_offset as usize..])?;
             let n = (info.lod0.physics_end - info.lod0.skinned_end) as usize;
-            val.block_offsets = OrderedDataVec::from_bytes::<O>(&data[info.block_offset as usize + 4..], n+1)?;
+            val.block_offsets = from_bytes!(O, &data[info.block_offset as usize + 4..], n+1)?;
             for i in 0..n {
                 let size = (val.block_offsets[i+1] - val.block_offsets[i]) as usize;
                 let offset = (val.block_offsets[i] + info.block_offset) as usize;
-                let header: model::BlockHeader = OrderedData::from_bytes::<O>(&data[offset..])?;
-                let mut s = model::BlockHeader::size::<O>();
-                let vals_a: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[offset+s..], (header.a + header.b) as usize * 12)?;
+                let header: model::BlockHeader = from_bytes!(O, &data[offset..])?;
+                let mut s = header.size::<O>();
+                let vals_a: Vec<u32> = from_bytes!(O, &data[offset+s..], (header.a + header.b) as usize * 12)?;
                 s += vals_a.size::<O>();
-                let vals_b: Vec<model::BlockVal> = OrderedDataVec::from_bytes::<O>(&data[offset+s..], (size - s)/model::BlockVal::size::<O>())?;
+                let vals_b: Vec<model::BlockVal> = from_bytes!(O, &data[offset+s..], (size - s)/O::size::<model::BlockVal>())?;
                 s += vals_b.size::<O>();
-                let extra = OrderedDataVec::from_bytes::<O>(&data[offset+s..], (size - s)/4)?;
+                let extra = from_bytes!(O, &data[offset+s..], (size - s)/4)?;
                 val.blocks.push((header, vals_a, vals_b, extra));
             }
         }
         // not sure why this pops up once, maybe it is padding between items?
         if (info.mesh_order_offset == info.vbuff_offset) && (info.mesh_order_offset == info.ibuff_offset) && (info.mesh_order_offset == info.vals_d_offset) {
-            val.val = OrderedDataVec::from_bytes::<O>(&data[info.mesh_order_offset as usize..], 4)?;
+            val.val = from_bytes!(O, &data[info.mesh_order_offset as usize..], 4)?;
         }
         Ok(val)
     }
 
-    pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], info: &ModelInfo) -> Result<()> {
-        self.indices.to_bytes::<O>(&mut data[info.bone_parents_offset as usize..])?;
-        self.keys.to_bytes::<O>(&mut data[info.bones_offset as usize..])?;
-        self.matrices.to_bytes::<O>(&mut data[info.bone_transforms_offset as usize..])?;
-        self.vals_a.to_bytes::<O>(&mut data[info.vals_a_offset as usize..])?;
-        self.mats.to_bytes::<O>(&mut data[info.mat_offset as usize..])?;
-        self.vals_c.to_bytes::<O>(&mut data[info.mesh_order_offset as usize..])?;
-        self.vals_d.to_bytes::<O>(&mut data[info.vals_d_offset as usize..])?;
-        self.vbuffs.to_bytes::<O>(&mut data[info.vbuff_offset as usize..])?;
-        self.ibuffs.to_bytes::<O>(&mut data[info.ibuff_offset as usize..])?;
-        self.vals_g.to_bytes::<O>(&mut data[info.skin_binds_offset as usize..])?;
+    fn to_bytes<O: Version>(&self, data: &mut [u8], info: Self::OutArgs) -> Result<()> {
+        to_bytes!(O, self.indices, &mut data[info.bone_parents_offset as usize..])?;
+        to_bytes!(O, self.keys, &mut data[info.bones_offset as usize..])?;
+        to_bytes!(O, self.matrices, &mut data[info.bone_transforms_offset as usize..])?;
+        to_bytes!(O, self.vals_a, &mut data[info.vals_a_offset as usize..])?;
+        to_bytes!(O, self.mats, &mut data[info.mat_offset as usize..])?;
+        to_bytes!(O, self.vals_c, &mut data[info.mesh_order_offset as usize..])?;
+        to_bytes!(O, self.vals_d, &mut data[info.vals_d_offset as usize..])?;
+        to_bytes!(O, self.vbuffs, &mut data[info.vbuff_offset as usize..])?;
+        to_bytes!(O, self.ibuffs, &mut data[info.ibuff_offset as usize..])?;
+        to_bytes!(O, self.vals_g, &mut data[info.skin_binds_offset as usize..])?;
         if (info.vals_j_num) == 0 && (info.vals_j_offset != 0) && (info.vals_j_offset != info.skin_binds_offset) {
-            self.vals_j.to_bytes::<O>(&mut data[info.vals_j_offset as usize..])?;
+            to_bytes!(O, self.vals_j, &mut data[info.vals_j_offset as usize..])?;
             for (v, (off, string)) in zip(&self.vals_j, zip(&self.string_offsets,& self.strings)) {
-                off.to_bytes::<O>(&mut data[*v as usize..])?;
+                to_bytes!(O, off, &mut data[*v as usize..])?;
                 data[*off as usize..*off as usize+string.len()].copy_from_slice(string.as_bytes());
             }
         } else {
-            self.vals_j.to_bytes::<O>(&mut data[info.vals_j_offset as usize..])?;
+            to_bytes!(O, self.vals_j, &mut data[info.vals_j_offset as usize..])?;
         }
         if info.vals_k_offset != 0 {
-            self.val_k_header.to_bytes::<O>(&mut data[info.vals_k_offset as usize..])?;
-            self.vals_k.to_bytes::<O>(&mut data[info.vals_k_offset as usize + 4..])?;
+            to_bytes!(O, self.val_k_header, &mut data[info.vals_k_offset as usize..])?;
+            to_bytes!(O, self.vals_k, &mut data[info.vals_k_offset as usize + 4..])?;
         }
         if info.skin_order_offset != 0 {
-            self.vals_i.to_bytes::<O>(&mut data[info.skin_order_offset as usize..])?;
+            to_bytes!(O, self.vals_i, &mut data[info.skin_order_offset as usize..])?;
         }
         if info.slots_offset != 0 {
-            self.keys2.to_bytes::<O>(&mut data[info.slots_offset as usize..])?;
-            self.keys2_order.to_bytes::<O>(&mut data[info.slot_map_offset as usize..])?;
+            to_bytes!(O, self.keys2, &mut data[info.slots_offset as usize..])?;
+            to_bytes!(O, self.keys2_order, &mut data[info.slot_map_offset as usize..])?;
         }
         if info.block_offset != 0 {
-            self.block_header.to_bytes::<O>(&mut data[info.block_offset as usize..])?;
-            self.block_offsets.to_bytes::<O>(&mut data[info.block_offset as usize + 4..])?;
+            to_bytes!(O, self.block_header, &mut data[info.block_offset as usize..])?;
+            to_bytes!(O, self.block_offsets, &mut data[info.block_offset as usize + 4..])?;
             for (i, (header, vals_a, vals_b, extra)) in self.blocks.iter().enumerate() {
                 let offset = (self.block_offsets[i] + info.block_offset) as usize;
-                header.to_bytes::<O>(&mut data[offset..])?;
-                let mut s = model::BlockHeader::size::<O>();
-                vals_a.to_bytes::<O>(&mut data[offset + s..])?;
+                to_bytes!(O, header, &mut data[offset..])?;
+                let mut s = header.size::<O>();
+                to_bytes!(O, vals_a, &mut data[offset + s..])?;
                 s += vals_a.size::<O>();
-                vals_b.to_bytes::<O>(&mut data[offset + s..])?;
+                to_bytes!(O, vals_b, &mut data[offset + s..])?;
                 s += vals_b.size::<O>();
-                extra.to_bytes::<O>(&mut data[offset + s..])?;
+                to_bytes!(O, extra, &mut data[offset + s..])?;
             }
         }
         if (info.mesh_order_offset == info.vbuff_offset) && (info.mesh_order_offset == info.ibuff_offset) && (info.mesh_order_offset == info.vals_d_offset) {
-            self.val.to_bytes::<O>(&mut data[info.mesh_order_offset as usize..])?;
+            to_bytes!(O, self.val, &mut data[info.mesh_order_offset as usize..])?;
         }
         Ok(())
     }
+
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
+        panic!("not implemented")
+    }
+
+    fn size<V: Version>(&self) -> usize {
+        panic!("not implmented")
+    }
+
 }
 
 pub mod shape {
@@ -1293,107 +1271,106 @@ pub mod shape {
     }
 }
 
-#[pyclass(module="pak", set_all)]
+#[basicpymethods]
+#[pyclass(module="pak", set_all, get_all)]
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PyMethods)]
 pub struct Shape {
-    #[pyo3(get)]
     pub header: shape::Header,
-    #[pyo3(get)]
     pub vals: Vec<u32>,
     pub data: Vec<u8>,
 }
 
-#[basicpymethods]
-#[pymethods]
-impl Shape {
-    #[getter]
-    fn get_data(&self) -> std::borrow::Cow<[u8]> {
-        std::borrow::Cow::from(&self.data[..])
-    }
-}
 
-impl Shape {
-    pub fn from_data<O: Version + 'static>(data: &[u8], info: &ShapeInfo) -> Result<Self> {
+impl <'a, 'b> AsData<'a, 'b> for Shape {
+    type InArgs = &'a ShapeInfo;
+    type OutArgs = &'b ShapeInfo;
+    
+    fn from_bytes<O: Version>(data: &[u8], info: Self::InArgs) -> Result<Self> {
         let mut val = Self::default();
         if info.kind == 0 {
             let mut offset = info.offset as usize;
-            val.header = OrderedData::from_bytes::<O>(&data[offset..])?;
-            offset += shape::Header::size::<O>();
-            val.vals = OrderedDataVec::from_bytes::<O>(&data[offset..], val.header.num as usize)?;
+            val.header = from_bytes!(O, &data[offset..])?;
+            offset += val.header.size::<O>();
+            val.vals = from_bytes!(O, &data[offset..], val.header.num as usize)?;
             offset += val.vals.size::<O>();
-            val.data = OrderedDataVec::from_bytes::<O>(&data[offset..], *val.vals.last().unwrap() as usize + 2)?; // might need to be more than +2, not sure    
+            val.data = from_bytes!(O, &data[offset..], *val.vals.last().unwrap() as usize + 2)?; // might need to be more than +2, not sure    
         }
         Ok(val)
     }
 
-    pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], info: &ShapeInfo) -> Result<()> {
+    fn to_bytes<O: Version>(&self, data: &mut [u8], info: Self::OutArgs) -> Result<()> {
         if info.kind == 0 {
             let mut offset = info.offset as usize;
-            self.header.to_bytes::<O>(&mut data[offset..])?;
-            offset += shape::Header::size::<O>();
-            self.vals.to_bytes::<O>(&mut data[offset..])?;
+            to_bytes!(O, self.header, &mut data[offset..])?;
+            offset += O::size::<shape::Header>();
+            to_bytes!(O, self.vals, &mut data[offset..])?;
             offset += self.vals.size::<O>();
-            self.data.to_bytes::<O>(&mut data[offset..])?;
-        } else {
-            warn!("Unknown & Unhandled Shape type {}", info.kind);
+            to_bytes!(O, self.data, &mut data[offset..])?;
         }
         Ok(())
     }
-}
 
-#[pyclass(module="pak", set_all)]
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PyMethods)]
-pub struct HkShape {
-    #[pyo3(get)]
-    pub a: Vec<u32>,
-    #[pyo3(get)]
-    pub b: Vec<u32>,
-    pub c: Vec<u8>,
-    #[pyo3(get)]
-    pub d: Vec<u32>,
-    #[pyo3(get)]
-    pub e: Vec<u16>,
-}
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
+        panic!("not implemented")
+    }
 
-#[basicpymethods]
-#[pymethods]
-impl HkShape {
-    #[getter]
-    fn get_c(&self) -> std::borrow::Cow<[u8]> {
-        std::borrow::Cow::from(&self.c[..])
+    fn size<V: Version>(&self) -> usize {
+        panic!("not implmented")
     }
 }
 
-impl HkShape {
-    pub fn from_data<O: Version + 'static>(data: &[u8], info: &HkShapeInfo) -> Result<Self> {
+#[basicpymethods]
+#[pyclass(module="pak", set_all, get_all)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PyMethods)]
+pub struct HkShape {
+    pub a: Vec<u32>,
+    pub b: Vec<u32>,
+    pub c: Vec<u8>,
+    pub d: Vec<u32>,
+    pub e: Vec<u16>,
+}
+
+impl <'a, 'b> AsData<'a, 'b> for HkShape {
+    type InArgs = &'a HkShapeInfo;
+    type OutArgs = &'a HkShapeInfo;
+
+    fn from_bytes<O: Version>(data: &[u8], info: Self::InArgs) -> Result<Self> {
         let mut val = Self::default();
         if info.kind == 5 {
-            val.a = OrderedDataVec::from_bytes::<O>(&data[info.a_offset as usize..], info.a_num as usize * 4)?;
+            val.a = from_bytes!(O, &data[info.a_offset as usize..], info.a_num as usize * 4)?;
             let mut b_num = info.b_num as usize; // sketchy stuff to account for data that was not otherwise captured, is it needed?
             while (info.b_offset as usize + b_num * 12) % 16 != 0 { b_num += 1; }
-            val.b = OrderedDataVec::from_bytes::<O>(&data[info.b_offset as usize..], b_num * 3)?;
+            val.b = from_bytes!(O, &data[info.b_offset as usize..], b_num * 3)?;
         } else if info.kind == 6 {
-            val.c = OrderedDataVec::from_bytes::<O>(&data[info.c_offset as usize..], info.c_num as usize)?;
-            val.d = OrderedDataVec::from_bytes::<O>(&data[info.d_offset as usize..], info.d_num as usize * 3)?;
-            val.e = OrderedDataVec::from_bytes::<O>(&data[info.e_offset as usize..], info.e_num as usize * 3)?;
+            val.c = from_bytes!(O, &data[info.c_offset as usize..], info.c_num as usize)?;
+            val.d = from_bytes!(O, &data[info.d_offset as usize..], info.d_num as usize * 3)?;
+            val.e = from_bytes!(O, &data[info.e_offset as usize..], info.e_num as usize * 3)?;
         } else if info.kind > 6 {
             warn!("Unknown & Unhandled HkShape type {}", info.kind);
         }
         Ok(val)
     }
 
-    pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], info: &HkShapeInfo) -> Result<()> {
+    fn to_bytes<O: Version>(&self, data: &mut [u8], info: Self::OutArgs) -> Result<()> {
         if info.kind == 5 {
-            self.a.to_bytes::<O>(&mut data[info.a_offset as usize..])?;
-            self.b.to_bytes::<O>(&mut data[info.b_offset as usize..])?;
+            to_bytes!(O, self.a, &mut data[info.a_offset as usize..])?;
+            to_bytes!(O, self.b, &mut data[info.b_offset as usize..])?;
         } else if info.kind == 6 {
-            self.c.to_bytes::<O>(&mut data[info.c_offset as usize..])?;
-            self.d.to_bytes::<O>(&mut data[info.d_offset as usize..])?;
-            self.e.to_bytes::<O>(&mut data[info.e_offset as usize..])?;
-        } else {
+            to_bytes!(O, self.c, &mut data[info.c_offset as usize..])?;
+            to_bytes!(O, self.d, &mut data[info.d_offset as usize..])?;
+            to_bytes!(O, self.e, &mut data[info.e_offset as usize..])?;
+        } else if info.kind > 6 {
             warn!("Unknown & Unhandled HkShape type {}", info.kind);
         }
         Ok(())
+    }
+
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
+        panic!("not implemented")
+    }
+
+    fn size<V: Version>(&self) -> usize {
+        panic!("not implmented")
     }
 }
 
@@ -1409,18 +1386,21 @@ pub struct HkConstraint {
     pub keys2: Vec<u32>,
 }
 
-impl HkConstraint {
-    pub fn from_data<O: Version + 'static>(data: &[u8], info: &HkConstraintInfo) -> Result<Self> {
+impl <'a, 'b> AsData<'a, 'b> for HkConstraint {
+    type InArgs = &'a HkConstraintInfo;
+    type OutArgs = &'b HkConstraintInfo;
+
+    fn from_bytes<V: Version>(data: &[u8], info: Self::InArgs) -> Result<Self> {
         let mut val = Self::default();
         if info.kind != 0 { warn!("Unknown & Unhandled HkConstraint type {}", info.kind); }
 
-        val.shorts = OrderedDataVec::from_bytes::<O>(&data[info.bone_parents_offset as usize..], info.bone_parents_num as usize)?;
+        val.shorts = from_bytes!(V, &data[info.bone_parents_offset as usize..], info.bone_parents_num as usize)?;
         assert!(val.shorts[0] == 0xFFFF);
 
-        val.string_offsets = OrderedDataVec::from_bytes::<O>(&data[info.bone_names_offset as usize..], info.bone_names_num as usize)?;
+        val.string_offsets = from_bytes!(V, &data[info.bone_names_offset as usize..], info.bone_names_num as usize)?;
         for offset_ in val.string_offsets.iter() {
             let (mut offset, val_) = { 
-                let vals: Vec<u32> = OrderedDataVec::from_bytes::<O>(&data[*offset_ as usize..], 2)?;
+                let vals: Vec<u32> = from_bytes!(V, &data[*offset_ as usize..], 2)?;
 
                 (vals[0], vals[1]) 
             };
@@ -1429,523 +1409,37 @@ impl HkConstraint {
             let string = String::from_utf8(data[start as usize..offset as usize].to_vec()).unwrap();
             val.strings.push((string, start, val_));
         }
-        val.vals = OrderedDataVec::from_bytes::<O>(&data[info.bone_transforms_offset as usize..], info.bone_transforms_num as usize * 12)?;
-        val.keys = OrderedDataVec::from_bytes::<O>(&data[info.bones_offset as usize..], info.bones_num as usize)?;
-        val.keys2 = OrderedDataVec::from_bytes::<O>(&data[info.bone_order_offset as usize..], info.bone_order_num as usize * 2)?;
+        val.vals = from_bytes!(V, &data[info.bone_transforms_offset as usize..], info.bone_transforms_num as usize * 12)?;
+        val.keys = from_bytes!(V, &data[info.bones_offset as usize..], info.bones_num as usize)?;
+        val.keys2 = from_bytes!(V, &data[info.bone_order_offset as usize..], info.bone_order_num as usize * 2)?;
         Ok(val)
     }
 
-    pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], info: &HkConstraintInfo) -> Result<()> {
-        self.shorts.to_bytes::<O>(&mut data[info.bone_parents_offset as usize..])?;
-        self.string_offsets.to_bytes::<O>(&mut data[info.bone_names_offset as usize..])?;
+    fn to_bytes<V: Version>(&self, data: &mut [u8], info: Self::OutArgs) -> Result<()> {
+        to_bytes!(V, self.shorts, &mut data[info.bone_parents_offset as usize..])?;
+        to_bytes!(V, self.string_offsets, &mut data[info.bone_names_offset as usize..])?;
         for (offset_, (string, offset, val)) in zip(&self.string_offsets, &self.strings) {
-            offset.to_bytes::<O>(&mut data[*offset_ as usize..])?;
-            val.to_bytes::<O>(&mut data[*offset_ as usize + u32::size::<O>()..])?;
+            to_bytes!(V, offset, &mut data[*offset_ as usize..])?;
+            to_bytes!(V, val, &mut data[*offset_ as usize + V::size::<u32>()..])?;
             data[*offset as usize..*offset as usize+string.len()].copy_from_slice(string.as_bytes());
         }
-        self.vals.to_bytes::<O>(&mut data[info.bone_transforms_offset as usize..])?;
-        self.keys.to_bytes::<O>(&mut data[info.bones_offset as usize..])?;
-        self.keys2.to_bytes::<O>(&mut data[info.bone_order_offset as usize..])?;
+        to_bytes!(V, self.vals, &mut data[info.bone_transforms_offset as usize..])?;
+        to_bytes!(V, self.keys, &mut data[info.bones_offset as usize..])?;
+        to_bytes!(V, self.keys2, &mut data[info.bone_order_offset as usize..])?;
         Ok(())
+    }
+
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
+        panic!("not implemented")
+    }
+
+    fn size<V: Version>(&self) -> usize {
+        panic!("not implmented")
     }
 }
 
-pub mod animation {
-    use super::*;
-    #[basicpymethods]
-    #[pyclass(module="pak.animation", get_all, set_all)]
-    #[derive(Debug, Clone, Serialize, Deserialize, PyMethods)]
-    pub enum HkaSplineSkeletalAnimationObj1Types {
-        Empty(),
-        Type1(Vec<u8>),
-        Type2(Vec<u16>),
-    }
 
-    impl Default for HkaSplineSkeletalAnimationObj1Types {
-        fn default() -> Self { 
-            Self::Empty()
-        }
-    }
-    
-    impl HkaSplineSkeletalAnimationObj1Types {
-        pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize, num: usize, kind: u8) -> Result<Self> {
-            Ok(match kind {
-                0 | 2 =>  Self::Type1(OrderedDataVec::from_bytes::<O>(&data[offset..], num)?),
-                1 | 3 =>  Self::Type2(OrderedDataVec::from_bytes::<O>(&data[offset..], num)?),
-                _ => panic!("Illegal Type for spline thingy")
-            })
-        }
-    
-        pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], offset: usize) -> Result<()> {
-            Ok(match self {
-                Self::Type1(vals) => vals.to_bytes::<O>(&mut data[offset..])?,
-                Self::Type2(vals) => vals.to_bytes::<O>(&mut data[offset..])?,
-                _ => (),
-            })
-        }
-    
-        pub fn size<O: Version + 'static>(&self) -> usize {
-            match self {
-                Self::Type1(vals) => vals.size::<O>(),
-                Self::Type2(vals) => vals.size::<O>(),
-                _ => 0,
-            }
-        }
-    }
-    
-    #[pyclass(module="pak.animation", set_all)]
-    #[derive(Debug, Default, Clone, Serialize, Deserialize, PyMethods)]
-    pub struct HkaSplineSkeletalAnimationObj1 {
-        #[pyo3(get)]
-        pub nbytes: usize,
-        #[pyo3(get)]
-        pub s1: u16,
-        #[pyo3(get)]
-        pub s2: u8,
-        pub data: Vec<u8>,
-        #[pyo3(get)]
-        pub vals_a: Vec<f32>,
-        #[pyo3(get)]
-        pub vals: HkaSplineSkeletalAnimationObj1Types,
-    }
-
-    #[basicpymethods]
-    #[pymethods]
-    impl HkaSplineSkeletalAnimationObj1 {
-        #[getter]
-        fn get_data(&self) -> std::borrow::Cow<[u8]> {
-            std::borrow::Cow::from(&self.data[..])
-        }
-    }
-    
-    impl HkaSplineSkeletalAnimationObj1 {
-        // const ITEM_SIZES: [usize; 4] = [1,2,1,2];
-        const COUNTS: [usize; 8] = [0,1,1,2,1,2,2,3];
-    
-        pub fn from_data<O: Version + 'static>(data: &[u8], offset_: usize, flags: u8, kind: u8) -> Result<Self> {
-            let mut val = Self::default();
-            let mut offset = offset_;
-            if flags != 0 {        
-                if flags & 0xf0 == 0 {
-                    val.s1 = 0;
-                    val.s2 = 0;
-                } else {
-                    val.s1 = OrderedData::from_bytes::<O>(&data[offset..])?;
-                    offset += u16::size::<O>();
-                    val.s2 = OrderedData::from_bytes::<O>(&data[offset..])?;
-                    offset += u8::size::<O>();
-                    val.data = OrderedDataVec::from_bytes::<O>(&data[offset..], val.s1 as usize + val.s2 as usize + 2)?;
-                    offset += val.data.size::<O>();
-                }
-                offset = (offset + 3) & 0xfffffffc;
-    
-                let num = Self::COUNTS[(flags & 7) as usize] + 2 * Self::COUNTS[(((flags >> 4) & !flags) & 7) as usize];
-                val.vals_a = OrderedDataVec::from_bytes::<O>(&data[offset..], num)?;
-                offset += val.vals_a.size::<O>();
-    
-                if flags & 0xf0 == 0 {
-                    offset = (offset + 3) & 0xfffffffc;
-                    val.nbytes = offset - offset_;
-                    return Ok(val);
-                }
-    
-                offset = (offset + 1) & 0xfffffffe;
-    
-                let num = Self::COUNTS[((flags >> 4) & 7) as usize] * (val.s1 as usize + 1);
-                val.vals = HkaSplineSkeletalAnimationObj1Types::from_data::<O>(data, offset, num, kind)?;
-                offset += val.vals.size::<O>();
-            }
-            offset = (offset + 3) & 0xfffffffc;
-            val.nbytes = offset - offset_;
-            Ok(val)
-        }
-    
-        pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], offset: usize, flags: u8) -> Result<()> {
-            let mut offset = offset;
-            if flags == 0 { return Ok(()); }
-            if flags & 0xf0 != 0 {
-                self.s1.to_bytes::<O>(&mut data[offset..])?;
-                offset += u16::size::<O>();
-                self.s2.to_bytes::<O>(&mut data[offset..])?;
-                offset += u8::size::<O>();
-                self.data.to_bytes::<O>(&mut data[offset..])?;
-                offset += self.data.size::<O>();
-            }
-            offset = (offset + 3) & 0xfffffffc;
-    
-            self.vals_a.to_bytes::<O>(&mut data[offset..])?;
-            offset += self.vals_a.size::<O>();
-    
-            if flags & 0xf0 == 0 { return Ok(()); }
-    
-            offset = (offset + 3) & 0xfffffffc;
-            self.vals.into_data::<O>(data, offset)
-        }
-    }
-    
-    #[basicpymethods]
-    #[pyclass(module="pak.animation", get_all, set_all)]
-    #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
-    pub struct HkaSplineSkeletalAnimationObj2Type1 { a: u32 }
-    
-    #[basicpymethods]
-    #[pyclass(module="pak.animation", get_all, set_all)]
-    #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
-    // should be (u8, u8, u8, u16) but for xbox conv it is (u8, u8, u8, u8, u8)
-    pub struct HkaSplineSkeletalAnimationObj2Type2 { a: u8, b: u8, c: u8, d: u8, e: u8 }
-    
-    #[basicpymethods]
-    #[pyclass(module="pak.animation", get_all, set_all)]
-    #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
-    pub struct HkaSplineSkeletalAnimationObj2Type3 { a: u16, b: u16, c: u16 }
-    
-    #[basicpymethods]
-    #[pyclass(module="pak.animation", get_all, set_all)]
-    #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
-    pub struct HkaSplineSkeletalAnimationObj2Type4 { a: u8, b: u8, c: u8}
-    
-    #[basicpymethods]
-    #[pyclass(module="pak.animation", get_all, set_all)]
-    #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
-    pub struct HkaSplineSkeletalAnimationObj2Type5 { a: u8, b: u8 }
-    
-    #[basicpymethods]
-    #[pyclass(module="pak.animation", get_all, set_all)]
-    #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
-    pub struct HkaSplineSkeletalAnimationObj2Type6 { a: u32, b: u32, c: u32, d: u32 }
-    
-    #[basicpymethods]
-    #[pyclass(module="pak.animation", get_all, set_all)]
-    #[derive(Debug, Clone, Serialize, Deserialize, PyMethods)]
-    pub enum HkaSplineSkeletalAnimationObj2Types{
-        Empty(),
-        Type1(Vec<HkaSplineSkeletalAnimationObj2Type1>),
-        Type2(Vec<HkaSplineSkeletalAnimationObj2Type2>),
-        Type3(Vec<HkaSplineSkeletalAnimationObj2Type3>),
-        Type4(Vec<HkaSplineSkeletalAnimationObj2Type4>),
-        Type5(Vec<HkaSplineSkeletalAnimationObj2Type5>),
-        Type6(Vec<HkaSplineSkeletalAnimationObj2Type6>),
-    }
-
-    impl Default for HkaSplineSkeletalAnimationObj2Types {
-        fn default() -> Self { 
-            Self::Empty()
-        }
-    }
-    
-    impl HkaSplineSkeletalAnimationObj2Types {
-        pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize, num: usize, kind: u8) -> Result<Self> {
-            Ok(match kind {
-                0 =>  Self::Type1(OrderedDataVec::from_bytes::<O>(&data[offset..], num)?),
-                1 =>  Self::Type2(OrderedDataVec::from_bytes::<O>(&data[offset..], num)?),
-                2 =>  Self::Type3(OrderedDataVec::from_bytes::<O>(&data[offset..], num)?),
-                3 =>  Self::Type4(OrderedDataVec::from_bytes::<O>(&data[offset..], num)?),
-                4 =>  Self::Type5(OrderedDataVec::from_bytes::<O>(&data[offset..], num)?),
-                5 =>  Self::Type6(OrderedDataVec::from_bytes::<O>(&data[offset..], num)?),
-                _ => panic!("Illegal Type for spline thingy")
-            })
-        }
-    
-        pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], offset: usize) -> Result<()> {
-            match self {
-                Self::Type1(vals) => vals.to_bytes::<O>(&mut data[offset..]),
-                Self::Type2(vals) => vals.to_bytes::<O>(&mut data[offset..]),
-                Self::Type3(vals) => vals.to_bytes::<O>(&mut data[offset..]),
-                Self::Type4(vals) => vals.to_bytes::<O>(&mut data[offset..]),
-                Self::Type5(vals) => vals.to_bytes::<O>(&mut data[offset..]),
-                Self::Type6(vals) => vals.to_bytes::<O>(&mut data[offset..]),
-                _ => Ok(()),
-            }
-        }
-    
-        pub fn size<O: Version + 'static>(&self) -> usize {
-            match self {
-                Self::Type1(vals) => vals.size::<O>(),
-                Self::Type2(vals) => vals.size::<O>(),
-                Self::Type3(vals) => vals.size::<O>(),
-                Self::Type4(vals) => vals.size::<O>(),
-                Self::Type5(vals) => vals.size::<O>(),
-                Self::Type6(vals) => vals.size::<O>(),
-                _ => 0,
-            }
-        }
-    }
-    
-    #[pyclass(module="pak.animation", set_all)]
-    #[derive(Debug, Default, Clone, Serialize, Deserialize, PyMethods)]
-    pub struct HkaSplineSkeletalAnimationObj2 {
-        #[pyo3(get)]
-        pub nbytes: usize,
-        #[pyo3(get)]
-        pub align: u32,
-        #[pyo3(get)]
-        pub s1: u16,
-        #[pyo3(get)]
-        pub s2: u8,
-        pub data: Vec<u8>,
-        #[pyo3(get)]
-        pub vals: HkaSplineSkeletalAnimationObj2Types,
-    }
-
-    #[basicpymethods]
-    #[pymethods]
-    impl HkaSplineSkeletalAnimationObj2 {
-        #[getter]
-        fn get_data(&self) -> std::borrow::Cow<[u8]> {
-            std::borrow::Cow::from(&self.data[..])
-        }
-    }
-    
-    impl HkaSplineSkeletalAnimationObj2 {
-        const ALIGNMENTS: [u32; 6] = [4, 1, 2, 1, 2, 4];
-    
-        pub fn from_data<O: Version + 'static>(data: &[u8], offset_: usize, flags: u8, kind: u8) -> Result<Self> {
-            let mut val = Self::default();
-            let mut offset = offset_;
-            if flags != 0 {
-                val.align = Self::ALIGNMENTS[kind as usize];
-                if flags & 0xf0 == 0 {
-                    val.s1 = 0;
-                    val.s2 = 0;
-                } else {
-                    val.s1 = OrderedData::from_bytes::<O>(&data[offset..])?;
-                    offset += u16::size::<O>();
-                    val.s2 = OrderedData::from_bytes::<O>(&data[offset..])?;
-                    offset += u8::size::<O>();
-                    val.data = OrderedDataVec::from_bytes::<O>(&data[offset..], val.s1 as usize + val.s2 as usize + 2)?;
-                    offset += val.data.size::<O>();
-                }
-    
-                offset = ((offset as u32 + val.align - 1) & !(val.align - 1)) as usize;
-                val.vals = HkaSplineSkeletalAnimationObj2Types::from_data::<O>(data, offset, val.s1 as usize + 1, kind)?;
-                offset += val.vals.size::<O>();   
-            }
-            offset = (offset + 3) & 0xfffffffc;
-            val.nbytes = offset - offset_;
-            Ok(val)
-        }
-    
-        pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], offset: usize, flags: u8) -> Result<()> {
-            let mut offset = offset;
-            if flags == 0 { return Ok(()); }
-            if flags & 0xf0 != 0 {
-                self.s1.to_bytes::<O>(&mut data[offset..])?;
-                offset += u16::size::<O>();
-                self.s2.to_bytes::<O>(&mut data[offset..])?;
-                offset += u8::size::<O>();
-                self.data.to_bytes::<O>(&mut data[offset..])?;
-                offset += self.data.size::<O>();
-            }
-    
-            offset = ((offset as u32 + self.align - 1) & !(self.align - 1)) as usize;
-            self.vals.into_data::<O>(data, offset)
-        }
-    }
-    
-    
-    #[basicpymethods]
-    #[pyclass(module="pak.animation", get_all, set_all)]
-    #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
-    pub struct HkaSplineSkeletalAnimationFlags{
-        pub f: u8, 
-        pub a: u8, 
-        pub b: u8, 
-        pub c: u8,
-    }
-    
-    #[basicpymethods]
-    #[pyclass(module="pak.animation", get_all, set_all)]
-    #[derive(Debug, Default, Clone, Serialize, Deserialize, PyMethods)]
-    pub struct HkaSplineSkeletalAnimation {
-        pub block_starts: Vec<u32>,
-        pub block_starts2: Vec<u32>,
-        pub obj_c3: Vec<u32>,
-        pub obj_c4: Vec<u32>,
-        pub flags: Vec<Vec<HkaSplineSkeletalAnimationFlags>>,
-        pub flags2: Vec<Vec<u8>>,
-        pub vals_a: Vec<Vec<HkaSplineSkeletalAnimationObj1>>,
-        pub vals_b: Vec<Vec<HkaSplineSkeletalAnimationObj2>>,
-        pub vals_c: Vec<Vec<HkaSplineSkeletalAnimationObj1>>,
-        pub vals_d: Vec<Vec<HkaSplineSkeletalAnimationObj1>>,
-    }
-    
-    impl HkaSplineSkeletalAnimation {
-        pub fn from_data<O: Version + 'static>(data: &[u8], offset: usize, info: &AnimationInfo) -> Result<Self> {
-            let mut val = Self::default();
-            val.block_starts = OrderedDataVec::from_bytes::<O>(&data[offset + info.block_starts_offset as usize..], info.block_starts_num as usize)?;
-            val.block_starts2 = OrderedDataVec::from_bytes::<O>(&data[offset + info.block_starts2_offset as usize..], info.block_starts2_num as usize)?;
-            val.obj_c3 = OrderedDataVec::from_bytes::<O>(&data[offset + info.obj_c3_offset as usize..], info.obj_c3_num as usize)?;
-            val.obj_c4 = OrderedDataVec::from_bytes::<O>(&data[offset + info.obj_c4_offset as usize..], info.obj_c4_num as usize)?;
-            for (start, start2) in zip(&val.block_starts,&val.block_starts2) {
-                let off = offset + (start + info.block_offset) as usize;
-                let flags: Vec<HkaSplineSkeletalAnimationFlags> = OrderedDataVec::from_bytes::<O>(&data[off..], info.keys_num as usize)?;
-                let flags2: Vec<u8> = OrderedDataVec::from_bytes::<O>(&data[off + flags.size::<O>()..], info.keys2_num as usize)?;
-                let mut off = offset + (info.block_offset + start + info.data_offset) as usize;
-                let mut vals_a = Vec::with_capacity(flags.len());
-                let mut vals_b = Vec::with_capacity(flags.len());
-                let mut vals_c = Vec::with_capacity(flags.len());
-                let mut vals_d = Vec::with_capacity(flags2.len());
-                for flag in &flags {
-                    let a = HkaSplineSkeletalAnimationObj1::from_data::<O>(data, off, flag.a, flag.f & 3)?;
-                    off += a.nbytes;
-                    let b = HkaSplineSkeletalAnimationObj2::from_data::<O>(data, off, flag.b, (flag.f >> 2) & 0xf)?;
-                    off += b.nbytes;
-                    let c = HkaSplineSkeletalAnimationObj1::from_data::<O>(data, off, flag.c, (flag.f >> 6) & 3)?;
-                    off += c.nbytes;
-                    vals_a.push(a);
-                    vals_b.push(b);
-                    vals_c.push(c);
-                }
-                off = offset + (info.block_offset + start + start2) as usize;
-                for flag in &flags2 {
-                    let d: HkaSplineSkeletalAnimationObj1 = HkaSplineSkeletalAnimationObj1::from_data::<O>(data, off, flag & 0xf9, (flag >> 1) & 3)?;
-                    off += d.nbytes;
-                    vals_d.push(d);
-                }
-                val.flags.push(flags);
-                val.flags2.push(flags2);
-                val.vals_a.push(vals_a);
-                val.vals_b.push(vals_b);
-                val.vals_c.push(vals_c);
-                val.vals_d.push(vals_d);
-            }
-            Ok(val)
-        }
-    
-        pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], offset: usize, info: &AnimationInfo) -> Result<()> {
-            self.block_starts.to_bytes::<O>(&mut data[offset + info.block_starts_offset as usize..])?;
-            self.block_starts2.to_bytes::<O>(&mut data[offset + info.block_starts2_offset as usize..])?;
-            self.obj_c3.to_bytes::<O>(&mut data[offset + info.obj_c3_offset as usize..])?;
-            self.obj_c4.to_bytes::<O>(&mut data[offset + info.obj_c4_offset as usize..])?;
-            for (((start, start2), (flags, flags2)), ((vals_a, vals_b), (vals_c, vals_d))) in zip(zip(zip(&self.block_starts, &self.block_starts2), zip(&self.flags, &self.flags2)), zip(zip(&self.vals_a, &self.vals_b), zip(&self.vals_c, &self.vals_d))) {
-                flags.to_bytes::<O>(&mut data[offset + (start + info.block_offset) as usize..])?;
-                flags2.to_bytes::<O>(&mut data[offset + (start + info.block_offset) as usize + flags.size::<O>()..])?;
-                let mut off = offset + (info.block_offset + start + info.data_offset) as usize;
-                for ((flag, a), (b, c)) in zip(zip(flags, vals_a), zip(vals_b, vals_c)) {
-                    a.into_data::<O>(data, off, flag.a)?;
-                    off += a.nbytes;
-                    b.into_data::<O>(data, off, flag.b)?;
-                    off += b.nbytes;
-                    c.into_data::<O>(data, off, flag.c)?;
-                    off += c.nbytes;
-                }
-                off = offset + (info.block_offset + start + start2) as usize;
-                for (flag, d) in zip(flags2, vals_d) {
-                    d.into_data::<O>(data, off, flag & 0xf9)?;
-                    off += d.nbytes;
-                }
-            }
-            Ok(())
-        }
-    }
-    
-    #[basicpymethods]
-    #[pyclass(module="pak.animation", get_all, set_all)]
-    #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
-    pub struct Obj5Header {
-        pub obj_a_num: u32,
-        pub obj_a_offset: u32,
-        pub obj_b_num: u32,
-        pub obj_b_offset: u32,
-    }
-
-    #[basicpymethods]
-    #[pyclass(module="pak.animation", get_all, set_all)]
-    #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
-    pub struct Obj3 {
-        pub t: f32,
-        pub event: Crc,
-        pub dat_2: Crc,
-        pub dat_3: Crc,
-        pub dat_4: Crc,
-        pub dat_5: Crc,
-        pub dat_6: Crc,
-        pub dat_7: Crc,
-        pub dat_8: Crc,
-        pub dat_9: Crc,
-        pub dat_10: Crc,
-    }
-}
-
-#[basicpymethods]
-#[pyclass(module="pak", get_all, set_all)]
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PyMethods)]
-pub struct Animation {
-    pub obj1: HashMap<usize, Vec<u32>>,
-    pub obj2: HashMap<usize, Vec<u32>>,
-    pub obj3: HashMap<usize, Vec<animation::Obj3>>,
-    pub keys: HashMap<usize, Vec<u32>>,
-    pub obj5_header: HashMap<usize, animation::Obj5Header>,
-    pub obj5_a: HashMap<usize, Vec<u32>>,
-    pub obj5_b: HashMap<usize, Vec<u32>>,
-    pub obj_c: HashMap<usize, animation::HkaSplineSkeletalAnimation>,
-}
-
-impl Animation {
-    pub fn unpack_from_block<O: Version + 'static>(&mut self, data: &[u8], offset: usize, index: usize, info: &AnimationInfo) -> Result<()> {
-        self.obj1.insert(index, OrderedDataVec::from_bytes::<O>(&data[offset + info.obj1_offset as usize..], info.obj1_num as usize * 2)?);
-        self.obj2.insert(index, OrderedDataVec::from_bytes::<O>(&data[offset + info.obj2_offset as usize..], info.obj2_num as usize * 4)?);
-        self.obj3.insert(index, OrderedDataVec::from_bytes::<O>(&data[offset + info.obj3_offset as usize..], info.obj3_num as usize)?);
-        self.keys.insert(index, OrderedDataVec::from_bytes::<O>(&data[offset + info.keys_offset as usize..], (info.keys_num + info.obj1_num) as usize)?);
-        if info.obj5_offset != 0 {
-            let obj5_header: animation::Obj5Header = OrderedData::from_bytes::<O>(&data[offset + info.obj5_offset as usize..])?;
-            self.obj5_a.insert(index, OrderedDataVec::from_bytes::<O>(&data[offset + obj5_header.obj_a_offset as usize..], obj5_header.obj_a_num as usize * 7)?);
-            self.obj5_b.insert(index, OrderedDataVec::from_bytes::<O>(&data[offset + obj5_header.obj_b_offset as usize..], obj5_header.obj_b_num as usize * 7)?);
-            self.obj5_header.insert(index, obj5_header);
-        }
-        if info.kind == 3 {
-            self.obj_c.insert(index, animation::HkaSplineSkeletalAnimation::from_data::<O>(data, offset, info)?);
-        } else if info.kind < 3 {
-            warn!("Unhandled animation type {}", info.kind);
-        } else {
-            warn!("Unknown animation type {}", info.kind);
-        }
-        Ok(())
-    }
-
-    pub fn pack_into_block<O: Version + 'static>(&self, data: &mut [u8], offset: usize, index: usize, info: &AnimationInfo) -> Result<()> {
-        self.obj1.get(&index).unwrap().to_bytes::<O>(&mut data[offset + info.obj1_offset as usize..])?;
-        self.obj2.get(&index).unwrap().to_bytes::<O>(&mut data[offset + info.obj2_offset as usize..])?;
-        self.obj3.get(&index).unwrap().to_bytes::<O>(&mut data[offset + info.obj3_offset as usize..])?;
-        self.keys.get(&index).unwrap().to_bytes::<O>(&mut data[offset + info.keys_offset as usize..])?;
-        if info.obj5_offset != 0 {
-            let obj5_header = self.obj5_header.get(&index).unwrap();
-            obj5_header.to_bytes::<O>(&mut data[offset + info.obj5_offset as usize..])?;
-            self.obj5_a.get(&index).unwrap().to_bytes::<O>(&mut data[offset + obj5_header.obj_a_offset as usize..])?;
-            self.obj5_b.get(&index).unwrap().to_bytes::<O>(&mut data[offset + obj5_header.obj_b_offset as usize..])?;
-        }
-        if info.kind == 3 {
-            self.obj_c.get(&index).unwrap().into_data::<O>(data, offset, info)?;
-        }
-        Ok(())
-    }
-
-    pub fn unpack_block<O: Version + 'static>(anims: &mut [Self], infos: &[AnimationInfo], data: & [u8], offset: usize, index: usize) -> Result<()> {
-        let mut offset = offset;
-        for (anim, info) in zip(anims, infos) {
-            let gamemodemask = 1i32 << index;
-            if gamemodemask & info.gamemodemask != 0 {
-                anim.unpack_from_block::<O>(data, offset, index, info)?;
-                offset += info.size as usize;
-            }
-        }
-        Ok(())
-    }
-
-    pub fn pack_block<O: Version + 'static>(anims: & [Self], infos: &[AnimationInfo], data: &mut [u8], offset: usize, index: usize) -> Result<()> {
-        let mut offset = offset;
-        for (anim, info) in zip(anims, infos) {
-            let gamemodemask = 1i32 << index;
-            if gamemodemask & info.gamemodemask != 0 {
-                anim.pack_into_block::<O>(data, offset, index, info)?;
-                offset += info.size as usize;
-            }
-        }
-        Ok(())
-    }
-}
-
-#[basicpymethods]
+#[basicpymethods(no_bytes)]
 #[pyclass(module="pak", get_all, set_all, eq, hash)]
 #[derive(Debug, Clone, SerializeDisplay, DeserializeFromStr, PartialEq, Hash, PyMethods)]
 pub enum VertexUsage {
@@ -2027,7 +1521,7 @@ impl FromStr for VertexUsage {
     }
 }
 
-#[basicpymethods]
+#[basicpymethods(no_bytes)]
 #[pyclass(module="pak", get_all, set_all)]
 #[derive(Debug, Clone, Serialize, Deserialize, PyMethods)]
 pub enum VertexTypes {
@@ -2124,9 +1618,7 @@ impl VertexTypes {
 }
 
 //#[serde_as]
-#[basicpymethods]
-#[pyclass(module="pak", get_all, set_all)]
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PyMethods)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct VertexData {
     #[serde(rename="$key$")]
     //#[serde_as(as="serde_with::DisplayFromStr")]
@@ -2150,14 +1642,18 @@ impl VertexData {
         }
     }
 
+    pub fn size(&self) -> usize {
+        self.val.size() * self.val.len()
+    }
+
     pub fn dump_bytes<O: Version + 'static>(&self) -> Vec<u8> {
         match self {
-            Self { usage: VertexUsage::BlendWeight(), val: VertexTypes::Unorm4x8(vals) } => vals.iter().map(|x| ((x & 0xFF0000) >> 16) | ((x & 0xFF) << 16) | (x & 0xFF00FF00)).collect::<Vec<_>>().dump_bytes::<O>(),
-            Self { val: VertexTypes::Pad(vals), .. } => vals.dump_bytes::<O>(),
-            Self { val: VertexTypes::Unorm4x8(vals), .. } => vals.dump_bytes::<O>(),
-            Self { val: VertexTypes::Vector2(x, y), .. } => x.iter().zip(y).map(|(&x, &y)| Vector2{x,y}).collect::<Vec<_>>().dump_bytes::<O>(),
-            Self { val: VertexTypes::Vector3(x, y, z), .. } => x.iter().zip(y.iter().zip(z)).map(|(&x, (&y, &z))| Vector3{x,y,z}).collect::<Vec<_>>().dump_bytes::<O>(),
-            Self { val: VertexTypes::Vector4(x, y, z, w), .. } => x.iter().zip(y.iter().zip(z.iter().zip(w))).map(|(&x, (&y, (&z, &w)))| Vector4{x,y,z,w}).collect::<Vec<_>>().dump_bytes::<O>(),
+            Self { usage: VertexUsage::BlendWeight(), val: VertexTypes::Unorm4x8(vals) } => dump_bytes!(O, vals.iter().map(|x| ((x & 0xFF0000) >> 16) | ((x & 0xFF) << 16) | (x & 0xFF00FF00)).collect::<Vec<_>>()),
+            Self { val: VertexTypes::Pad(vals), .. } => dump_bytes!(O, vals),
+            Self { val: VertexTypes::Unorm4x8(vals), .. } => dump_bytes!(O, vals),
+            Self { val: VertexTypes::Vector2(x, y), .. } => dump_bytes!(O, x.iter().zip(y).map(|(&x, &y)| Vector2{x,y}).collect::<Vec<_>>()),
+            Self { val: VertexTypes::Vector3(x, y, z), .. } => dump_bytes!(O, x.iter().zip(y.iter().zip(z)).map(|(&x, (&y, &z))| Vector3{x,y,z}).collect::<Vec<_>>()),
+            Self { val: VertexTypes::Vector4(x, y, z, w), .. } => dump_bytes!(O, x.iter().zip(y.iter().zip(z.iter().zip(w))).map(|(&x, (&y, (&z, &w)))| Vector4{x,y,z,w}).collect::<Vec<_>>()),
             Self { val: VertexTypes::None(), .. } => vec![],
         }
     }
@@ -2172,12 +1668,12 @@ impl VertexData {
         }
         match self {
             Self { usage: VertexUsage::Normal(), val: VertexTypes::Unorm4x8(vals) } => {
-                vals.iter().map(|x|
+                dump_bytes!(PC, vals.iter().map(|x|
                     conv_val((x >> 24) & 0xff) << 24 | 
                     conv_val((x >> 16) & 0xff) << 16 | 
                     conv_val((x >> 8) & 0xff) << 8 | 
                     conv_val(x & 0xff)
-                ).collect::<Vec<_>>().dump_bytes::<PC>()
+                ).collect::<Vec<_>>())
             },
             _ => self.dump_bytes::<PC>()
         }
@@ -2322,7 +1818,7 @@ impl VertexData {
     }
 }
 
-pub fn get_vertex_format<O: Version + 'static>(fmt1: u32, fmt2: u32) -> (Vec<VertexData>, usize) {
+pub fn get_vertex_format<O: Version>(fmt1: u32, fmt2: u32) -> (Vec<VertexData>, usize) {
     let mut fmt = Vec::new();
     let mut s = 0;
     if fmt2 == 0 {
@@ -2360,7 +1856,7 @@ pub fn get_vertex_format<O: Version + 'static>(fmt1: u32, fmt2: u32) -> (Vec<Ver
                 }
                 fmt.push(VertexData::new(BaseTypes::VECTOR4_KEY, usage));
                 s += 16;
-            } else if TypeId::of::<O>() == TypeId::of::<PS3>() {
+            } else if O::ps3() {
                 fmt.push(VertexData::new(BaseTypes::VECTOR3_KEY, usage));
                 s += 12;
             } else {
@@ -2448,6 +1944,10 @@ pub fn get_vertex_format<O: Version + 'static>(fmt1: u32, fmt2: u32) -> (Vec<Ver
     (fmt, s)
 }
 
+lazy_static::lazy_static! {
+    static ref FORMATS: Mutex<HashMap<(u32, u32), (Vec<VertexData>, usize)>> = Mutex::new(HashMap::new());
+}
+
 #[serde_as]
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -2457,22 +1957,50 @@ pub struct VertexBuffer {
     pub vals: Vec<VertexData>
 }
 
-impl IntoPy<PyObject> for VertexBuffer {
-    fn into_py(self, py: Python<'_>) -> PyObject {
-        self.vals.into_py(py)
+impl VertexBuffer {
+    pub fn len(&self) -> usize {
+        self.vals.first().map(|x| x.val.len()).unwrap_or(0)
+    }
+}
+
+type VertexBufferAlt = IndexMap<VertexUsage, VertexTypes>;
+
+impl From<VertexBufferAlt> for VertexBuffer {
+    fn from(value: VertexBufferAlt) -> Self {
+        Self { vals: value.into_iter().map(|(usage, val)| VertexData { usage, val }).collect() }
+    }
+}
+
+impl From<VertexBuffer> for VertexBufferAlt {
+    fn from(value: VertexBuffer) -> Self {
+        Self::from_iter(value.vals.iter().map(|x| (x.usage.clone(), x.val.clone())))
+    }
+}
+
+impl <'py> IntoPyObject<'py> for VertexBuffer {
+    type Target = <VertexBufferAlt as IntoPyObject<'py>>::Target;
+    type Output = <VertexBufferAlt as IntoPyObject<'py>>::Output;
+    type Error = <VertexBufferAlt as IntoPyObject<'py>>::Error;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        VertexBufferAlt::from(self).into_pyobject(py)
     }
 }
 
 impl <'py> FromPyObject<'py> for VertexBuffer {
     fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
-        Ok(Self { vals: Vec::extract_bound(ob)? })
+        Ok(VertexBufferAlt::extract_bound(ob)?.into())
     }
 }
 
-impl VertexBuffer {
-    pub fn from_data<O: Version + 'static>(data: &[u8], info: &mut VBuffInfo, formats: &mut HashMap<(u32, u32), (Vec<VertexData>, usize)>) -> Result<Self> {
+impl <'a> AsData<'a, '_> for VertexBuffer {
+    type InArgs = &'a mut VBuffInfo;
+    type OutArgs = NoArgs;
+
+    fn from_bytes<V: Version>(data: &[u8], info: Self::InArgs) -> Result<Self> {
+        let mut formats = FORMATS.lock().unwrap();
         let (fmt, size) = formats.entry((info.fmt1, info.fmt2)).or_insert_with(|| {
-            get_vertex_format::<O>(info.fmt1, info.fmt2)
+            get_vertex_format::<V>(info.fmt1, info.fmt2)
         });
         if info.size as usize % *size != 0 {
             warn!("Vertex Buffer size is not a multiple of assumed size");
@@ -2483,16 +2011,16 @@ impl VertexBuffer {
         for _ in 0..n {
             // let mut val = Vec::with_capacity(fmt.len());
             for val in &mut vals {
-                let v = BaseTypes::from_data::<O>(&data[offset..], val.val.ty())?;
-                offset += v.size::<O>();
+                let v = BaseTypes::from_data::<V>(&data[offset..], val.val.ty())?;
+                offset += v.size::<V>();
                 val.val.push(v);
             }
         }
-        if TypeId::of::<O>() == TypeId::of::<XBOX>() {
+        if V::xbox() {
             if (info.fmt1 & 0x80000 != 0) & (info.fmt1 & 0x400 == 0) {
                 info.fmt1 |= 0x400;
                 let (fmt, _) = formats.entry((info.fmt1, info.fmt2)).or_insert_with(|| {
-                    get_vertex_format::<O>(info.fmt1, info.fmt2)
+                    get_vertex_format::<V>(info.fmt1, info.fmt2)
                 });
                 let mut vals_new = fmt.clone();
                 let mut binorm = Vec::with_capacity(n);
@@ -2560,30 +2088,16 @@ impl VertexBuffer {
         }
         Ok(Self { vals })
     }
-    
-    #[allow(dead_code)]
-    pub fn into_data<O: Version + 'static>(&self, data: &mut[u8], info: &VBuffInfo) -> Result<()> {
-        let mut offset = info.offset as usize;
-        let mut off_ = 0;
+
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
         let i = self.vals.iter().map(|x| x.val.len()).min().unwrap();
-        for VertexData { val, .. } in &self.vals {
-            assert!(val.len() == i);
-        }
-        for i in 0..i {
-            for VertexData { val, .. } in &self.vals {
-                let v = val.get(i);
-                v.into_data::<O>(&mut data[offset..], &mut off_)?;
-                offset += v.size::<O>();
-            }
-        }
-        Ok(())
+        (0..i).flat_map(|i| self.vals.iter().flat_map(move |val| dump_bytes!(V, val.val.get(i)))).collect()
     }
 
-    pub fn dump<O: Version + 'static>(&self) -> Vec<u8> {
-        // self.vals.iter().flat_map(|x| x.iter().flat_map(|x| x.dump_bytes::<O>())).collect()
-        let i = self.vals.iter().map(|x| x.val.len()).min().unwrap();
-        (0..i).flat_map(|i| self.vals.iter().flat_map(move |val| val.val.get(i).dump_bytes::<O>())).collect()
+    fn size<V: Version>(&self) -> usize {
+        self.vals.iter().map(|x| x.size()).sum::<usize>()
     }
+    
 }
 
 #[basicpymethods]
@@ -2594,11 +2108,14 @@ pub enum IndexBuffer {
     U32 { vals: Vec<u32> },
 }
 
-impl IndexBuffer {
-    pub fn from_data<O: Version + 'static>(data: &[u8], info: &IBuffInfo) -> Result<Self> {
+impl <'a> AsData<'a, '_> for IndexBuffer {
+    type InArgs = &'a IBuffInfo;
+    type OutArgs = NoArgs;
+
+    fn from_bytes<V: Version>(data: &[u8], info: Self::InArgs) -> Result<Self> {
         let size = match info.format {
-            0x10 => u16::size::<O>(),
-            _ => u32::size::<O>(),
+            0x10 => V::size::<u16>(),
+            _ => V::size::<u32>(),
         };
         assert!(info.size as usize % size == 0);
         let mut n = info.size as usize / size;
@@ -2607,21 +2124,22 @@ impl IndexBuffer {
             n = (data.len() - info.offset as usize) / size;
         }
         Ok(match info.format {
-            0x10 => Self::U16 { vals: OrderedDataVec::from_bytes::<O>(&data[info.offset as usize..], n)? },
-            _ => Self::U32 { vals: OrderedDataVec::from_bytes::<O>(&data[info.offset as usize..], n)? },
+            0x10 => Self::U16 { vals: from_bytes!(V, &data[info.offset as usize..], n)? },
+            _ => Self::U32 { vals: from_bytes!(V, &data[info.offset as usize..], n)? },
         })
     }
-    #[allow(dead_code)]
-    pub fn into_data<O: Version + 'static>(&self, data: &mut [u8]) -> Result<()> {
+
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
         match self {
-            Self::U16 { vals } => vals.to_bytes::<O>(data),
-            Self::U32 { vals } => vals.to_bytes::<O>(data)
+            Self::U16 { vals } => dump_bytes!(V, vals),
+            Self::U32 { vals } => dump_bytes!(V, vals)
         }
     }
-    pub fn dump<O: Version + 'static>(&self) -> Vec<u8> {
+
+    fn size<V: Version>(&self) -> usize {
         match self {
-            Self::U16 { vals } => vals.dump_bytes::<O>(),
-            Self::U32 { vals } => vals.dump_bytes::<O>()
+            Self::U16 { vals } => vals.size::<V>(),
+            Self::U32 { vals } => vals.size::<V>()
         }
     }
 }
@@ -2637,9 +2155,13 @@ pub struct RadiosityVals {
     pub vals: Vec<i32>
 }
 
-impl IntoPy<PyObject> for RadiosityVals {
-    fn into_py(self, py: Python<'_>) -> PyObject {
-        self.vals.into_py(py)
+impl <'py> IntoPyObject<'py> for RadiosityVals {
+    type Target = <Vec<i32> as IntoPyObject<'py>>::Target;
+    type Output = <Vec<i32> as IntoPyObject<'py>>::Output;
+    type Error = <Vec<i32> as IntoPyObject<'py>>::Error;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        self.vals.into_pyobject(py)
     }
 }
 
@@ -2649,14 +2171,24 @@ impl <'py> FromPyObject<'py> for RadiosityVals {
     }
 }
 
+impl <'a, 'b> AsData<'a, 'b> for RadiosityVals {
+    type InArgs = &'a RadiosityValsInfo;
+    type OutArgs = &'b RadiosityValsInfo;
 
-impl RadiosityVals {
-    pub fn from_data<O: Version + 'static>(data: &[u8], info: &RadiosityValsInfo) -> Result<Self> {
-        Ok(Self { vals: OrderedDataVec::from_bytes::<O>(&data[info.offset as usize..], info.num as usize)? })
+    fn from_bytes<V: Version>(data: &[u8], info: Self::InArgs) -> Result<Self> {
+        Ok(Self { vals: from_bytes!(V, &data[info.offset as usize..], info.num as usize)? })
     }
 
-    pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], info: &RadiosityValsInfo) -> Result<()> {
-        self.vals.to_bytes::<O>(&mut data[info.offset as usize..])
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
+        panic!("not implemented")
+    }
+
+    fn size<V: Version>(&self) -> usize {
+        self.vals.size::<V>()
+    }
+
+    fn to_bytes<V: Version>(&self, data: &mut [u8], info: Self::OutArgs) -> Result<()> {
+        to_bytes!(V, self.vals, &mut data[info.offset as usize..])
     }
 }
 
@@ -2680,9 +2212,13 @@ impl From<FoliageValProxy> for FoliageVal {
     }
 }
 
-impl IntoPy<PyObject> for FoliageVal {
-    fn into_py(self, py: Python<'_>) -> PyObject {
-        <FoliageValProxy>::from(self).into_py(py)
+impl <'py> IntoPyObject<'py> for FoliageVal {
+    type Target = <FoliageValProxy as IntoPyObject<'py>>::Target;
+    type Output = <FoliageValProxy as IntoPyObject<'py>>::Output;
+    type Error = <FoliageValProxy as IntoPyObject<'py>>::Error;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        <FoliageValProxy>::from(self).into_pyobject(py)
     }
 }
 
@@ -2697,9 +2233,13 @@ pub struct Foliage {
     pub vals: Vec<FoliageVal>
 }
 
-impl IntoPy<PyObject> for Foliage {
-    fn into_py(self, py: Python<'_>) -> PyObject {
-        self.vals.into_py(py)
+impl <'py> IntoPyObject<'py> for Foliage {
+    type Target = <Vec<FoliageVal> as IntoPyObject<'py>>::Target;
+    type Output = <Vec<FoliageVal> as IntoPyObject<'py>>::Output;
+    type Error = <Vec<FoliageVal> as IntoPyObject<'py>>::Error;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        self.vals.into_pyobject(py)
     }
 }
 
@@ -2708,18 +2248,21 @@ impl <'py> FromPyObject<'py> for Foliage {
         Ok(Self { vals: Vec::extract_bound(ob)? })
     }
 }
-impl Foliage {
-    // holds vertex data of some sort
-    pub fn from_data<O: Version + 'static>(data: &[u8], info: &FoliageInfo) -> Result<Self> {
+
+impl <'a> AsData<'a, '_> for Foliage {
+    type InArgs = &'a FoliageInfo;
+    type OutArgs = NoArgs;
+
+    fn from_bytes<V: Version>(data: &[u8], info: Self::InArgs) -> Result<Self> {
         let n = (info.ub_w - info.lb_w) * (info.ub_h - info.lb_h);
-        Ok(Self { vals: OrderedDataVec::from_bytes::<O>(&data[info.offset as usize..], n as usize)? })
+        Ok(Self { vals: from_bytes!(V, &data[info.offset as usize..], n as usize)? })
     }
 
-    pub fn dump<O: Version + 'static>(&self) -> Vec<u8> {
-        self.vals.dump_bytes::<O>() 
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
+        dump_bytes!(V, self.vals)
     }
 
-    pub fn into_data<O: Version + 'static>(&self, data: &mut [u8], info: &FoliageInfo) -> Result<()> {
-        self.vals.to_bytes::<O>(&mut data[info.offset as usize..])
+    fn size<V: Version>(&self) -> usize {
+        self.vals.size::<V>()
     }
 }

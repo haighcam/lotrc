@@ -22,6 +22,7 @@ class ClearLevelBlock(bpy.types.Operator):
 
     def execute(self, context):
         level = LOADED_LEVELS[context.scene.name]
+        if level.level_col is None: return {'FINISHED'}
         level.col.children.unlink(level.level_col)
         level.level_col = None
         bpy.ops.outliner.orphans_purge()
@@ -43,7 +44,7 @@ def parse_level_block(level):
     level.level_col = level_col
     level.col.children.link(level_col)
     level_col.hide_viewport = True
-    gameobjs = level.level.sub_blocks1.blocks[-1][0]
+    gameobjs = level.level.sub_blocks1['level'][0]
     level.types.update({key: {i.key: (i.kind, i.offset) for i in fields} for key, fields in gameobjs.types.items()})
 
     blender_objs = {}
@@ -53,12 +54,11 @@ def parse_level_block(level):
     templateGroup = None
     templateLayer = None
     templateFolder = None
-    for obj in gameobjs.objs:
+    for guid, obj in gameobjs.objs.items():
         ty = obj.key
-        fields = {key: val for key, val in zip(level.types[ty], obj.fields)}
+        fields = obj.fields
         fields['__layer__'] = lotrc.types.BaseTypes.Int(obj.layer)
-        fields['__type__'] = obj.key
-        guid = fields['GUID'][0]
+        fields['__type__'] = ty
         name = fields['Name'][0]
         col = bpy.data.collections.new(f'{name}.{ty}.{guid}')
         if ty == 'templateLevel':
@@ -111,7 +111,7 @@ def parse_level_block(level):
                 obj.instance_type = 'COLLECTION'
                 if 'collision' in model:
                     col_obj = empty_obj(f"{col.name}.Collision", col)
-                    col_obj.instance_collection = level.models[model]['collision']
+                    col_obj.instance_collection = model['collision']
                     col_obj.instance_type = 'COLLECTION'
                     col_obj.parent = obj
             else:
@@ -124,6 +124,8 @@ def parse_level_block(level):
                 if model not in level.models: continue
                 child_obj.instance_collection = level.models[model.lower()]['base']
                 child_obj.instance_type = 'COLLECTION'
+        elif ty == "child_object":
+            obj.matrix_world = mat_to_blender(fields['Transform'][0])
 
         col['lotrc'] = {k: v.to_json() for k,v in fields.items() if k not in skip_store}
         col['lotrc']['__type__'] = fields['__type__']

@@ -78,13 +78,13 @@ with utils.reader(src_path) as src, utils.writer(dst_path) as dst:
             obj = obj[:a] + str(gamemodemask | m).encode() + obj[b:]
             to_remove.add(dst_name)
             to_add[dst_name] = obj
-            textures.update([val.decode().casefold() for i in obj.split(b'tex_')[1:] if i[:4] != b'data' and (val:=i.split(b'"')[2]) != b''])
+            textures.update([val.decode().casefold() for i in obj.split(b'"tex')[1:] if (val:=i.split(b'"')[2]) != b''])
         elif (src_name := utils.get_model(src_files, k)) is not None:
             obj = src.read(src_name)
             _, a, b = utils.get_gamemodemask(obj)
             obj = obj[:a] + str(gamemodemask).encode() + obj[b:]
             to_add[src_name] = obj
-            textures.update([val.decode().casefold() for i in obj.split(b'tex_')[1:] if i[:4] != b'data' and (val:=i.split(b'"')[2]) != b''])
+            textures.update([val.decode().casefold() for i in obj.split(b'"tex')[1:] if (val:=i.split(b'"')[2]) != b''])
 
         f_name = f"effects/{k}.json"
         if f_name in dst_files:
@@ -112,6 +112,8 @@ with utils.reader(src_path) as src, utils.writer(dst_path) as dst:
             obj = obj[:a] + str(gamemodemask).encode() + obj[b:]
             to_add[src_files[f_name]] = obj
 
+    print(textures)
+    print(new_scripts)
     for k in textures:
         f_name = f"textures/{k}.json"
         f_name_alt = f"textures/{k}.dds"
@@ -131,7 +133,7 @@ with utils.reader(src_path) as src, utils.writer(dst_path) as dst:
     index = json.loads(dst.read(dst_files['sub_blocks1/index.json']))
     for script in new_scripts:
         f_name = src_files[f"sub_blocks1/{script}.lua"]
-        index['block_headers'].insert(-3, {'key': f_name[len("sub_blocks1/"):], 'offset': 0, 'size': 0})
+        index.insert(-3, f_name[len("sub_blocks1/"):])
         to_add[f_name] = src.read(f_name)
         if script.startswith("anm_"):
             f_name = src_files[f'animation_tables/{script}.json']
@@ -151,7 +153,7 @@ with utils.reader(src_path) as src, utils.writer(dst_path) as dst:
     old_class_objs = []
     new_class_objs = []
     for i in class_items:
-        val = utils.find_obj(vals_dest, i['fields']['guid'])
+        val = utils.find_obj(vals_dest, i['fields']['GUID'])
         if val is not None:
             old_class_objs.append(val)
         else:

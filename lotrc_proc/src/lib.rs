@@ -27,6 +27,27 @@ fn pymethods(attrs: &HashSet<String>) -> Vec<TokenStream> {
             }
         },
     ];
+    if !attrs.contains("no_bytes") {
+        fns.push(quote! {
+            #[pyo3(name = "dump_bytes")]
+            pub fn _dump_bytes(&self, args: <Self as crate::types::AsData>::OutArgs) -> Vec<u8> {
+                <Self as crate::types::AsData>::dump_bytes::<crate::types::PC>(self, args)
+            }
+        });
+        fns.push(quote! {
+            #[staticmethod]
+            #[pyo3(name = "from_bytes")]
+            pub fn _from_bytes(val: &[u8], args: <Self as crate::types::AsData>::InArgs) -> Result<Self> {
+                <Self as crate::types::AsData>::from_bytes::<crate::types::PC>(val, args)
+            }
+        });
+        fns.push(quote! {
+            #[pyo3(name = "size_bytes")]
+            pub fn _size(&self) -> usize {
+                <Self as crate::types::AsData>::size::<crate::types::PC>(self)
+            }
+        });
+    }
     if !attrs.contains("no_new") {
         fns.push(quote! {
             #[new]
@@ -139,7 +160,7 @@ pub fn derive_ordered_data_fn(input: proc_macro::TokenStream) -> proc_macro::Tok
         #vis #alt_class_ps3
 
 
-        impl OrderedDataImpl for #name {
+        impl crate::types::OrderedData for #name {
             type PC = #name_pc;
             type XBOX = #name_xbox;
             type PS3 = #name_ps3;
@@ -167,7 +188,7 @@ pub fn derive_ordered_data_fn(input: proc_macro::TokenStream) -> proc_macro::Tok
             fn from(value: #name) -> Self {
                 #conv_xbox
             }
-        }
+}
 
         impl From<#name_ps3> for #name {
             fn from(value: #name_ps3) -> Self {
@@ -330,7 +351,7 @@ fn alt_class_def(data: &Data, classname: &Ident, endian: &Ident) -> TokenStream 
                         let (val, skip, _) = filter_attrs(&f.attrs, endian, name.clone().unwrap());
                         if !skip {
                             Some(quote_spanned! {
-                                f.span() => #name: <#ty as OrderedDataImpl>::#val
+                                f.span() => #name: <#ty as crate::types::OrderedData>::#val
                             })
                         } else {
                             None
@@ -346,7 +367,7 @@ fn alt_class_def(data: &Data, classname: &Ident, endian: &Ident) -> TokenStream 
                     let recurse = fields.unnamed.iter().map(|f| {
                         let ty = &f.ty;
                         quote_spanned! {
-                            f.span() => <#ty as OrderedDataImpl>::#endian
+                            f.span() => <#ty as crate::types::OrderedData>::#endian
                         }
 
                     });

@@ -157,7 +157,7 @@ def get_model(files, model):
 # some utilities for getting things from dumped level file
 def find_obj(vals, guid):
     for obj in vals['objs']:
-        if obj['fields']['guid'] == guid:
+        if obj['fields']['GUID'] == guid:
             return obj
 
 def get_layer(vals, *layers):
@@ -186,14 +186,14 @@ def copy_tree(vals, guid, gamemodemask=None, processed=None, infos=None):
     if gamemodemask is not None and 'GameModeMask' in obj['fields']:
         obj['fields']['GameModeMask'] |= gamemodemask
     for t in ty['fields']:
-        if t['type'] == 'guid':
+        if t['type'] == 'GUID':
             val = obj['fields'][t['name']]
             if val != 0:
                 objs.extend(copy_tree(vals, val, processed=processed, gamemodemask=gamemodemask, infos=infos))
         elif t['type'] == 'objectlist':
             for val in obj['fields'][t['name']]:
                 objs.extend(copy_tree(vals, val, processed=processed, gamemodemask=gamemodemask, infos=infos))
-        elif (t['type'] == 'crc' or t['type'] == 'String') and (val:=obj['fields'][t['name']]) != '':
+        elif (t['type'] == 'crc' or t['type'] == 'string') and (val:=obj['fields'][t['name']]) != '':
             infos.add(val.casefold())
         elif t['type'] == 'crclist' or t['type'] == 'stringlist':
             infos.update([i.casefold() for i in obj['fields'][t['name']]])
@@ -206,7 +206,7 @@ def scan(vals, guid, infos=None):
     ty = find_type(vals, obj['type'])
     objs = [obj]
     for t in ty['fields']:
-        if (t['type'] == 'crc' or t['type'] == 'String') and (val:=obj['fields'][t['name']]) != '':
+        if (t['type'] == 'crc' or t['type'] == 'string') and (val:=obj['fields'][t['name']]) != '':
             infos.add(val.casefold())
         elif t['type'] == 'crclist' or t['type'] == 'stringlist':
             infos.update([i.casefold() for i in obj['fields'][t['name']]])

@@ -3,10 +3,44 @@ use mlua::prelude::*;
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, Arc};
+use anyhow::Result;
 
 use super::types::Crc;
 
 const LUA_BYTECODE: &str = include_str!("../res/lua-bytecode.github.io/lua-bytecode.lua");
+
+lazy_static::lazy_static! {
+    pub static ref LUA: Lua = new().unwrap();
+}
+
+fn new() -> Result<Lua> {
+    let lua: Lua = Lua::new();
+    lua.globals().set("lua_bytecode", lua.load(LUA_BYTECODE).eval::<LuaFunction>()?)?;
+    Ok(lua)
+}
+
+pub fn convert(code: &[u8], format: &str) -> LuaResult<Vec<u8>> {
+    Ok(LUA.globals().get::<LuaFunction>("lua_bytecode")?.call::<LuaString>((
+        LUA.create_string(code)?,
+        format
+    ))?.as_bytes().to_vec())
+}
+
+pub fn compile(code: &str, name: &str) -> LuaResult<Vec<u8>> {
+    Ok(LUA.globals().get::<LuaFunction>("lua_bytecode")?.call::<LuaString>((
+        LUA.create_string(LUA.load(code).set_name(name).into_function()?.dump(false))?,
+        "L4404" // "B4404" for xbox?
+    ))?.as_bytes().to_vec())
+}
+
+pub fn decomp(code: &[u8], unluac: String) -> LuaResult<String> {
+    let mut temp_file = tempfile::NamedTempFile::new().unwrap();
+    temp_file.write_all(code).unwrap();
+    let path = temp_file.path();
+    let output = std::process::Command::new("java").args(&["-jar", &unluac, path.to_str().unwrap()]).output()?;
+    Ok(String::from_utf8(output.stdout).unwrap())
+}
+
 
 #[derive(Debug, Default)]
 pub struct LuaCompiler {
@@ -20,28 +54,6 @@ impl LuaCompiler {
         // let lua_bytecode: LuaFunction = lua.load(LUA_BYTECODE).eval()?;
         Ok(Self { lua })
     }
-
-    pub fn convert(&self, code: &[u8], format: &str) -> LuaResult<Vec<u8>> {
-        Ok(self.lua.globals().get::<_, LuaFunction>("lua_bytecode")?.call::<_, LuaString>((
-            self.lua.create_string(code)?,
-            format
-        ))?.as_bytes().to_vec())
-    }
-
-    pub fn compile(&self, code: &str, name: &str) -> LuaResult<Vec<u8>> {
-        Ok(self.lua.globals().get::<_, LuaFunction>("lua_bytecode")?.call::<_, LuaString>((
-            self.lua.create_string(self.lua.load(code).set_name(name).into_function()?.dump(false))?,
-            "L4404" // "B4404" for xbox?
-        ))?.as_bytes().to_vec())
-    }
-
-    pub fn decomp(&self, code: &[u8], unluac: String) -> LuaResult<String> {
-        let mut temp_file = tempfile::NamedTempFile::new().unwrap();
-        temp_file.write_all(code).unwrap();
-        let path = temp_file.path();
-        let output = std::process::Command::new("java").args(&["-jar", &unluac, path.to_str().unwrap()]).output()?;
-        Ok(String::from_utf8(output.stdout).unwrap())
-    }
 }
 
 struct ScriptManager {
@@ -50,9 +62,9 @@ struct ScriptManager {
 }
 
 impl LuaUserData for ScriptManager {
-    fn add_fields<'lua, F: LuaUserDataFields<'lua, Self>>(_fields: &mut F) {}
+    fn add_fields<F: LuaUserDataFields<Self>>(_fields: &mut F) {}
 
-    fn add_methods<'lua, M: LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+    fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("import", |lua, this, val: String| {
             let val = Crc::from_string(&val);
             if this.loaded_scripts.lock().unwrap().insert(val.clone()) {
@@ -85,12 +97,12 @@ pub fn load_anim(script_fns: Arc<HashMap<Crc, Vec<u8>>>, anim: String) -> Map<St
 
     lua.load(format!("import(\"{}\")", anim)).exec().unwrap();
     let tables = if lua.globals().contains_key("AnimTableUsed").unwrap() {
-        lua.globals().get::<_, LuaTable>("AnimTableUsed").unwrap().pairs::<LuaValue, String>().filter_map(|x| x.ok()).map(|(_, x)| x).collect()
+        lua.globals().get::<LuaTable>("AnimTableUsed").unwrap().pairs::<LuaValue, String>().filter_map(|x| x.ok()).map(|(_, x)| x).collect()
     } else {
         vec!["AnimTable".to_string()]
     };
-    tables.into_iter().flat_map(|k| lua.globals().get::<_, LuaTable>(k).unwrap().pairs::<String, LuaValue>().filter_map(|x| x.ok())).filter_map(|(k, v)| match v {
-        LuaValue::String(val) => Some((k, json!(val.to_str().unwrap()))),
+    tables.into_iter().flat_map(|k| lua.globals().get::<LuaTable>(k).unwrap().pairs::<String, LuaValue>().filter_map(|x| x.ok()).collect::<Vec<_>>()).filter_map(|(k, v)| match v {
+        LuaValue::String(val) => Some((k, json!(*val.to_str().unwrap()))),
         LuaValue::Table(t) => Some((k, json!(t.pairs::<LuaValue, String>().filter_map(|x| x.ok()).map(|(_, x)| x).collect::<Vec<_>>()))),
         _ => None,
     }).collect::<Map<_,_>>()

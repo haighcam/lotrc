@@ -17,7 +17,7 @@ pub use flate2::Compression;
 mod lotrc {
     use pyo3::prelude::*;
 
-    #[pymodule(submodule)]
+    #[pymodule]
     mod audio {
         #[pymodule_export]
         use crate::audio::{
@@ -25,7 +25,7 @@ mod lotrc {
         };
     }
 
-    #[pymodule(submodule)]
+    #[pymodule]
     mod bin {
         #[pymodule_export]
         use crate::bin::{
@@ -33,19 +33,19 @@ mod lotrc {
         };
     }
 
-    #[pymodule(submodule)]
+    #[pymodule]
     mod level {
         #[pymodule_export]
         use crate::level::Level;
     }
 
-    #[pymodule(submodule)]
+    #[pymodule]
     mod level_alt {
         #[pymodule_export]
         use crate::level_alt::Level;
     }
 
-    #[pymodule(submodule)]
+    #[pymodule]
     mod level_info {
         #[pymodule_export]
         use crate::level_info::{
@@ -53,17 +53,17 @@ mod lotrc {
         };
     }
 
-    #[pymodule(submodule)]
+    #[pymodule]
     mod pak_alt {
         #[pymodule_export]
         use crate::pak_alt::{
             Shape, ShapeExtra, HkShape, Animation, Mat, HkConstraint, Model, HkShapeInfo, TRS, 
             HkShape0, Box, Sphere, Capsule, Cylinder, ConvexVertices, BVTreeMesh, ConvexVerticesInfo, BVTreeMeshInfo,
-            ShapeExtraInfo
+            ShapeExtraInfo, Radiosity, RadiosityVal
         };
     }
 
-    #[pymodule(submodule)]
+    #[pymodule]
     mod pak {
         use pyo3::prelude::*;
         #[pymodule_export]
@@ -71,23 +71,22 @@ mod lotrc {
             Shape, HkShape, Animation, Mat1, HkConstraint, Model, HkShapeInfo, AnimationInfo, AnimationBlockInfo,
             HkConstraintInfo, HkConstraintData, ModelInfo, Mat2, Mat3, Mat4, VBuffInfo, IBuffInfo, Header,
             ObjA, Obj0, LodMeshes, BufferInfo, MatBase, MatExtra, ShapeInfo, TextureInfo, EffectInfo, PFieldInfo, 
-            GFXBlockInfo, FoliageInfo, RadiosityValsInfo, BlockAVal, VertexUsage, VertexTypes, 
-            VertexData, IndexBuffer
+            GFXBlockInfo, FoliageInfo, RadiosityValsInfo, BlockAVal, VertexUsage, VertexTypes, IndexBuffer
         };
 
-        #[pymodule(submodule)]
+        #[pymodule]
         mod model {
             #[pymodule_export]
             use crate::pak::model::{BlockHeader, BlockVal};
         }
 
-        #[pymodule(submodule)]
+        #[pymodule]
         mod shape {
             #[pymodule_export]
             use crate::pak::shape::Header;
         }
 
-        #[pymodule(submodule)]
+        #[pymodule]
         mod animation {
             #[pymodule_export]
             use crate::pak::animation::{
@@ -101,14 +100,14 @@ mod lotrc {
         }
     }
 
-    #[pymodule(submodule)]
+    #[pymodule]
     mod types {
         #[pymodule_export]
         use crate::types::{
-            BaseTypes, SubBlocks, SubBlock, Spray, GameObjs, Lua, SSA, SubBlocksHeader,
-            SubBlocksBlockHeader, StringKeysHeader, StringKeysVal, StringKeys, SSAVal, GameObjsHeader,
+            BaseTypes, SubBlock, Spray, GameObjs, Lua, SSA, SubBlocksHeader,
+            SubBlocksBlockHeader, StringKeys, SSAVal, GameObjsHeader,
             GameObjsTypeHeader, GameObjsTypeField, GameObjsObjHeader, GameObj, SprayInstance, SprayVal, 
-            CrowdItem, CrowdHeader, CrowdVal, AtlasUVVal, hash_string
+            CrowdItem, CrowdHeader, CrowdVal, AtlasUVVal, hash_string, crc_string
         };
     }
 }
