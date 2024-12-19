@@ -32,7 +32,7 @@ for file in files:
             if kind == 'models':
                 obj = models.get(name, [])
                 obj.append((file, str(i)))
-                meshes[name] = obj
+                models[name] = obj
             if kind == 'scripts':
                 obj = scripts.get(name, [])
                 obj.append((file, str(i)))

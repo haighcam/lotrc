@@ -474,9 +474,9 @@ impl <'a, 'b> AsData<'a, 'b> for Animation {
         info.block_starts_offset = data.len() as u32;
         info.block_starts_num = self.blocks.len() as u32;
         data.extend(dump_bytes!(V, block_starts));
-        info.block_starts_offset = data.len() as u32;
-        info.block_starts_num = self.blocks.len() as u32;
-        data.extend(dump_bytes!(V, block_starts));
+        info.block_starts2_offset = data.len() as u32;
+        info.block_starts2_num = self.blocks.len() as u32;
+        data.extend(dump_bytes!(V, block_starts2));
         info.obj_c3_offset = data.len() as u32;
         info.obj_c3_num = self.obj_c3.len() as u32;
         data.extend(dump_bytes!(V, self.obj_c3));
@@ -500,9 +500,13 @@ impl <'a, 'b> AsData<'a, 'b> for Animation {
             info.obj5_offset = data.len() as u32;
             let header = animation::Obj5Header {
                 obj_a_num: self.obj5_a.len() as u32,
-                obj_a_offset: (data.len() + V::size::<animation::Obj5Header>()) as u32,
+                obj_a_offset: if self.obj5_a.len() != 0 {
+                    (data.len() + V::size::<animation::Obj5Header>()) as u32
+                } else { 0 },
                 obj_b_num: self.obj5_b.len() as u32,
-                obj_b_offset: (data.len() + V::size::<animation::Obj5Header>() + (self.obj5_a.len() * V::size::<animation::Obj5Val>())) as u32
+                obj_b_offset: if self.obj5_b.len() != 0 {
+                    (data.len() + V::size::<animation::Obj5Header>() + (self.obj5_a.len() * V::size::<animation::Obj5Val>())) as u32
+                } else {0}
             };
             data.extend(dump_bytes!(V, header));
             data.extend(dump_bytes!(V, self.obj5_a));

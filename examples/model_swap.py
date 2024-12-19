@@ -73,8 +73,8 @@ with utils.reader(src_path) as src, utils.writer(dst_path) as dst:
 
     bin_strings_src = json.loads(src.read(src_files['bin_strings.json']))
     pak_strings_src = json.loads(src.read(src_files['pak_strings.json']))
-    bin_strings_dst = json.loads(src.read(dst_files['bin_strings.json']))
-    pak_strings_dst = json.loads(src.read(dst_files['pak_strings.json']))
+    bin_strings_dst = json.loads(dst.read(dst_files['bin_strings.json']))
+    pak_strings_dst = json.loads(dst.read(dst_files['pak_strings.json']))
         
     pak_strings = set(pak_strings_dst)
     bin_strings = set(bin_strings_dst)

@@ -37,7 +37,7 @@ with utils.reader(src_path) as src, utils.writer(dst_path) as dst:
 
     # get the needed objects and items associated with them
     infos = set()
-    class_items = utils.copy_tree(vals, class_guid, infos=infos)
+    class_items = utils.copy_tree(vals, class_guid, infos=infos, gamemodemask=gamemodemask)
     scripts = set([i for i in infos if f'sub_blocks1/{i}.lua' in src_files])
     
     script_strings = {}
@@ -112,8 +112,6 @@ with utils.reader(src_path) as src, utils.writer(dst_path) as dst:
             obj = obj[:a] + str(gamemodemask).encode() + obj[b:]
             to_add[src_files[f_name]] = obj
 
-    print(textures)
-    print(new_scripts)
     for k in textures:
         f_name = f"textures/{k}.json"
         f_name_alt = f"textures/{k}.dds"
@@ -174,8 +172,8 @@ with utils.reader(src_path) as src, utils.writer(dst_path) as dst:
 
     bin_strings_src = json.loads(src.read(src_files['bin_strings.json']))
     pak_strings_src = json.loads(src.read(src_files['pak_strings.json']))
-    bin_strings_dst = json.loads(src.read(dst_files['bin_strings.json']))
-    pak_strings_dst = json.loads(src.read(dst_files['pak_strings.json']))
+    bin_strings_dst = json.loads(dst.read(dst_files['bin_strings.json']))
+    pak_strings_dst = json.loads(dst.read(dst_files['pak_strings.json']))
         
     pak_strings = set(pak_strings_dst)
     bin_strings = set(bin_strings_dst)
