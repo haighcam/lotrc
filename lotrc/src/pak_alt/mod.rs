@@ -291,8 +291,12 @@ impl <'a, 'b> AsData<'a, 'b> for Radiosity {
             let model = models.get(mesh).expect("model missing");
             let sizes: Vec<_> = model.vertex_data.iter().map(|x| x.len()).collect();
             let offsets = from_bytes!(V, Vec<u32>, &data[info.offset as usize..], info.num as usize)?;
-            let rads: Vec<_> = zip(offsets, sizes).map(|(offset, size)| {
-                Ok(if offset & 0xFF000000 != 0 {
+            let mut uses = vec![0u32; model.vertex_data.len()];
+            for usage in &model.mesh_order {
+                uses[(usage & 0x3FFFFFFF) as usize] |= usage;
+            }
+            let rads: Vec<_> = zip(offsets, zip(sizes, uses)).map(|(offset, (size, usage))| {
+                Ok(if usage & 0x80000000 == 0 {
                     RadiosityVal::NoRadiosity(offset)
                 } else {
                     RadiosityVal::Radiosity(from_bytes!(V, &rad_data[(offset * 4) as usize..], size)?)
@@ -429,7 +433,7 @@ impl <'a, 'b> AsData<'a, 'b> for Animation {
         info.obj1_offset = data.len() as u32;
         info.obj1_num = self.obj1.len() as u32 / 2;
         data.extend(dump_bytes!(V, self.obj1));
-        info.obj2_offset = data.len() as u32;
+        info.obj2_offset = if self.obj2.is_empty() { 0 } else { data.len() as u32 };
         info.obj2_num = self.obj2.len() as u32 / 4;
         data.extend(dump_bytes!(V, self.obj2));
         
