@@ -2113,8 +2113,8 @@ impl GameObjs {
             let key = Crc::from_string(o["type"].as_str().unwrap());
             let ts = types.get(&key).unwrap();
             let order = types_order.get(&key).unwrap();
-            let o_ = o["fields"].as_object().unwrap();
-            let fields: IndexMap<Crc, BaseTypes> = order.iter().map(|i| &ts[*i]).map(|t| (t.key.clone(), BaseTypes::from_json(&o_[&t.key.to_string()], t.kind.key()))).collect();
+            let o_: HashMap<_,_> = o["fields"].as_object().unwrap().into_iter().map(|(k,v)| (Crc::from_string(k), v)).collect();
+            let fields: IndexMap<Crc, BaseTypes> = order.iter().map(|i| &ts[*i]).map(|t| (t.key.clone(), BaseTypes::from_json(&o_[&t.key], t.kind.key()))).collect();
             let guid = if let Some(BaseTypes::GUID(val)) = fields.get(&Crc::Key(3482846511)) {
                 Some(*val)
             } else { None }.unwrap();
