@@ -283,23 +283,21 @@ impl <'a, 'b> AsData<'a, 'b> for Radiosity {
 
     fn from_bytes<V: Version>(data: &[u8], (usage, infos, models, objs, rad_data): Self::InArgs) -> Result<Self> {
         let mut vals = IndexMap::with_capacity(infos.len());
+        let mut off = 0;
         for info in infos {
             let obj = objs.get(&info.guid).unwrap();
             let mesh = if let Some(BaseTypes::CRC(val)) = obj.fields.get(&Crc::Key(2550505638)) {
                 Some(val)
             } else { None }.expect("level block obj mesh missing");
             let model = models.get(mesh).expect("model missing");
-            let sizes: Vec<_> = model.vertex_data.iter().map(|x| x.len()).collect();
+            let sizes: Vec<_> = model.buffer_infos.iter().map(|x| x.vbuff_size / x.v_size).collect();
             let offsets = from_bytes!(V, Vec<u32>, &data[info.offset as usize..], info.num as usize)?;
-            let mut uses = vec![0u32; model.vertex_data.len()];
-            for usage in &model.mesh_order {
-                uses[(usage & 0x3FFFFFFF) as usize] |= usage;
-            }
-            let rads: Vec<_> = zip(offsets, zip(sizes, uses)).map(|(offset, (size, usage))| {
-                Ok(if usage & 0x80000000 == 0 {
+            let rads: Vec<_> = zip(offsets, sizes).map(|(offset, size)| {
+                Ok(if offset != off {
                     RadiosityVal::NoRadiosity(offset)
                 } else {
-                    RadiosityVal::Radiosity(from_bytes!(V, &rad_data[(offset * 4) as usize..], size)?)
+                    off += size;
+                    RadiosityVal::Radiosity(from_bytes!(V, &rad_data[(offset * 4) as usize..], size as usize)?)
                 })
             }).collect::<Result<_>>()?;
 
