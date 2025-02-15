@@ -7,6 +7,8 @@ use serde_with::{SerializeDisplay, DeserializeFromStr};
 use serde_with::serde_as;
 use anyhow::Result;
 use pyo3::prelude::*;
+use pyo3::exceptions::PyTypeError;
+use itertools::Itertools;
 
 use lotrc_proc::{OrderedData, basicpymethods, PyMethods};
 use crate::{
@@ -197,25 +199,14 @@ impl LodMeshes {
     pub const LOD3: u32 = 256;
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize, OrderedData)]
-pub struct ValA(f32, f32, f32, f32, f32, f32, f32, f32);
-
-
-impl <'py> IntoPyObject<'py> for ValA {
-    type Target = <(f32, f32, f32, f32, f32, f32, f32, f32) as IntoPyObject<'py>>::Target;
-    type Output = <(f32, f32, f32, f32, f32, f32, f32, f32) as IntoPyObject<'py>>::Output;
-    type Error = <(f32, f32, f32, f32, f32, f32, f32, f32) as IntoPyObject<'py>>::Error;
-
-    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        (self.0, self.1, self.2, self.3, self.4, self.5, self.6, self.7).into_pyobject(py)
-    }
-}
-
-impl <'py> FromPyObject<'py> for ValA {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
-        let (a, b, c, d, e, f, g, h) = <(f32, f32, f32, f32, f32, f32, f32, f32)>::extract_bound(ob)?;
-        Ok(Self(a,b,c,d,e,f,g,h))
-    }
+#[basicpymethods]
+#[pyclass(module="pak", get_all, set_all)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, OrderedData, PyMethods)]
+pub struct BoundingBox {
+    center: Vector3,
+    unk_3: f32,
+    half_width: Vector3,
+    unk_7: f32,
 }
 
 #[basicpymethods]
@@ -226,7 +217,7 @@ pub struct ModelInfo {
     pub gamemodemask: i32,
     pub mat_offset: u32,
     pub buffer_info_offset: u32, // pointer to obj2, uses mat_num of sequential objects
-    pub unk_4: ValA,
+    pub bounding_box: BoundingBox, // (center x, y, z, ?, half_width x, y, z, ?) default vals of 1.0 for the ? vals seems to work
     pub mesh_order_offset: u32, // ints (c & 0x3fffffff is an index into the obj2s referenced by this object) (1 for each mesh)
     pub lod0: LodMeshes,
     pub lod1: LodMeshes,
@@ -244,8 +235,8 @@ pub struct ModelInfo {
     pub vbuff_num: u32,
     pub ibuff_offset: u32,
     pub ibuff_num: u32,
-    pub vals_d_offset: u32,
-    pub unk_46: u32, // probably a float
+    pub mesh_bounding_boxes_offset: u32,
+    pub unk_46: f32, // maybe something to do with size? 
     pub unk_47: u32, // maybe something to do with variation
     pub vals_j_num: u32,
     pub vals_j_offset: u32,
@@ -253,9 +244,9 @@ pub struct ModelInfo {
     pub vals_k_offset: u32, // not sure on the size, seems to be 36 ints
     pub asset_key: Crc, // data in bin that is vertex & index buffer values
     pub asset_type: u32,
-    pub unk_54: u32,
+    pub unk_54: u32, // 1 for occuluder otherwise 0 ??
     #[name_ps3(shape_offset)]
-    pub unk_55: u32,
+    pub unk_55: u32, // always 0 ??
     #[name_ps3(shape_num)]
     pub shape_offset: u32,
     #[name_ps3(hk_constraint_data_offset)]
@@ -268,10 +259,10 @@ pub struct ModelInfo {
     pub hk_constraint_offset: u32, // optional pointer to hkConstraint
     #[name_ps3(slot_map_offset)]
     pub slots_offset: u32,
-    #[name_ps3(vals_a_offset)]
+    #[name_ps3(bone_bounding_boxes_offset)]
     pub slot_map_offset: u32,
     #[name_ps3(unk_55)]
-    pub vals_a_offset: u32, // 8 ints
+    pub bone_bounding_boxes_offset: u32, // 8 ints
 }
 
 #[basicpymethods]
@@ -1131,10 +1122,10 @@ impl <'a, 'b> AsData<'a, 'b> for Model {
         assert!(val.indices[0] == 0xffffffff);
         val.keys = from_bytes!(O, &data[info.bones_offset as usize..], info.bones_num as usize)?;
         val.matrices = from_bytes!(O, &data[info.bone_transforms_offset as usize..], info.bones_num as usize)?;
-        val.vals_a = from_bytes!(O, &data[info.vals_a_offset as usize..], info.bones_num as usize * 8)?;
+        val.vals_a = from_bytes!(O, &data[info.bone_bounding_boxes_offset as usize..], info.bones_num as usize * 8)?;
         val.mats = from_bytes!(O, &data[info.mat_offset as usize..], info.mat_num as usize)?;
         val.vals_c = from_bytes!(O, &data[info.mesh_order_offset as usize..], info.lod3.breakable_end as usize)?;
-        val.vals_d = from_bytes!(O, &data[info.vals_d_offset as usize..], info.lod3.breakable_end as usize * 8)?;
+        val.vals_d = from_bytes!(O, &data[info.mesh_bounding_boxes_offset as usize..], info.lod3.breakable_end as usize * 8)?;
         val.vbuffs = from_bytes!(O, &data[info.vbuff_offset as usize..], info.vbuff_num as usize)?;
         val.ibuffs = from_bytes!(O, &data[info.ibuff_offset as usize..], info.ibuff_num as usize)?;
         val.vals_g = from_bytes!(O, &data[info.skin_binds_offset as usize..], info.skin_binds_num as usize * 16)?;
@@ -1191,7 +1182,7 @@ impl <'a, 'b> AsData<'a, 'b> for Model {
             }
         }
         // not sure why this pops up once, maybe it is padding between items?
-        if (info.mesh_order_offset == info.vbuff_offset) && (info.mesh_order_offset == info.ibuff_offset) && (info.mesh_order_offset == info.vals_d_offset) {
+        if (info.mesh_order_offset == info.vbuff_offset) && (info.mesh_order_offset == info.ibuff_offset) && (info.mesh_order_offset == info.mesh_bounding_boxes_offset) {
             val.val = from_bytes!(O, &data[info.mesh_order_offset as usize..], 4)?;
         }
         Ok(val)
@@ -1201,10 +1192,10 @@ impl <'a, 'b> AsData<'a, 'b> for Model {
         to_bytes!(O, self.indices, &mut data[info.bone_parents_offset as usize..])?;
         to_bytes!(O, self.keys, &mut data[info.bones_offset as usize..])?;
         to_bytes!(O, self.matrices, &mut data[info.bone_transforms_offset as usize..])?;
-        to_bytes!(O, self.vals_a, &mut data[info.vals_a_offset as usize..])?;
+        to_bytes!(O, self.vals_a, &mut data[info.bone_bounding_boxes_offset as usize..])?;
         to_bytes!(O, self.mats, &mut data[info.mat_offset as usize..])?;
         to_bytes!(O, self.vals_c, &mut data[info.mesh_order_offset as usize..])?;
-        to_bytes!(O, self.vals_d, &mut data[info.vals_d_offset as usize..])?;
+        to_bytes!(O, self.vals_d, &mut data[info.mesh_bounding_boxes_offset as usize..])?;
         to_bytes!(O, self.vbuffs, &mut data[info.vbuff_offset as usize..])?;
         to_bytes!(O, self.ibuffs, &mut data[info.ibuff_offset as usize..])?;
         to_bytes!(O, self.vals_g, &mut data[info.skin_binds_offset as usize..])?;
@@ -1242,7 +1233,7 @@ impl <'a, 'b> AsData<'a, 'b> for Model {
                 to_bytes!(O, extra, &mut data[offset + s..])?;
             }
         }
-        if (info.mesh_order_offset == info.vbuff_offset) && (info.mesh_order_offset == info.ibuff_offset) && (info.mesh_order_offset == info.vals_d_offset) {
+        if (info.mesh_order_offset == info.vbuff_offset) && (info.mesh_order_offset == info.ibuff_offset) && (info.mesh_order_offset == info.mesh_bounding_boxes_offset) {
             to_bytes!(O, self.val, &mut data[info.mesh_order_offset as usize..])?;
         }
         Ok(())
@@ -1439,19 +1430,17 @@ impl <'a, 'b> AsData<'a, 'b> for HkConstraint {
 }
 
 
-#[basicpymethods(no_bytes)]
-#[pyclass(module="pak", get_all, set_all, eq, hash)]
-#[derive(Debug, Clone, SerializeDisplay, DeserializeFromStr, PartialEq, Hash, PyMethods)]
+#[derive(Debug, Clone, SerializeDisplay, DeserializeFromStr, PartialEq, Hash)]
 pub enum VertexUsage {
-    Position(),
-    Normal(),
-    Tangent(),
-    BiNormal(),
-    BlendWeight(),
-    BlendIndices(),
+    Position,
+    Normal,
+    Tangent,
+    BlendWeight,
+    BlendIndices,
+    Color(usize),
     TextureCoord(usize),
     Unknown(usize),
-    PSize(),
+    PSize,
     Pad(usize),
 }
 
@@ -1466,15 +1455,15 @@ impl Eq for VertexUsage {}
 impl Display for VertexUsage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Position() => write!(f, "Position"),
-            Self::Normal() => write!(f, "Normal"),
-            Self::Tangent() => write!(f, "Tangent"),
-            Self::BiNormal() => write!(f, "BiNormal"),
-            Self::BlendWeight() => write!(f, "BlendWeight"),
-            Self::BlendIndices() => write!(f, "BlendIndices"),
+            Self::Position => write!(f, "Position"),
+            Self::Normal => write!(f, "Normal"),
+            Self::Tangent => write!(f, "Tangent"),
+            Self::BlendWeight => write!(f, "BlendWeight"),
+            Self::BlendIndices => write!(f, "BlendIndices"),
+            Self::Color(i) => write!(f, "Color({})", i),
             Self::TextureCoord(i) => write!(f, "TextureCoord({})", i),
             Self::Unknown(i) => write!(f, "Unknown({})", i),
-            Self::PSize() => write!(f, "PSize"),
+            Self::PSize => write!(f, "PSize"),
             Self::Pad(i) => write!(f, "Pad({})", i),
         }
     }
@@ -1498,26 +1487,46 @@ impl From<ParseIntError> for VertexUsageParseError {
 impl FromStr for VertexUsage {
     type Err = VertexUsageParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let string = s.to_lowercase();
+        let s = string.as_str();
         match s {
-            "Position" => Ok(Self::Position()),
-            "Normal" => Ok(Self::Normal()),
-            "Tangent" => Ok(Self::Tangent()),
-            "BiNormal" => Ok(Self::BiNormal()),
-            "BlendWeight" => Ok(Self::BlendWeight()),
-            "BlendIndices" => Ok(Self::BlendIndices()),
-            "PSize" => Ok(Self::PSize()),
+            "position" => Ok(Self::Position),
+            "normal" => Ok(Self::Normal),
+            "tangent" => Ok(Self::Tangent),
+            "blendweight" => Ok(Self::BlendWeight),
+            "blendindices" => Ok(Self::BlendIndices),
+            "psize" => Ok(Self::PSize),
             s => {
-                if s.starts_with("TextureCoord(") {
+                if s.starts_with("color(") {
+                    Ok(s[6..].split(')').next().unwrap().parse::<usize>().map(|i| Self::Color(i))?)
+                } else if s.starts_with("texturecoord(") {
                     Ok(s[13..].split(')').next().unwrap().parse::<usize>().map(|i| Self::TextureCoord(i))?)
-                } else if s.starts_with("Unknown(") {
+                } else if s.starts_with("unknown(") {
                     Ok(s[8..].split(')').next().unwrap().parse::<usize>().map(|i| Self::Unknown(i))?)
-                } else if s.starts_with("Pad(") {
+                } else if s.starts_with("pad(") {
                     Ok(s[4..].split(')').next().unwrap().parse::<usize>().map(|i| Self::Pad(i))?)
                 } else {
                     Err(VertexUsageParseError)
                 }
             }
         }
+    }
+}
+
+impl <'py> IntoPyObject<'py> for VertexUsage {
+    type Target = <String as IntoPyObject<'py>>::Target;
+    type Output = <String as IntoPyObject<'py>>::Output;
+    type Error = <String as IntoPyObject<'py>>::Error;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        format!("{}", self).into_pyobject(py)
+    }
+}
+
+impl <'py> FromPyObject<'py> for VertexUsage {
+    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+        let s = String::extract_bound(ob)?;
+        s.parse().map_err(|e| PyErr::new::<PyTypeError, _>(format!("{}", e)))
     }
 }
 
@@ -1648,7 +1657,7 @@ impl VertexData {
 
     pub fn dump_bytes<O: Version + 'static>(&self) -> Vec<u8> {
         match self {
-            Self { usage: VertexUsage::BlendWeight(), val: VertexTypes::Unorm4x8(vals) } => dump_bytes!(O, vals.iter().map(|x| ((x & 0xFF0000) >> 16) | ((x & 0xFF) << 16) | (x & 0xFF00FF00)).collect::<Vec<_>>()),
+            Self { usage: VertexUsage::BlendWeight, val: VertexTypes::Unorm4x8(vals) } => dump_bytes!(O, vals.iter().map(|x| ((x & 0xFF0000) >> 16) | ((x & 0xFF) << 16) | (x & 0xFF00FF00)).collect::<Vec<_>>()),
             Self { val: VertexTypes::Pad(vals), .. } => dump_bytes!(O, vals),
             Self { val: VertexTypes::Unorm4x8(vals), .. } => dump_bytes!(O, vals),
             Self { val: VertexTypes::Vector2(x, y), .. } => dump_bytes!(O, x.iter().zip(y).map(|(&x, &y)| Vector2{x,y}).collect::<Vec<_>>()),
@@ -1667,7 +1676,7 @@ impl VertexData {
             }
         }
         match self {
-            Self { usage: VertexUsage::Normal(), val: VertexTypes::Unorm4x8(vals) } => {
+            Self { usage: VertexUsage::Normal, val: VertexTypes::Unorm4x8(vals) } => {
                 dump_bytes!(PC, vals.iter().map(|x|
                     conv_val((x >> 24) & 0xff) << 24 | 
                     conv_val((x >> 16) & 0xff) << 16 | 
@@ -1678,7 +1687,6 @@ impl VertexData {
             _ => self.dump_bytes::<PC>()
         }
     }
-
     
     pub fn from_gltf(&mut self, mut data: GltfData) -> Result<(), VertexDataParseError> {
         use gltf::accessor::DataType;
@@ -1693,7 +1701,7 @@ impl VertexData {
         }
 
         match self {
-            Self { usage: VertexUsage::BlendWeight(), val: VertexTypes::Unorm4x8(vals) } => {
+            Self { usage: VertexUsage::BlendWeight, val: VertexTypes::Unorm4x8(vals) } => {
                 assert!(data.ty == DataType::U8);
                 assert!(data.m == 4);
                 data.ty = DataType::U32;
@@ -1702,7 +1710,7 @@ impl VertexData {
                     .into_iter().map(|x| ((x & 0xFF0000) >> 16) | ((x & 0xFF) << 16) | (x & 0xFF00FF00))
                 );
             },
-            Self { usage: VertexUsage::Normal(), val: VertexTypes::Unorm4x8(vals) } => {
+            Self { usage: VertexUsage::Normal, val: VertexTypes::Unorm4x8(vals) } => {
                 assert!(data.ty == DataType::I8);
                 assert!(data.m == 3);
                 data.ty = DataType::U32;
@@ -1714,7 +1722,7 @@ impl VertexData {
                     conv_val(x & 0xff)
                 ));
             },
-            Self { usage: VertexUsage::Normal() | VertexUsage::Position(), val: VertexTypes::Vector4(x,y,z,w) } => {
+            Self { usage: VertexUsage::Normal | VertexUsage::Position, val: VertexTypes::Vector4(x,y,z,w) } => {
                 assert!(data.ty == DataType::F32);
                 assert!(data.m == 3);
                 data.m = 4;
@@ -1744,12 +1752,12 @@ impl VertexData {
     pub fn min(&self) -> Option<serde_json::value::Value> {
         use serde_json::json;
         match self {
-            Self { usage: VertexUsage::Position(), val: VertexTypes::Vector3(x,y,z) } => Some(json!(vec![
+            Self { usage: VertexUsage::Position, val: VertexTypes::Vector3(x,y,z) } => Some(json!(vec![
                     x.iter().copied().reduce(f32::min), 
                     y.iter().copied().reduce(f32::min), 
                     z.iter().copied().reduce(f32::min)
             ])),
-            Self { usage: VertexUsage::Position(), val: VertexTypes::Vector4(x,y,z,..) } => Some(json!(vec![
+            Self { usage: VertexUsage::Position, val: VertexTypes::Vector4(x,y,z,..) } => Some(json!(vec![
                     x.iter().copied().reduce(f32::min), 
                     y.iter().copied().reduce(f32::min), 
                     z.iter().copied().reduce(f32::min),
@@ -1761,12 +1769,12 @@ impl VertexData {
     pub fn max(&self) -> Option<serde_json::value::Value> {
         use serde_json::json;
         match self {
-            Self { usage: VertexUsage::Position(), val: VertexTypes::Vector3(x,y,z) } => Some(json!(vec![
+            Self { usage: VertexUsage::Position, val: VertexTypes::Vector3(x,y,z) } => Some(json!(vec![
                     x.iter().copied().reduce(f32::max), 
                     y.iter().copied().reduce(f32::max), 
                     z.iter().copied().reduce(f32::max)
             ])),
-            Self { usage: VertexUsage::Position(), val: VertexTypes::Vector4(x,y,z,..) } => Some(json!(vec![
+            Self { usage: VertexUsage::Position, val: VertexTypes::Vector4(x,y,z,..) } => Some(json!(vec![
                     x.iter().copied().reduce(f32::max), 
                     y.iter().copied().reduce(f32::max), 
                     z.iter().copied().reduce(f32::max),
@@ -1778,7 +1786,7 @@ impl VertexData {
     pub fn component_type(&self) -> gltf::accessor::DataType {
         use gltf::accessor::DataType;
         match self {
-            Self { usage: VertexUsage::Normal(), val: VertexTypes::Unorm4x8(..) } => DataType::I8,
+            Self { usage: VertexUsage::Normal, val: VertexTypes::Unorm4x8(..) } => DataType::I8,
             Self { val: VertexTypes::Unorm4x8(..), .. } => DataType::U8,
             Self { val: VertexTypes::Pad(..), .. } => DataType::U32,
             Self { val: VertexTypes::Vector2(..), .. } => DataType::F32,
@@ -1791,8 +1799,8 @@ impl VertexData {
     pub fn dimensions(&self) -> gltf::accessor::Dimensions {
         use gltf::accessor::Dimensions;
         match self {
-            Self { usage: VertexUsage::Normal(), val: VertexTypes::Unorm4x8(..) } => Dimensions::Vec3,
-            Self { usage: VertexUsage::Normal() | VertexUsage::Position(), val: VertexTypes::Vector4(..) } => Dimensions::Vec3,
+            Self { usage: VertexUsage::Normal, val: VertexTypes::Unorm4x8(..) } => Dimensions::Vec3,
+            Self { usage: VertexUsage::Normal | VertexUsage::Position, val: VertexTypes::Vector4(..) } => Dimensions::Vec3,
             Self { val: VertexTypes::Unorm4x8(..), .. } => Dimensions::Vec4,
             Self { val: VertexTypes::Pad(..), .. } => Dimensions::Scalar,
             Self { val: VertexTypes::Vector2(..), .. } => Dimensions::Vec2,
@@ -1804,144 +1812,42 @@ impl VertexData {
 
     pub fn stride(&self) -> Option<usize> {
         match self {
-            Self { usage: VertexUsage::Normal(), val: VertexTypes::Unorm4x8(..) } => Some(4),
-            Self { usage: VertexUsage::Normal() | VertexUsage::Position(), val: VertexTypes::Vector4(..) } => Some(16),
+            Self { usage: VertexUsage::Normal, val: VertexTypes::Unorm4x8(..) } => Some(4),
+            Self { usage: VertexUsage::Normal | VertexUsage::Position, val: VertexTypes::Vector4(..) } => Some(16),
             _ => None,
         }
     }
     
     pub fn normalized(&self) -> bool {
         match self {
-            Self { usage: VertexUsage::Normal() | VertexUsage::BlendWeight(), val: VertexTypes::Unorm4x8(..) } => true,
+            Self { usage: VertexUsage::Normal | VertexUsage::BlendWeight, val: VertexTypes::Unorm4x8(..) } => true,
             _ => false
         }
     }
-}
 
-pub fn get_vertex_format<O: Version>(fmt1: u32, fmt2: u32) -> (Vec<VertexData>, usize) {
-    let mut fmt = Vec::new();
-    let mut s = 0;
-    if fmt2 == 0 {
-        let b1: bool = (fmt1 & 0x40000) != 0;
-        if fmt1 & 1 != 0 {
-            fmt.push(VertexData::new(if b1 {BaseTypes::VECTOR4_KEY} else {BaseTypes::VECTOR3_KEY}, VertexUsage::Position()));
-            s += if b1 {16} else {12};
-        }
-        if (fmt1 & 0x400) != 0 {
-            // blend weights
-            if b1 {
-                fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Unknown(3)));
-            } else {
-                fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::BlendWeight()));
-            }
-            s += 4;
-        }
-        if (fmt1 & 0x800) != 0 {
-            // blend indices
-            if b1 {
-                fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Unknown(4)));
-            } else {
-                fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::BlendIndices()));
-            }
-            s += 4;
-            // if b1 then Vec4 ?? 
-        }
-        if (fmt1 & 2) != 0 {
-            // binorm ?
-            let usage = VertexUsage::Unknown(0);
-            if b1 {
-                for _ in (0..(((s + 15) & 0xFFFF0) - s)).step_by(4) {
-                    fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Pad(s)));
-                    s += 4;
-                }
-                fmt.push(VertexData::new(BaseTypes::VECTOR4_KEY, usage));
-                s += 16;
-            } else if O::ps3() {
-                fmt.push(VertexData::new(BaseTypes::VECTOR3_KEY, usage));
-                s += 12;
-            } else {
-                fmt.push(VertexData::new(BaseTypes::COLOR_KEY, usage));
-                s += 4;
-            }
-        }
-        if fmt1 & 0x100 != 0 {
-            fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Unknown(1)));
-            s += 4;
-        }
-        if fmt1 & 0x200 != 0 {
-            fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Unknown(2)));
-            s += 4;
-        }
-        for i in 0..((fmt1 >> 2) & 0xF) {
-            // texture coords
-            fmt.push(VertexData::new(BaseTypes::VECTOR2_KEY, VertexUsage::TextureCoord(i as usize)));
-            s += 8;
-        }
-        if fmt1 & 0x40 != 0 {
-            if b1 {
-                for _ in (0..(((s + 15) & 0xFFFF0) - s)).step_by(4) {
-                    fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Pad(s)));
-                    s += 4;
-                }
-                fmt.push(VertexData::new(BaseTypes::VECTOR4_KEY, VertexUsage::Normal()));
-                s += 16;
-            } else {
-                fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Normal()));
-                s += 4;
-            }
-        }
-        if fmt1 & 0x80 != 0 {
-            fmt.push(VertexData::new(BaseTypes::VECTOR3_KEY, VertexUsage::PSize()));
-            s += 12;
-        }
-        if b1 {
-            for _ in (0..(((s + 15) & 0xFFFF0) - s)).step_by(4) {
-                fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Pad(s)));
-                s += 4;
-            }
-        }
-    } else {
-        if fmt1 & 1 != 0 {
-            fmt.push(VertexData::new(BaseTypes::VECTOR3_KEY, VertexUsage::Position()));
-            s += 12;
-        }
-        if fmt1 & 0x400 != 0 {
-            fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::BlendWeight()));
-            s += 4;
-        }
-        if fmt1 & 0x800 != 0 {
-            fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::BlendIndices()));
-            s += 4;
-        }
-        if fmt1 & 2 != 0{
-            fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Unknown(0)));
-            s += 4;
-        }
-        if fmt1 & 0x100 != 0 {
-            fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Unknown(1)));
-            s += 4;
-        }
-        if fmt1 & 0x200 != 0 {
-            fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Unknown(2)));
-            s += 4;
-        }
-        let n = (fmt1 >> 2) & 0xf;
-        if n <= 2 {
-            for i in 0..n {
-                fmt.push(VertexData::new(BaseTypes::VECTOR2_KEY, VertexUsage::TextureCoord(i as usize)));
-                s += 8;
-            }
-        }
-        if fmt1 & 0x40 != 0 {
-            fmt.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Normal()));
-            s += 4;
-        }
-        if fmt1 & 0x80 != 0 {
-            fmt.push(VertexData::new(BaseTypes::VECTOR3_KEY, VertexUsage::PSize()));
-            s += 12;
+    pub fn order(&self) -> usize {
+        match self {
+            VertexData { usage: VertexUsage::Position, .. } => 0,
+            VertexData { usage: VertexUsage::BlendWeight | VertexUsage::Pad(0), .. } => 1,
+            VertexData { usage: VertexUsage::BlendIndices | VertexUsage::Pad(1), .. } => 2,
+            VertexData { usage: VertexUsage::Pad(2), .. } => 3,
+            VertexData { usage: VertexUsage::Pad(3), .. } => 4,
+            VertexData { usage: VertexUsage::Pad(4), .. } => 5,
+            VertexData { usage: VertexUsage::Normal, .. } => 6,
+            VertexData { usage: VertexUsage::Color(0), .. } => 7,
+            VertexData { usage: VertexUsage::Color(1), .. } => 8,
+            VertexData { usage: VertexUsage::TextureCoord(0), .. } => 9,
+            VertexData { usage: VertexUsage::TextureCoord(1), .. } => 10,
+            VertexData { usage: VertexUsage::TextureCoord(2), .. } => 11,
+            VertexData { usage: VertexUsage::TextureCoord(3), .. } => 12,
+            VertexData { usage: VertexUsage::Pad(5), .. } => 13,
+            VertexData { usage: VertexUsage::Pad(6), .. } => 14,
+            VertexData { usage: VertexUsage::Pad(7), .. } => 15,
+            VertexData { usage: VertexUsage::Tangent, .. } => 16,
+            VertexData { usage: VertexUsage::PSize, .. } => 17,
+            _ => usize::MAX
         }
     }
-    (fmt, s)
 }
 
 lazy_static::lazy_static! {
@@ -1960,6 +1866,207 @@ pub struct VertexBuffer {
 impl VertexBuffer {
     pub fn len(&self) -> usize {
         self.vals.first().map(|x| x.val.len()).unwrap_or(0)
+    }
+
+    pub fn v_size(&self) -> usize {
+        self.vals.iter().map(|x| x.val.size()).sum::<usize>()
+    }
+
+    pub fn from_vertex_format<V: Version>(fmt1: u32, fmt2: u32) -> Self {
+        let mut vals = Vec::new();
+        let mut s = 0;
+        if fmt2 == 0 {
+            let b1: bool = (fmt1 & 0x40000) != 0;
+            if fmt1 & 1 != 0 {
+                vals.push(VertexData::new(if b1 {BaseTypes::VECTOR4_KEY} else {BaseTypes::VECTOR3_KEY}, VertexUsage::Position));
+                s += if b1 {16} else {12};
+            }
+            if (fmt1 & 0x400) != 0 {
+                // blend weights
+                if b1 {
+                    vals.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Pad(0)));
+                } else {
+                    vals.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::BlendWeight));
+                }
+                s += 4;
+            }
+            if (fmt1 & 0x800) != 0 {
+                // blend indices
+                if b1 {
+                    vals.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Pad(1)));
+                } else {
+                    vals.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::BlendIndices));
+                }
+                s += 4;
+                // if b1 then Vec4 ?? 
+            }
+            if (fmt1 & 2) != 0 {
+                // normal
+                let usage = VertexUsage::Normal;
+                if b1 {
+                    let mut p = 2;
+                    for _ in (0..(((s + 15) & 0xFFFF0) - s)).step_by(4) {
+                        vals.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Pad(p)));
+                        s += 4;
+                        p += 1;
+                    }
+                    vals.push(VertexData::new(BaseTypes::VECTOR4_KEY, usage));
+                    s += 16;
+                } else if V::ps3() {
+                    vals.push(VertexData::new(BaseTypes::VECTOR3_KEY, usage));
+                    s += 12;
+                } else {
+                    vals.push(VertexData::new(BaseTypes::COLOR_KEY, usage));
+                    s += 4;
+                }
+            }
+            if fmt1 & 0x100 != 0 {
+                // color(0)
+                vals.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Color(0)));
+                s += 4;
+            }
+            if fmt1 & 0x200 != 0 {
+                // color(1)
+                vals.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Color(1)));
+                s += 4;
+            }
+            for i in 0..((fmt1 >> 2) & 0xF) {
+                // texture coords
+                vals.push(VertexData::new(BaseTypes::VECTOR2_KEY, VertexUsage::TextureCoord(i as usize)));
+                s += 8;
+            }
+            if fmt1 & 0x40 != 0 {
+                // tangent
+                let usage = VertexUsage::Tangent;
+                if b1 {
+                    let mut p = 5;
+                    for _ in (0..(((s + 15) & 0xFFFF0) - s)).step_by(4) {
+                        vals.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Pad(p)));
+                        s += 4;
+                        p += 1;
+                    }
+                    vals.push(VertexData::new(BaseTypes::VECTOR4_KEY, usage));
+                    s += 16;
+                } else {
+                    vals.push(VertexData::new(BaseTypes::COLOR_KEY, usage));
+                    s += 4;
+                }
+            }
+            if fmt1 & 0x80 != 0 {
+                vals.push(VertexData::new(BaseTypes::VECTOR3_KEY, VertexUsage::PSize));
+                s += 12;
+            }
+            if b1 {
+                let mut p = 8;
+                for _ in (0..(((s + 15) & 0xFFFF0) - s)).step_by(4) {
+                    vals.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Pad(p)));
+                    s += 4;
+                    p += 1;
+                }
+            }
+        } else {
+            if fmt1 & 1 != 0 {
+                vals.push(VertexData::new(BaseTypes::VECTOR3_KEY, VertexUsage::Position));
+                s += 12;
+            }
+            if fmt1 & 0x400 != 0 {
+                vals.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::BlendWeight));
+                s += 4;
+            }
+            if fmt1 & 0x800 != 0 {
+                vals.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::BlendIndices));
+                s += 4;
+            }
+            if fmt1 & 2 != 0 {
+                vals.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Normal));
+                s += 4;
+            }
+            if fmt1 & 0x100 != 0 {
+                vals.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Color(0)));
+                s += 4;
+            }
+            if fmt1 & 0x200 != 0 {
+                vals.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Color(1)));
+                s += 4;
+            }
+            let n = (fmt1 >> 2) & 0xf;
+            if n <= 2 {
+                for i in 0..n {
+                    vals.push(VertexData::new(BaseTypes::VECTOR2_KEY, VertexUsage::TextureCoord(i as usize)));
+                    s += 8;
+                }
+            }
+            if fmt1 & 0x40 != 0 {
+                vals.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Tangent));
+                //s += 4;
+            }
+            if fmt1 & 0x80 != 0 {
+                vals.push(VertexData::new(BaseTypes::VECTOR3_KEY, VertexUsage::PSize));
+                //s += 12;
+            }
+        }
+        Self { vals }
+    }
+
+    pub fn get_vertex_format<V: Version>(&self) -> u32 {
+        let mut fmt1 = 0u32;
+        for val in &self.vals {
+            match val {
+                VertexData { usage: VertexUsage::Position, val: VertexTypes::Vector3(..) } => {
+                    fmt1 |= 1;
+                },
+                VertexData { usage: VertexUsage::Position, val: VertexTypes::Vector4(..) } => {
+                    fmt1 |= 0x40001;
+                },
+                VertexData { usage: VertexUsage::BlendWeight, .. } => {
+                    fmt1 |= 0x400;
+                },
+                VertexData { usage: VertexUsage::BlendIndices, .. } => {
+                    fmt1 |= 0x800;
+                },
+                VertexData { usage: VertexUsage::Normal, val: VertexTypes::Unorm4x8(..) } => {
+                    fmt1 |= 0x2;
+                },
+                VertexData { usage: VertexUsage::Normal, val: VertexTypes::Vector4(..) } => {
+                    fmt1 |= 0x40002;
+                },
+                VertexData { usage: VertexUsage::PSize, .. } => {
+                    fmt1 |= 0x80;
+                },
+                VertexData { usage: VertexUsage::Tangent, val: VertexTypes::Unorm4x8(..) } => {
+                    fmt1 |= 40;
+                },
+                VertexData { usage: VertexUsage::Tangent, val: VertexTypes::Vector4(..) } => {
+                    fmt1 |= 0x40040;
+                },
+                VertexData { usage: VertexUsage::Color(0), .. } => {
+                    fmt1 |= 0x100;
+                },
+                VertexData { usage: VertexUsage::Color(1), .. } => {
+                    fmt1 |= 0x200;
+                },
+                VertexData { usage: VertexUsage::Pad(0), .. } => {
+                    fmt1 |= 0x40400;
+                },
+                VertexData { usage: VertexUsage::Pad(1), .. } => {
+                    fmt1 |= 0x40800;
+                },
+                VertexData { usage: VertexUsage::TextureCoord(0), .. } => {
+                    fmt1 |= 0x4;
+                },
+                VertexData { usage: VertexUsage::TextureCoord(1), .. } => {
+                    fmt1 |= 0x8;
+                },
+                VertexData { usage: VertexUsage::TextureCoord(2), .. } => {
+                    fmt1 |= 0x10;
+                },
+                VertexData { usage: VertexUsage::TextureCoord(3), .. } => {
+                    fmt1 |= 0x20;
+                },
+                _ => (),
+            }
+        }
+        fmt1
     }
 }
 
@@ -1998,16 +2105,15 @@ impl <'a> AsData<'a, '_> for VertexBuffer {
     type OutArgs = NoArgs;
 
     fn from_bytes<V: Version>(data: &[u8], info: Self::InArgs) -> Result<Self> {
-        let mut formats = FORMATS.lock().unwrap();
-        let (fmt, size) = formats.entry((info.fmt1, info.fmt2)).or_insert_with(|| {
-            get_vertex_format::<V>(info.fmt1, info.fmt2)
-        });
-        if info.size as usize % *size != 0 {
+        //let mut formats = FORMATS.lock().unwrap();
+        let fmt = VertexBuffer::from_vertex_format::<V>(info.fmt1, info.fmt2);
+        let size = fmt.v_size();
+        if info.size as usize % size != 0 {
             warn!("Vertex Buffer size is not a multiple of assumed size");
         }
-        let n = info.size as usize / *size;
+        let n = info.size as usize / size;
         let mut offset = info.offset as usize;
-        let mut vals = fmt.clone();
+        let mut vals = fmt.vals.clone();
         for _ in 0..n {
             // let mut val = Vec::with_capacity(fmt.len());
             for val in &mut vals {
@@ -2019,16 +2125,14 @@ impl <'a> AsData<'a, '_> for VertexBuffer {
         if V::xbox() {
             if (info.fmt1 & 0x80000 != 0) & (info.fmt1 & 0x400 == 0) {
                 info.fmt1 |= 0x400;
-                let (fmt, _) = formats.entry((info.fmt1, info.fmt2)).or_insert_with(|| {
-                    get_vertex_format::<V>(info.fmt1, info.fmt2)
-                });
-                let mut vals_new = fmt.clone();
-                let mut binorm = Vec::with_capacity(n);
-                let mut tan = Vec::with_capacity(n);
+                let fmt = VertexBuffer::from_vertex_format::<V>(info.fmt1, info.fmt2);
+                let mut vals_new = fmt.vals.clone();
+                let mut blend_inds = Vec::with_capacity(n);
+                let mut blend_weights = Vec::with_capacity(n);
                 for val in &mut vals {
                     match val {
                         VertexData { 
-                            usage: VertexUsage::BlendIndices(), 
+                            usage: VertexUsage::BlendIndices, 
                             val: VertexTypes::Unorm4x8(val),
                         } => {
                             for v in val {
@@ -2037,8 +2141,8 @@ impl <'a> AsData<'a, '_> for VertexBuffer {
                                 let c = (*v >> 16) & 0xFF;
                                 let d = (*v >> 24) & 0xFF;
                                 // println!("{}, {:?}",*v, (a,b,c,d));
-                                binorm.push((d << 24) | (d << 16) | (d << 8) | c);
-                                tan.push((a << 16) | (b << 8));
+                                blend_inds.push((d << 24) | (d << 16) | (d << 8) | c);
+                                blend_weights.push((a << 16) | (b << 8));
                             }
                         },
                         _ => (),
@@ -2047,11 +2151,11 @@ impl <'a> AsData<'a, '_> for VertexBuffer {
                 for val in &mut vals_new {
                     match val {
                         VertexData { 
-                            usage: VertexUsage::BlendIndices(), val
-                        } => *val = VertexTypes::Unorm4x8(binorm.clone()),
+                            usage: VertexUsage::BlendIndices, val
+                        } => *val = VertexTypes::Unorm4x8(blend_inds.clone()),
                         VertexData { 
-                            usage: VertexUsage::BlendWeight(), val
-                        } => *val = VertexTypes::Unorm4x8(tan.clone()),
+                            usage: VertexUsage::BlendWeight, val
+                        } => *val = VertexTypes::Unorm4x8(blend_weights.clone()),
                         _ => for val2 in &vals {
                             if val.usage == val2.usage {
                                 val.val = val2.val.clone();
@@ -2064,14 +2168,14 @@ impl <'a> AsData<'a, '_> for VertexBuffer {
             for val in &mut vals {
                 match val {
                     VertexData {
-                        usage: VertexUsage::Unknown(0), val: VertexTypes::Vector4(x, y, z, ..)
+                        usage: VertexUsage::Normal, val: VertexTypes::Vector4(x, y, z, ..)
                     } => {
                         x.iter_mut().for_each(|x| *x = *x/2.0 + 0.5);
                         y.iter_mut().for_each(|x| *x = *x/2.0 + 0.5);
                         z.iter_mut().for_each(|x| *x = *x/2.0 + 0.5);
                     },
                     VertexData {
-                        usage: VertexUsage::Unknown(0), val: VertexTypes::Unorm4x8(v)
+                        usage: VertexUsage::Normal, val: VertexTypes::Unorm4x8(v)
                     } => v.iter_mut().for_each(|val| {
                         let z_ = ((*val) & 0x3FF) ^ 0x200;
                         let y_ = (((*val) >> 10) & 0x3FF) ^ 0x200;
@@ -2081,7 +2185,7 @@ impl <'a> AsData<'a, '_> for VertexBuffer {
                         let z: u32 = (z_ as f32 - 4.0f32).div(4.0f32).round_ties_even().clamp(0.0, 255.0) as u32;
                         *val = (127 << 24) | (z << 16) | (y << 8) | x;
                     }),
-                    VertexData { usage: VertexUsage::Unknown(0), .. } => panic!("Unexpected vertex type for Unknown(0)"),
+                    VertexData { usage: VertexUsage::Normal, .. } => panic!("Unexpected type for vertex normals"),
                     _ => (),
                 }
             }
@@ -2091,13 +2195,13 @@ impl <'a> AsData<'a, '_> for VertexBuffer {
 
     fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
         let i = self.vals.iter().map(|x| x.val.len()).min().unwrap();
-        (0..i).flat_map(|i| self.vals.iter().flat_map(move |val| dump_bytes!(V, val.val.get(i)))).collect()
+        let sorted_vals: Vec<_> = self.vals.iter().sorted_by_key(|val| val.order()).collect();
+        (0..i).flat_map(|i| sorted_vals.iter().flat_map(move |val| dump_bytes!(V, val.val.get(i)))).collect()
     }
 
     fn size<V: Version>(&self) -> usize {
         self.vals.iter().map(|x| x.size()).sum::<usize>()
     }
-    
 }
 
 #[basicpymethods]
@@ -2106,6 +2210,15 @@ impl <'a> AsData<'a, '_> for VertexBuffer {
 pub enum IndexBuffer {
     U16 { vals: Vec<u16> },
     U32 { vals: Vec<u32> },
+}
+
+impl IndexBuffer {
+    pub fn len(&self) -> usize {
+        match self {
+            Self::U16 { vals } => vals.len(),
+            Self::U32 { vals } => vals.len(),
+        }
+    }
 }
 
 impl <'a> AsData<'a, '_> for IndexBuffer {

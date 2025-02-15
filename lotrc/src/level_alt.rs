@@ -1,4 +1,4 @@
-use std::{any::TypeId, collections::{hash_map::Entry, HashMap, HashSet}, ffi::OsStr, fs, path::Path, sync::Arc};
+use std::{any::TypeId, collections::{HashMap, HashSet}, ffi::OsStr, fs, path::Path, sync::Arc};
 use itertools::Itertools;
 use log::{warn, info};
 use serde::{Serialize, Deserialize};
@@ -34,9 +34,7 @@ pub struct Level {
     pub textures: IndexMap<Crc, bin::Tex>,
     pub animations: IndexMap<Crc, Animation>,
     pub foliages: IndexMap<Crc, Vec<(pak::FoliageInfo, pak::Foliage)>>,
-    //pub radiosity_vals: IndexMap<u32, Vec<u32>>,
     pub effects: IndexMap<Crc, GameObjs>,
-    //pub pfield_infos: Vec<pak::PFieldInfo>,
     pub animation_block_infos: Vec<pak::AnimationBlockInfo>,
     pub gfx_blocks: IndexMap<Crc, Vec<u8>>,
 
@@ -46,8 +44,6 @@ pub struct Level {
     pub block2_offsets: Vec<u32>,
 
     pub radiosity: Option<Radiosity>,
-
-    //pub vertex_formats: HashMap<(u32, u32), (Vec<pak::VertexData>, usize)>,
 
     pub pak_vals_a: Vec<pak::BlockAVal>,
 }
@@ -286,61 +282,6 @@ impl Level {
     }
     
     pub fn to_data<O: Version + 'static>(&self, mp: Option<&MultiProgress>) -> Result<(Vec<u8>, Vec<u8>, DumpInfos)> {
-        fn dump_vertex_data<O: Version + 'static>(model: &mut Model) -> Option<((Crc, u32), Vec<u8>)> {
-            fn pack_vbuff<O: Version + 'static>(vbuffs: &mut Vec<pak::VBuffInfo>, vertex_data: &Vec<pak::VertexBuffer>, i: usize, vbuff_map: &mut HashMap<usize, (u32, u32)>, data: &mut Vec<u8>) -> (u32, u32) {
-                if i == 0xFFFFFFFF {
-                    return (0, 0);
-                }
-                match vbuff_map.entry(i) {
-                    Entry::Occupied(val) => *val.get(),
-                    Entry::Vacant(val) => {
-                        data.extend(vec![0u8; ((data.len() + 15) & 0xFFFFFFF0) - data.len()]);
-                        let info = &mut vbuffs[i];
-                        let vals = dump_bytes!(O, vertex_data[i]);
-                        info.offset = data.len() as u32;
-                        info.size = vals.len() as u32;
-                        data.extend(vals);
-                        *val.insert((vertex_data[i].vals.iter().map(|x| x.val.size()).sum::<usize>() as u32, info.size)) 
-                    }
-                }
-            }
-
-            if model.vertex_data.len() != 0 || model.index_data.len() != 0 {
-                let size = model.vbuffs.iter().map(|x| x.size + x.offset).chain(model.ibuffs.iter().map(|x| x.size + x.offset)).max().unwrap();
-
-                let mut data = Vec::with_capacity(size as usize);
-                let mut vbuff_map = HashMap::with_capacity(model.vbuffs.len());
-                let mut ibuffs = HashSet::with_capacity(model.ibuffs.len());
-                for buffer_info in &mut model.buffer_infos {
-                    (
-                        buffer_info.v_size, 
-                        buffer_info.vbuff_size
-                    ) = pack_vbuff::<O>(&mut model.vbuffs, &model.vertex_data, buffer_info.vbuff_info_offset as usize, &mut vbuff_map, &mut data);
-                    (
-                        buffer_info.v_size_2, 
-                        buffer_info.vbuff_size_2
-                    ) = pack_vbuff::<O>(&mut model.vbuffs, &model.vertex_data, buffer_info.vbuff_info_offset_2 as usize, &mut vbuff_map, &mut data);
-                    (
-                        buffer_info.v_size_3, 
-                        buffer_info.vbuff_size_3
-                    ) = pack_vbuff::<O>(&mut model.vbuffs, &model.vertex_data, buffer_info.vbuff_info_offset_3 as usize, &mut vbuff_map, &mut data);
-                    let i = buffer_info.ibuff_info_offset as usize;
-                    if i != 0xFFFFFFFF && !ibuffs.contains(&i) {
-                        ibuffs.insert(i);
-                        data.extend(vec![0u8; ((data.len() + 15) & 0xFFFFFFF0) - data.len()]);
-                        let info = &mut model.ibuffs[i];
-                        let vals = dump_bytes!(O, model.index_data[i]);
-                        info.offset = data.len() as u32;
-                        info.size = vals.len() as u32;
-                        data.extend(vals);
-                    }
-                }
-
-                Some(((model.info.asset_key.clone(), model.info.asset_type), data))
-            } else {
-                None
-            }
-        }
         let time = Instant::now();
         info!("compressing level");
 
@@ -589,24 +530,22 @@ impl Level {
             );    
         }
         // should be sorted in the order that they appear the level block
-        for key in normal.into_iter().chain(collision_road) {
-            sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string())});
-            let mut model = self.models.get(key).unwrap().clone();
-            if let Some(val) = dump_vertex_data::<O>(&mut model) {
-                model_data.push(val);
-            }
-            block1.extend(model.dump::<O>(block1.len(), &mut infos));
+        for model in normal.into_iter().chain(collision_road).map(|key| self.models.get(key).unwrap()) {
+            sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(model.info.key.to_string())});
+            let (vals, mesh_vals) = model.dump::<O>(block1.len(), &mut infos);
+            model_data.push(((model.info.asset_key.clone(), model.info.asset_type), mesh_vals));
+            block1.extend(vals);
             block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         }
         let terrain_start_offset = block1.len() as u32;
-        block1.extend(vec![0xFFu8; 16]);
-        for key in terrain {
-            sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string())});
-            let mut model = self.models.get(key).unwrap().clone();
-            if let Some(val) = dump_vertex_data::<O>(&mut model) {
-                model_data.push(val);
-            }
-            block1.extend(model.dump_terrain::<O>(block1.len(), terrain_start_offset, &mut infos));
+        if !terrain.is_empty() {
+            block1.extend(vec![0xFFu8; 16]);
+        }
+        for model in terrain.into_iter().map(|key| self.models.get(key).unwrap()) {
+            sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(model.info.key.to_string())});
+            let (vals, mesh_vals) = model.dump_terrain::<O>(block1.len(), terrain_start_offset, &mut infos);
+            model_data.push(((model.info.asset_key.clone(), model.info.asset_type), mesh_vals));
+            block1.extend(vals);
         }
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
 
@@ -623,11 +562,9 @@ impl Level {
 
         if let Some(model) = self.models.get(&Crc::Key(key_occluder)) {
             sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(model.info.key.to_string())});
-            let mut model = model.clone();
-            if let Some(val) = dump_vertex_data::<O>(&mut model) {
-                model_data.push(val);
-            }
-            block1.extend(model.dump::<O>(block1.len(), &mut infos));
+            let (vals, mesh_vals) = model.dump::<O>(block1.len(), &mut infos);
+            model_data.push(((model.info.asset_key.clone(), model.info.asset_type), mesh_vals));
+            block1.extend(vals);
             block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         }
         info!("models & foliages in {:?}", time.elapsed());
@@ -663,8 +600,8 @@ impl Level {
         bar.as_ref().map(|x| { x.inc(1); x.set_message("block1") }); 
         sub_bar.as_ref().map(|x| { x.set_length(0); x.reset() });
 
-
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
+        //block1.extend(vec![0u8; ((block1.len() + 511) & 0xFFFFFE00) - block1.len()]);
         pak_header.sub_blocks1_offset = block1.len() as u32;
         block1.extend(dump_bytes!(O, self.sub_blocks1, sub_bar.clone().into()));
         pak_header.string_keys_offset = block1.len() as u32;

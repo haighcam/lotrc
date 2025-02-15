@@ -14,7 +14,7 @@ use crate::{
 };
 
 #[basicpymethods(no_bytes)]
-#[pyclass(module="pak_alt", name="Shape", get_all, set_all)]
+#[pyclass(module="pak_alt", get_all, set_all)]
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PyMethods)]
 pub struct Shape {
     pub info: ShapeInfo,

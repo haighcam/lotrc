@@ -1,5 +1,10 @@
 use super::*;
 
+// scalar quantization
+// Bits8
+// Bits16
+//
+
 #[basicpymethods]
 #[pyclass(module="pak.animation", get_all, set_all)]
 #[derive(Debug, Clone, Serialize, Deserialize, PyMethods)]
@@ -151,119 +156,130 @@ impl AsData<'_, '_> for HkaSplineSkeletalAnimationObj1 {
     }
 }
 
-
 #[basicpymethods]
 #[pyclass(module="pak.animation", get_all, set_all)]
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
-pub struct HkaSplineSkeletalAnimationObj2Type1 { a: u32 }
+pub struct RotationPolar32 { a: u32 }
 
 #[basicpymethods]
 #[pyclass(module="pak.animation", get_all, set_all)]
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
 // should be (u8, u8, u8, u16) but for xbox conv it is (u8, u8, u8, u8, u8)
-pub struct HkaSplineSkeletalAnimationObj2Type2 { a: u8, b: u8, c: u8, d: u8, e: u8 }
+pub struct RotationThreeComp40 { a: u8, b: u8, c: u8, d: u8, e: u8 }
 
 #[basicpymethods]
 #[pyclass(module="pak.animation", get_all, set_all)]
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
-pub struct HkaSplineSkeletalAnimationObj2Type3 { a: u16, b: u16, c: u16 }
+pub struct RotationThreeComp48 { a: u16, b: u16, c: u16 }
 
 #[basicpymethods]
 #[pyclass(module="pak.animation", get_all, set_all)]
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
-pub struct HkaSplineSkeletalAnimationObj2Type4 { a: u8, b: u8, c: u8}
+pub struct RotationThreeComp24 { a: u8, b: u8, c: u8}
 
 #[basicpymethods]
 #[pyclass(module="pak.animation", get_all, set_all)]
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
-pub struct HkaSplineSkeletalAnimationObj2Type5 { a: u8, b: u8 }
+pub struct RotationStraight16 { a: u8, b: u8 }
 
 #[basicpymethods]
 #[pyclass(module="pak.animation", get_all, set_all)]
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
-pub struct HkaSplineSkeletalAnimationObj2Type6 { a: u32, b: u32, c: u32, d: u32 }
+pub struct RotationUncompressed { a: f32, b: f32, c: f32, d: f32 }
 
 #[basicpymethods]
 #[pyclass(module="pak.animation", get_all, set_all)]
 #[derive(Debug, Clone, Serialize, Deserialize, PyMethods)]
-pub enum HkaSplineSkeletalAnimationObj2Types{
-    Empty(),
-    Type1(Vec<HkaSplineSkeletalAnimationObj2Type1>),
-    Type2(Vec<HkaSplineSkeletalAnimationObj2Type2>),
-    Type3(Vec<HkaSplineSkeletalAnimationObj2Type3>),
-    Type4(Vec<HkaSplineSkeletalAnimationObj2Type4>),
-    Type5(Vec<HkaSplineSkeletalAnimationObj2Type5>),
-    Type6(Vec<HkaSplineSkeletalAnimationObj2Type6>),
+pub enum RotationQuantization {
+    Polar32(Vec<RotationPolar32>),
+    ThreeComp40(Vec<RotationThreeComp40>),
+    ThreeComp48(Vec<RotationThreeComp48>),
+    ThreeComp24(Vec<RotationThreeComp24>),
+    Straight16(Vec<RotationStraight16>),
+    Uncompressed(Vec<RotationUncompressed>),
+    Empty()
 }
 
-impl Default for HkaSplineSkeletalAnimationObj2Types {
+impl Default for RotationQuantization {
     fn default() -> Self { 
         Self::Empty()
     }
 }
 
-impl AsData<'_, '_> for HkaSplineSkeletalAnimationObj2Types {
+impl AsData<'_, '_> for RotationQuantization {
     type InArgs = (usize, u8);
     type OutArgs = NoArgs;
     fn from_bytes<V: Version>(data: &[u8], (num, kind): Self::InArgs) -> Result<Self> {
         Ok(match kind {
-            0 =>  Self::Type1(from_bytes!(V, &data[..], num)?),
-            1 =>  Self::Type2(from_bytes!(V, &data[..], num)?),
-            2 =>  Self::Type3(from_bytes!(V, &data[..], num)?),
-            3 =>  Self::Type4(from_bytes!(V, &data[..], num)?),
-            4 =>  Self::Type5(from_bytes!(V, &data[..], num)?),
-            5 =>  Self::Type6(from_bytes!(V, &data[..], num)?),
-            _ => panic!("Illegal Type for spline thingy")
+            0 =>  Self::Polar32(from_bytes!(V, &data[..], num)?),
+            1 =>  Self::ThreeComp40(from_bytes!(V, &data[..], num)?),
+            2 =>  Self::ThreeComp48(from_bytes!(V, &data[..], num)?),
+            3 =>  Self::ThreeComp24(from_bytes!(V, &data[..], num)?),
+            4 =>  Self::Straight16(from_bytes!(V, &data[..], num)?),
+            5 =>  Self::Uncompressed(from_bytes!(V, &data[..], num)?),
+            _ => panic!("Invalid Rotation Compression method")
         })
     }
 
     fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
         match self {
-            Self::Type1(vals) => dump_bytes!(V, vals),
-            Self::Type2(vals) => dump_bytes!(V, vals),
-            Self::Type3(vals) => dump_bytes!(V, vals),
-            Self::Type4(vals) => dump_bytes!(V, vals),
-            Self::Type5(vals) => dump_bytes!(V, vals),
-            Self::Type6(vals) => dump_bytes!(V, vals),
-            _ => panic!("Illegal Type for spline thingy")
+            Self::Polar32(vals) => dump_bytes!(V, vals),
+            Self::ThreeComp40(vals) => dump_bytes!(V, vals),
+            Self::ThreeComp48(vals) => dump_bytes!(V, vals),
+            Self::ThreeComp24(vals) => dump_bytes!(V, vals),
+            Self::Straight16(vals) => dump_bytes!(V, vals),
+            Self::Uncompressed(vals) => dump_bytes!(V, vals),
+            _ => vec![]
         }
     }
 
     fn size<V: Version>(&self) -> usize {
         match self {
-            Self::Type1(vals) => vals.size::<V>(),
-            Self::Type2(vals) => vals.size::<V>(),
-            Self::Type3(vals) => vals.size::<V>(),
-            Self::Type4(vals) => vals.size::<V>(),
-            Self::Type5(vals) => vals.size::<V>(),
-            Self::Type6(vals) => vals.size::<V>(),
-            _ => panic!("Illegal Type for spline thingy")
+            Self::Polar32(vals) => vals.size::<V>(),
+            Self::ThreeComp40(vals) => vals.size::<V>(),
+            Self::ThreeComp48(vals) => vals.size::<V>(),
+            Self::ThreeComp24(vals) => vals.size::<V>(),
+            Self::Straight16(vals) => vals.size::<V>(),
+            Self::Uncompressed(vals) => vals.size::<V>(),
+            _ => 0
         }
     }
 }
 
-impl HkaSplineSkeletalAnimationObj2Types {
+impl RotationQuantization {
     pub fn empty(kind: u8) -> Self {
         match kind {
-            0 =>  Self::Type1(vec![]),
-            1 =>  Self::Type2(vec![]),
-            2 =>  Self::Type3(vec![]),
-            3 =>  Self::Type4(vec![]),
-            4 =>  Self::Type5(vec![]),
-            5 =>  Self::Type6(vec![]),
-            _ => panic!("Illegal Type for spline thingy")
+            0 =>  Self::Polar32(vec![]),
+            1 =>  Self::ThreeComp40(vec![]),
+            2 =>  Self::ThreeComp48(vec![]),
+            3 =>  Self::ThreeComp24(vec![]),
+            4 =>  Self::Straight16(vec![]),
+            5 =>  Self::Uncompressed(vec![]),
+            _ => Self::Empty()
         }
     }
 
     pub fn kind(&self) -> u8 {
         match self {
-            Self::Type1(_) => 0,
-            Self::Type2(_) => 1,
-            Self::Type3(_) => 2,
-            Self::Type4(_) => 3,
-            Self::Type5(_) => 4,
-            Self::Type6(_) => 5,
-            _ => panic!("Illegal Type for spline thingy")
+            Self::Polar32(_) => 0,
+            Self::ThreeComp40(_) => 1,
+            Self::ThreeComp48(_) => 2,
+            Self::ThreeComp24(_) => 3,
+            Self::Straight16(_) => 4,
+            Self::Uncompressed(_) => 5,
+            _ => panic!("Invalid Type for Rotation Quantization")
+        }
+    }
+
+    pub fn align(&self) -> u32 {
+        match self {
+            Self::Polar32(_) => 4,
+            Self::ThreeComp40(_) => 1,
+            Self::ThreeComp48(_) => 2,
+            Self::ThreeComp24(_) => 1,
+            Self::Straight16(_) => 2,
+            Self::Uncompressed(_) => 4,
+            _ => 0
         }
     }
 }
@@ -274,15 +290,10 @@ impl HkaSplineSkeletalAnimationObj2Types {
 pub struct HkaSplineSkeletalAnimationObj2 {
     pub nbytes: usize,
     pub flags: u8,
-    pub align: u32,
     pub s1: u16,
     pub s2: u8,
     pub data: Vec<u8>,
-    pub vals: HkaSplineSkeletalAnimationObj2Types,
-}
-
-impl HkaSplineSkeletalAnimationObj2 {
-    const ALIGNMENTS: [u32; 6] = [4, 1, 2, 1, 2, 4];
+    pub vals: RotationQuantization,
 }
 
 impl AsData<'_, '_> for HkaSplineSkeletalAnimationObj2 {
@@ -293,9 +304,8 @@ impl AsData<'_, '_> for HkaSplineSkeletalAnimationObj2 {
         let mut val = Self::default();
         let mut offset = 0;
         val.flags = flags;
-        val.vals = HkaSplineSkeletalAnimationObj2Types::empty(kind);
+        val.vals = RotationQuantization::empty(kind);
         if flags != 0 {
-            val.align = Self::ALIGNMENTS[kind as usize];
             if flags & 0xf0 == 0 {
                 val.s1 = 0;
                 val.s2 = 0;
@@ -308,7 +318,7 @@ impl AsData<'_, '_> for HkaSplineSkeletalAnimationObj2 {
                 offset += val.data.size::<V>();
             }
 
-            offset = ((offset as u32 + val.align - 1) & !(val.align - 1)) as usize;
+            offset = ((offset as u32 + val.vals.align() - 1) & !(val.vals.align() - 1)) as usize;
             val.vals = from_bytes!(V, &data[offset..], val.s1 as usize + 1, kind)?;
             offset += val.vals.size::<V>();   
         }
@@ -324,7 +334,7 @@ impl AsData<'_, '_> for HkaSplineSkeletalAnimationObj2 {
             data.extend(dump_bytes!(V, self.s2));
             data.extend(dump_bytes!(V, self.data));
         }
-        let off = ((data.len() as u32 + self.align - 1) & !(self.align - 1)) as usize;
+        let off = ((data.len() as u32 + self.vals.align() - 1) & !(self.vals.align() - 1)) as usize;
         data.extend(vec![0u8; off-data.len()]);
         data.extend(dump_bytes!(V, self.vals));
         data
@@ -449,7 +459,6 @@ impl <'a, 'b> AsData<'a, 'b> for HkaSplineSkeletalAnimation {
         }
         Ok(())
     }
-
 }
 
 #[basicpymethods]
@@ -466,13 +475,13 @@ pub struct Obj5Header {
 #[pyclass(module="pak.animation", get_all, set_all)]
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
 pub struct Obj5Val {
-    pub unk_0: u32,
-    pub unk_1: u32,
-    pub unk_2: u32,
-    pub unk_3: u32,
-    pub unk_4: u32,
-    pub unk_5: u32,
-    pub unk_6: u32,
+    pub unk_0: f32,
+    pub unk_1: f32,
+    pub unk_2: f32,
+    pub unk_3: f32,
+    pub unk_4: f32,
+    pub unk_5: f32,
+    pub unk_6: f32,
 }
 
 #[basicpymethods]
@@ -505,26 +514,26 @@ pub struct AnimationInfo {
     pub vals_num: u32,
     pub vals2_num: u32,
     pub unk_8: u32,
-    pub vala: u32,
-    pub unk_10: u32,
-    pub unk_11: u32,
-    pub data_offset: u32, // relative to block_starts
-    pub unk_13: f32,
-    pub unk_14: f32,
-    pub unk_15: f32,
-    pub block_starts_offset: u32, //relative to block_offset
-    pub block_starts_num: u32,  // relative to block_starts
-    pub block_starts2_offset: u32,
-    pub block_starts2_num: u32,
-    pub obj_c3_offset: u32, // unused, equal to block_start
-    pub obj_c3_num: u32, // unused, equal to block_start
-    pub obj_c4_offset: u32,
-    pub obj_c4_num: u32,
-    pub block_offset: u32,
-    pub block_size: u32,
-    pub obj3_num: u32,
-    pub obj3_offset: u32,
-    pub unk_28: u32,
+    pub vala: u32, // numFrames
+    pub unk_10: u32, // numBlocks
+    pub unk_11: u32, // maxFramesPerBlock
+    pub data_offset: u32, // relative to block_starts, maskAndQuantizationSize
+    pub unk_13: f32, // blockDuration
+    pub unk_14: f32, // blockInverseDuration
+    pub t_scale: f32, // frameDuration
+    pub block_starts_offset: u32, //relative to block_offset, blockOffsets
+    pub block_starts_num: u32,  // relative to block_starts, nunBlocks
+    pub block_starts2_offset: u32, // floatBlockOffsets
+    pub block_starts2_num: u32, // numFloatBlocks
+    pub obj_c3_offset: u32, // unused, equal to block_start, transformOffsets
+    pub obj_c3_num: u32, // unused, equal to block_start, numTransforms
+    pub obj_c4_offset: u32, // floatOffsets
+    pub obj_c4_num: u32, // numFloats
+    pub block_offset: u32, // data
+    pub block_size: u32, // dataSize
+    pub obj3_num: u32, // numEvents
+    pub obj3_offset: u32, // eventOffsets
+    pub bones_num1: u32, // bones is at least this + obj1_num long
     pub unk_29: u32,
     pub obj1_num: u32,
     pub bones_offset: u32,

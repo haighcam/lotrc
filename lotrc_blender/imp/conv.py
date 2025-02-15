@@ -35,3 +35,11 @@ def mat_from_blender(m):
         [-m[0][1], -m[2][1], m[1][1], -m[3][1]],
         [m[0][3], m[2][3], -m[1][3], m[3][3]],
     ]
+
+def to_json(val):
+    if isinstance(val, list):
+        return [val_to_json(i) for i in val]
+    elif val is None or isinstance(val, (str, bool, int, float)):
+        return val
+    else:
+        return val.to_json()

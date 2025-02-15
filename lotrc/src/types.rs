@@ -328,6 +328,12 @@ lazy_static::lazy_static! {
         Mutex::new(CONQUEST_STRINGS.split('\n').map(|x| (hash_string(x.as_bytes(), None), String::from(x))).collect())
     };
 
+    pub static ref ANIMATION_EVENTS: HashMap<Crc, Vec<u32>> = {
+        serde_json::from_str::<HashMap<String, Vec<String>>>(include_str!("../res/animation_events.json")).unwrap().into_iter().map(|(k, val)| (
+            Crc::Str(k), val.into_iter().map(|x| hash_string(x.as_bytes(), None)).collect()
+        )).collect()
+    };
+
     pub static ref DECOMP_LUA: Mutex<bool> = Mutex::new(false);
 
     pub static ref RECOMP_LUA: Mutex<bool> = Mutex::new(false);
@@ -341,6 +347,76 @@ lazy_static::lazy_static! {
     pub static ref ZIP: Mutex<bool> = Mutex::new(true);
 
     pub static ref GLTF: Mutex<bool> = Mutex::new(false);
+}
+
+#[pyfunction]
+#[pyo3(signature = (val=None))]
+pub fn decomp_lua(val: Option<bool>) -> bool {
+    let mut global = DECOMP_LUA.lock().unwrap();
+    if let Some(val) = val {
+        *global = val;
+    }
+    *global
+}
+
+#[pyfunction]
+#[pyo3(signature = (val=None))]
+pub fn recomp_lua(val: Option<bool>) -> bool {
+    let mut global = RECOMP_LUA.lock().unwrap();
+    if let Some(val) = val {
+        *global = val;
+    }
+    *global
+}
+
+#[pyfunction]
+#[pyo3(signature = (val=None))]
+pub fn unluac(val: Option<String>) -> String {
+    let mut global = UNLUAC.lock().unwrap();
+    if let Some(val) = val {
+        *global = val;
+    }
+    (*global).clone()
+}
+
+#[pyfunction]
+#[pyo3(signature = (val=None))]
+pub fn compression(val: Option<u32>) -> u32 {
+    let mut global = COMPRESSION.lock().unwrap();
+    if let Some(val) = val {
+        *global = flate2::Compression::new(val);
+    }
+    global.level()
+}
+
+#[pyfunction]
+#[pyo3(signature = (val=None))]
+pub fn anim_tables(val: Option<bool>) -> bool {
+    let mut global = ANIM_TABLES.lock().unwrap();
+    if let Some(val) = val {
+        *global = val;
+    }
+    *global
+}
+
+#[pyfunction]
+#[pyo3(name = "zip", signature = (val=None))]
+pub fn zip_(val: Option<bool>) -> bool {
+    let mut global = ZIP.lock().unwrap();
+    if let Some(val) = val {
+        *global = val;
+    }
+    *global
+}
+
+#[pyfunction]
+#[pyo3(signature = (val=None))]
+pub fn gltf(val: Option<bool>) -> bool {
+    let mut global = GLTF.lock().unwrap();
+    if let Some(val) = val {
+        *global = val;
+    }
+    *global
 }
 
 #[pyfunction]
@@ -1312,8 +1388,6 @@ impl AsData<'_, '_> for BaseTypes {
             Self::MatrixList(..) => O::size::<List>(),
         }
     }
-
-
 }
 
 #[basicpymethods]
@@ -1575,12 +1649,26 @@ pub struct StringKeysVal {
     pub offset: u32,
 }
 
-#[basicpymethods]
-#[pyclass(module="types", get_all, set_all)]
-#[derive(Default, Debug, Clone, Serialize, Deserialize, PyMethods)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct StringKeys {
     pub vals: Vec<Crc>,
+}
+
+impl <'py> IntoPyObject<'py> for StringKeys {
+    type Target = <Vec<String> as IntoPyObject<'py>>::Target;
+    type Output = <Vec<String> as IntoPyObject<'py>>::Output;
+    type Error = <Vec<String> as IntoPyObject<'py>>::Error;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        self.vals.into_pyobject(py)
+    }
+}
+
+impl <'py> FromPyObject<'py> for StringKeys {
+    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+        Ok(Self { vals: Vec::extract_bound(ob)? })
+    }
 }
 
 impl AsData<'_, '_> for StringKeys {

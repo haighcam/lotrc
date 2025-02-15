@@ -58,6 +58,9 @@ def add_skeleton(model, name, model_col, context):
     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
     context.scene.collection.objects.unlink(arma_obj)
     model_col.objects.link(arma_obj)
+
+    arma_obj['__lotrc__'] = ['bone_order']
+    arma_obj['bone_order'] = bones
     return arma_obj, bones
 
 def add_hk_skeleton(hk_constraint, name, model_col, context):
@@ -85,6 +88,11 @@ def add_hk_skeleton(hk_constraint, name, model_col, context):
     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
     context.scene.collection.objects.unlink(arma_obj)
     model_col.objects.link(arma_obj)
+
+    arma_obj['__lotrc__'] = ['info', 'vals2', 'bone_names', 'bone_order']
+    arma_obj['info'] = to_json(hk_constraint.info)
+    arma_obj['vals2'] = hk_constraint.vals2
+    arma_obj['bone_names'] = hk_constraint.bone_names
     return arma_obj, bones
    
 def add_collision_box(obj, shape, name):
@@ -92,12 +100,15 @@ def add_collision_box(obj, shape, name):
     mod = obj.modifiers.new(name, 'NODES')
     mod.node_group = tree
     mod[tree_in.outputs['half_extents'].identifier] = size_to_blender(shape.half_extents)
+    obj['__type__'] = 'Box'
+    return obj
 
 def add_collision_sphere(obj, shape, name):
     tree, tree_in, tree_out = GEOM_TREES['Sphere.COLLISION']
     mod = obj.modifiers.new(name, 'NODES')
     mod.node_group = tree
     mod[tree_in.outputs['radius'].identifier] = shape.radius
+    obj['__type__'] = 'Box'
     return obj
 
 def add_collision_cylinder(obj, shape, name):
@@ -107,6 +118,7 @@ def add_collision_cylinder(obj, shape, name):
     mod[tree_in.outputs['point1'].identifier] = pos_to_blender_single(shape.point1)
     mod[tree_in.outputs['point2'].identifier] = pos_to_blender_single(shape.point2)
     mod[tree_in.outputs['radius'].identifier] = shape.radius
+    obj['__type__'] = 'Cylinder'
     return obj
 
 def add_collision_capsule(obj, shape, name):
@@ -116,48 +128,64 @@ def add_collision_capsule(obj, shape, name):
     mod[tree_in.outputs['point1'].identifier] = pos_to_blender_single(shape.point1)
     mod[tree_in.outputs['point2'].identifier] = pos_to_blender_single(shape.point2)
     mod[tree_in.outputs['radius'].identifier] = shape.radius
+    obj['__type__'] = 'Capsule'
     return obj
 
-def add_collision(shape, col, base_name, i, skeleton, bones):
-    par_obj = bpy.data.objects.new(f"{base_name}.COLLISION{i}", None)
-    col.objects.link(par_obj)
-#    bone = skeleton.pose.bones[bones[shape.info.offset]]
-    if shape.info.kind != 0 and bones[shape.info.offset] != '':
-        par_obj.parent = skeleton
-        par_obj.parent_type = "BONE"
-        par_obj.parent_bone = bones[shape.info.offset]
-        # account for the position being at the tail of the bone
-        par_obj.matrix_local = Matrix.Translation([0, -0.2, 0])
-    par_obj.empty_display_size = 0.1
-    for j, hkshp in enumerate(shape.hk_shapes):
-        name = hkshp.__class__.__name__.split('_')[-1]
-        name = f"{base_name}.COLLISION{i}.{name}{j}"
-        mesh = bpy.data.meshes.new(name)
-        obj = bpy.data.objects.new(name, mesh)
-        obj.parent = par_obj
-        obj.display_type = 'WIRE'      
-        col.objects.link(obj)
-        if isinstance(hkshp, lotrc.pak_alt.HkShape.Box):
-            add_collision_box(obj, hkshp.info, name)
-        elif isinstance(hkshp, lotrc.pak_alt.HkShape.Sphere):
-            add_collision_sphere(obj, hkshp.info, name)
-        elif isinstance(hkshp, lotrc.pak_alt.HkShape.Capsule):
-            add_collision_capsule(obj, hkshp.info, name)
-        elif isinstance(hkshp, lotrc.pak_alt.HkShape.Cylinder):
-            add_collision_cylinder(obj, hkshp.info, name)
-        elif isinstance(hkshp, lotrc.pak_alt.HkShape.ConvexVertices):
-            mesh.from_pydata(pos_to_blender_alt(hkshp.shape.verts), [], [])
-        elif isinstance(hkshp, lotrc.pak_alt.HkShape.BVTreeMesh):
-            inds = hkshp.shape.inds
-            mesh.from_pydata(pos_to_blender_alt(hkshp.shape.verts), [], [inds[i:i+3] for i in range(0,len(inds),3)])
-        else:
-            return
-        
-        obj.matrix_local = Matrix.LocRotScale(
-            pos_to_blender_single(hkshp.info.translation),
-            quat_to_blender(hkshp.info.rotation),
-            (1,1,1)
-        )
+def add_collision(shapes, base_name, skeleton, bones):
+    col = bpy.data.collections.new(f'COLLISION.{base_name}')
+    for i, shape in enumerate(shapes):
+        par_obj = bpy.data.objects.new(f"COLLISION{i}.{base_name}", None)
+        par_obj['__lotrc__'] = ['info', 'extra']
+        par_obj['info'] = to_json(shape.info)
+        par_obj['extra'] = to_json(shape.extra)
+        col.objects.link(par_obj)
+        if shape.info.kind != 0 and bones[shape.info.offset] != '':
+            par_obj.parent = skeleton
+            par_obj.parent_type = "BONE"
+            par_obj.parent_bone = bones[shape.info.offset]
+            # account for the position being at the tail of the bone
+            par_obj.matrix_local = Matrix.Translation([0, -0.2, 0])
+        par_obj.empty_display_size = 0.1
+        for j, hkshp in enumerate(shape.hk_shapes):
+            name = hkshp.__class__.__name__.split('_')[-1]
+            name = f"COLLISION{i}.{name}{j}.{base_name}"
+            mesh = bpy.data.meshes.new(name)
+            obj = bpy.data.objects.new(name, mesh)
+            obj.parent = par_obj
+            obj.display_type = 'WIRE'
+            obj['__lotrc__'] = ['__type__', 'info']
+            obj['info'] = to_json(hkshp.info)
+            col.objects.link(obj)
+            if isinstance(hkshp, lotrc.pak_alt.HkShape.Box):
+                add_collision_box(obj, hkshp.info, name)
+            elif isinstance(hkshp, lotrc.pak_alt.HkShape.Sphere):
+                add_collision_sphere(obj, hkshp.info, name)
+            elif isinstance(hkshp, lotrc.pak_alt.HkShape.Capsule):
+                add_collision_capsule(obj, hkshp.info, name)
+            elif isinstance(hkshp, lotrc.pak_alt.HkShape.Cylinder):
+                add_collision_cylinder(obj, hkshp.info, name)
+            elif isinstance(hkshp, lotrc.pak_alt.HkShape.ConvexVertices):
+                mesh.from_pydata(pos_to_blender_alt(hkshp.shape.verts), [], [])
+                obj['__type__'] = 'ConvexVertices'
+                obj['__lotrc__'].extend(['norms', 'verts_extra'])
+                obj['norms'] = hkshp.shape.norms
+                obj['verts_extra'] = hkshp.shape.verts_extra
+            elif isinstance(hkshp, lotrc.pak_alt.HkShape.BVTreeMesh):
+                inds = hkshp.shape.inds
+                mesh.from_pydata(pos_to_blender_alt(hkshp.shape.verts), [], [inds[i:i+3] for i in range(0,len(inds),3)])
+                obj['__type__'] = 'BVTreeMesh'
+                obj['__lotrc__'].extend(['tree', 'inds'])
+                obj['tree'] = hkshp.shape.verts
+                obj['inds'] = hkshp.shape.inds
+            else:
+                return
+            
+            obj.matrix_local = Matrix.LocRotScale(
+                pos_to_blender_single(hkshp.info.translation),
+                quat_to_blender(hkshp.info.rotation),
+                (1,1,1)
+            )
+    return col
 
 def add_mesh(info, vertex_data, index_data, usage, name, col, obj_arma, skin_bones):
     mesh = bpy.data.meshes.new(name)
@@ -175,25 +203,26 @@ def add_mesh(info, vertex_data, index_data, usage, name, col, obj_arma, skin_bon
     offset = info.vbuff_info_offset_2
     if offset == 0xFFFFFFFF:
         offset = info.vbuff_info_offset
-    attrs = vertex_data[offset]
-    mesh.from_pydata(pos_to_blender(attrs.pop(lotrc.pak.VertexUsage.Position())), [], [inds[i:i+3] for i in range(0,len(inds),3)])
-    normals = attrs.pop(lotrc.pak.VertexUsage.Normal(), None)
+    attrs = {i: j for i,j in vertex_data[offset].items()}
+    mesh.from_pydata(pos_to_blender(attrs.pop('Position')), [], [inds[i:i+3] for i in range(0,len(inds),3)])
+    normals = attrs.pop('Normal', None)
     if normals is not None:
         if isinstance(normals, lotrc.pak.VertexTypes.Unorm4x8):
-            normals = np.frombuffer(np.array(normals[0], 'I').tobytes(), 'B').reshape(-1, 4).astype('f') / 127.0 - 1.0
+            normals = np.frombuffer(np.array(normals[0], 'I').tobytes(), 'B').reshape(-1, 4).astype('f') / 127.5 - 1.0
             #normals[:, [0,2]] *= normals[:, 3, None]
-        attribute = mesh.attributes.new(f'raw_norms', 'FLOAT_COLOR', 'POINT')
-        attribute.data.foreach_set('color', normals.flatten().copy())
+            attribute = mesh.attributes.new(f'raw_norms', 'FLOAT_COLOR', 'POINT')
+            attribute.data.foreach_set('color', normals.flatten().copy())
+        elif isinstance(normals, lotrc.pak.VertexTypes.Vector4):
+            normals = np.array([normals[0], normals[1], normals[2]]).T
         mesh.normals_split_custom_set_from_vertices(pos_to_blender(normals.T))
-
     
     for i in range(4):
-        uv = attrs.pop(lotrc.pak.VertexUsage.TextureCoord(i), None)
+        uv = attrs.pop(f'TextureCoord({i})', None)
         if uv is not None:
             uv_layer = mesh.uv_layers.new(name='UVMap' if i == 0 else f'UV{i}')
             uv_layer.uv.foreach_set('vector', np.array([uv[0],uv[1]], 'f').T[inds].flatten())
     
-    psize = attrs.pop(lotrc.pak.VertexUsage.PSize(), None)
+    psize = attrs.pop('PSize', None)
     if psize is not None:
         attribute = mesh.attributes.new(f'PSize', 'FLOAT_VECTOR', 'POINT')
         attribute.data.foreach_set('vector', [i for j in zip(psize[0], psize[1], psize[2]) for i in j])
@@ -201,8 +230,8 @@ def add_mesh(info, vertex_data, index_data, usage, name, col, obj_arma, skin_bon
         mod = obj.modifiers.new('Billboard', 'NODES')
         mod.node_group = tree
     
-    weights = attrs.pop(lotrc.pak.VertexUsage.BlendWeight(), None)
-    indices = attrs.pop(lotrc.pak.VertexUsage.BlendIndices(), None)
+    weights = attrs.pop('BlendWeight', None)
+    indices = attrs.pop('BlendIndices', None)
     if skinned and weights is not None and indices is not None:
         vertex_groups = [obj.vertex_groups.new(name=i) for i in skin_bones[info.skin_offset:info.skin_offset+info.skin_size]]
         n = len(weights[0])
@@ -236,14 +265,15 @@ def add_mesh(info, vertex_data, index_data, usage, name, col, obj_arma, skin_bon
             dat_name = 'value'
         else:
             continue
-        attr_name = attr.__class__.__name__.split('_')[-1]
-        attribute = mesh.attributes.new(f'{attr_name}{i}', ty, 'POINT')
+        attribute = mesh.attributes.new(attr, ty, 'POINT')
         attribute.data.foreach_set(dat_name, data)
     return obj
 
 def create_mat(level, info, model_name, i=''):
     base = info[0].base
     mat = bpy.data.materials.new(f"MAT{i}.{model_name}")
+    mat['__lotrc__'] = ['info']
+    mat['info'] = to_json(info)
     mat.use_nodes = True
     tree = mat.node_tree
     bsdf = tree.nodes.get("Principled BSDF")
@@ -329,7 +359,7 @@ def import_model(level, model, model_name, models_col, context):
     lotrc_props = context.scene.lotrc_props
     model_col = bpy.data.collections.new(model_name)
     models_col.children.link(model_col)
-                
+
     mats = [create_mat(level, info, model_name, i) for i, info in enumerate(model.mats)]
 
     if lotrc_props.models_skeleton:
@@ -339,7 +369,7 @@ def import_model(level, model, model_name, models_col, context):
         obj_arma, skin_bones = None, None
     if lotrc_props.models_hk_skeleton:
         obj_arma_hk, bones_hk = add_hk_skeleton(model.hk_constraint, model_name, model_col, context)
- 
+
     i = 0
     mesh_order = np.array([(i & 0x3FFFFFFF, i >> 30) for i in model.mesh_order], dtype='I').reshape(-1, 2)
     uses = np.zeros(len(mesh_order), 'I')
@@ -362,14 +392,11 @@ def import_model(level, model, model_name, models_col, context):
     vertex_data = model.vertex_data
     index_data = model.index_data
     for i, (info, usage, mat) in enumerate(zip(model.buffer_infos, uses, model.mat_order)):
-        if usage != 0:
-            mesh = add_mesh(
-                info, vertex_data, index_data, usage, 
-                f"MESH{i}.{model_name}", col, obj_arma, skin_bones
-            )
-            mesh.data.materials.append(mats[mat])
-        else:
-            mesh = None
+        mesh = add_mesh(
+            info, vertex_data, index_data, usage, 
+            f"MESH{i}.{model_name}", col, obj_arma, skin_bones
+        )
+        mesh.data.materials.append(mats[mat])
         meshes.append(mesh)
     
     # collections to organize meshes
@@ -409,11 +436,8 @@ def import_model(level, model, model_name, models_col, context):
     model_col['base'] = col_base
 
     if lotrc_props.models_collision and lotrc_props.models_skeleton:
-        collision_col = bpy.data.collections.new(f'COLLISION.{model_name}')
+        collision_col = add_collision(model.shapes, model_name, obj_arma, bones)
         model_col.children.link(collision_col)
-        for i, shape in enumerate(model.shapes):
-            add_collision(shape, collision_col, model_name, i, obj_arma, bones)
-
         model_col['collision'] = collision_col
     return model_col
 

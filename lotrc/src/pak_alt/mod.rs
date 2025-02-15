@@ -13,7 +13,7 @@ use indexmap::IndexMap;
 
 use lotrc_proc::{OrderedData, basicpymethods, PyMethods};
 use crate::{
-    types::{Crc, Vector4, Version, PC, from_bytes, dump_bytes, AsData, NoArgs, GameObj, BaseTypes, Color},
+    types::{Crc, Vector4, Version, PC, from_bytes, dump_bytes, AsData, NoArgs, GameObj, BaseTypes, Color, ANIMATION_EVENTS},
     pak::{
         ModelInfo, MatExtra, VBuffInfo, IBuffInfo, BufferInfo, HkConstraintInfo, HkConstraintData,
         ShapeInfo, Header, AnimationInfo, animation,  PFieldInfo,
@@ -59,15 +59,16 @@ pub struct TRS {
 }
 
 #[basicpymethods(no_bytes)]
-#[pyclass(module="pak_alt", name="HkConstraint", get_all, set_all)]
+#[pyclass(module="pak_alt", get_all, set_all)]
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PyMethods)]
 pub struct HkConstraint {
     pub info: HkConstraintInfo,
     pub bone_parents: Vec<i16>,
-    pub bone_names: Vec<(String, u32)>, // bones ?
+    pub bone_names: Vec<String>,
+    //pub bone_names: Vec<(String, u32)>, // bones ?, always 0, replace with list of strings
     pub bone_transforms: Vec<TRS>, // probably f32
     pub vals2: Vec<f32>, // probably f32
-    pub bone_order: Vec<Key2>, // bones in order of increasing crc, number is index unsorted order
+    //pub bone_order: Vec<Key2>, // bones in order of increasing crc, number is index unsorted order
 }
 
 impl <'a> AsData<'_, 'a> for HkConstraint {
@@ -85,20 +86,20 @@ impl <'a> AsData<'_, 'a> for HkConstraint {
         let string_offsets: Vec<u32> = from_bytes!(O, &data[info.bone_names_offset as usize..], info.bone_names_num as usize)?;
         let mut bone_names = Vec::with_capacity(string_offsets.len());
         for offset_ in string_offsets.iter() {
-            let (mut offset, val) = { 
+            let (mut offset, _val) = { 
                 let vals: Vec<u32> = from_bytes!(O, &data[*offset_ as usize..], 2)?;
                 (vals[0], vals[1])
             };
             let start = offset;
             while data[offset as usize] != 0 { offset += 1; }
             let string = String::from_utf8(data[start as usize..offset as usize].to_vec()).unwrap();
-            bone_names.push((string, val));
+            bone_names.push(string);
         }
         let bone_transforms = from_bytes!(O, &data[info.bone_transforms_offset as usize..], info.bone_transforms_num as usize)?;
         let vals2 = from_bytes!(O, &data[info.vals2_offset as usize..], info.vals2_num as usize * 42)?;
-        let bone_order = from_bytes!(O, &data[info.bone_order_offset as usize..], info.bone_order_num as usize)?;
+        //let bone_order = from_bytes!(O, &data[info.bone_order_offset as usize..], info.bone_order_num as usize)?;
         Ok(Self {
-            info, bone_parents, bone_names, bone_transforms, vals2, bone_order
+            info, bone_parents, bone_names, bone_transforms, vals2
         })
     }
 
@@ -121,9 +122,10 @@ impl <'a> AsData<'_, 'a> for HkConstraint {
         offset += vals.len();
         data.extend(vals);
 
+        let bone_order: Vec<_> = self.bone_names.iter().enumerate().map(|(i,val)| Key2 { key: Crc::Str(val.clone()), val: i as u32 }).sorted_by_key(|val| val.key.key()).collect();
         info.bone_order_offset = offset as u32;
-        info.bone_order_num = self.bone_order.len() as u16;
-        let vals = dump_bytes!(O, self.bone_order);
+        info.bone_order_num = bone_order.len() as u16;
+        let vals = dump_bytes!(O, bone_order);
         offset += vals.len();
         data.extend(vals);
 
@@ -141,9 +143,9 @@ impl <'a> AsData<'_, 'a> for HkConstraint {
         let mut string_offsets = vec![];
         let mut block2_off = info.bone_names_offset;
         let mut offset_off = info.bone_names_offset + 4 * self.bone_names.len() as u32;
-        for (string, val) in &self.bone_names {
+        for string in &self.bone_names {
             let string = string.as_bytes();
-            string_offsets.push([offset as u32, *val]);
+            string_offsets.push([offset as u32, 0]);
             offset += string.len();
             data.extend(string);
             let off: usize = (offset + 4) & 0xFFFFFFFC;
@@ -182,9 +184,13 @@ impl <'a> AsData<'_, 'a> for HkConstraint {
 #[pyclass(module="pak_alt", get_all, set_all)]
 #[derive(Debug, Clone, Serialize, Deserialize, PyMethods)]
 pub enum Mat {
+    //MaterialNormal
     Mat1(Mat1),
+    //MaterialVariation
     Mat2(Mat2),
+    //MaterialCharacterVariation
     Mat3(Mat3),
+    //MaterialTerrain
     Mat4(Mat4),
 }
 
@@ -330,6 +336,9 @@ impl <'a, 'b> AsData<'a, 'b> for Radiosity {
             let vals = dump_bytes!(V, offsets);
             offset += vals.len();
             data.extend(vals);
+            let off = (offset + 15) & 0xFFFFFFF0;
+            data.extend(vec![0u8; off-offset]);
+            offset = off;
         }
         data
     }
@@ -339,14 +348,61 @@ impl <'a, 'b> AsData<'a, 'b> for Radiosity {
     }
 }
 
+#[basicpymethods]
+#[pyclass(module="pak_alt", get_all, set_all)]
+#[derive(Debug, Clone, Serialize, Deserialize, PyMethods)]
+pub struct AnimationEvent {
+    pub event: Crc,
+    pub t: f32,
+    pub vals: [BaseTypes; 9],
+}
+
+impl Default for AnimationEvent {
+    fn default() -> Self {
+        Self { event: Crc::default(), t: 0.0, vals: [BaseTypes::Int(0), BaseTypes::Int(0), BaseTypes::Int(0), BaseTypes::Int(0), BaseTypes::Int(0), BaseTypes::Int(0), BaseTypes::Int(0), BaseTypes::Int(0), BaseTypes::Int(0)] }
+    }
+}
+
+impl AsData<'_, '_> for AnimationEvent {
+    type InArgs = NoArgs;
+    type OutArgs = NoArgs;
+
+    fn from_bytes<V: Version>(data: &[u8], _args: Self::InArgs) -> Result<Self> {
+        use std::convert::TryInto;
+        let mut offset = 0;
+        let t: f32 = from_bytes!(V, &data[offset..])?;
+        offset += t.size::<V>();
+        let event: Crc = from_bytes!(V, &data[offset..])?;
+        offset += event.size::<V>();
+        let vals = ANIMATION_EVENTS.get(&event).iter().flat_map(|x| x.iter().cloned())
+            .chain(std::iter::repeat(BaseTypes::INT_KEY)).take(9).map(|ty| {
+            let val: BaseTypes = from_bytes!(V, &data[offset..], ty)?;
+            offset += val.size::<V>();
+            Ok(val)
+        }).collect::<Result<Vec<_>>>()?.try_into().unwrap();
+        Ok(Self { event, t, vals })
+    }
+
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
+        dump_bytes!(V, self.t).into_iter()
+            .chain(dump_bytes!(V, self.event))
+            .chain(self.vals.iter().flat_map(|val| dump_bytes!(V, val)))
+            .collect()
+    }
+
+    fn size<V: Version>(&self) -> usize {
+        self.event.size::<V>() + self.t.size::<V>() + self.vals.iter().map(|x| x.size::<V>()).sum::<usize>()
+    }
+}
+
 #[basicpymethods(no_bytes)]
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PyMethods)]
 #[pyclass(module="pak_alt", get_all, set_all)]
 pub struct Animation {
     pub info: AnimationInfo,
     pub obj1: Vec<u32>,
-    pub obj2: Vec<u32>,
-    pub obj3: Vec<animation::Obj3>,
+    pub obj2: Vec<Vector4>,
+    pub obj3: Vec<AnimationEvent>,
     pub bones: Vec<Crc>,
     pub obj5_a: Vec<animation::Obj5Val>,
     pub obj5_b: Vec<animation::Obj5Val>,
@@ -368,8 +424,13 @@ impl <'a, 'b> AsData<'a, 'b> for Animation {
 
     fn from_bytes<V: Version>(data: &[u8], info: Self::InArgs) -> Result<Self> {
         let obj1 = from_bytes!(V, &data[info.obj1_offset as usize..], info.obj1_num as usize * 2)?;
-        let obj2 = from_bytes!(V, &data[info.obj2_offset as usize..], info.obj2_num as usize * 4)?;
-        let obj3 = from_bytes!(V, &data[info.obj3_offset as usize..], info.obj3_num as usize)?;
+        let obj2 = from_bytes!(V, &data[info.obj2_offset as usize..], info.obj2_num as usize)?;
+        let mut offset = info.obj3_offset as usize;
+        let obj3 = (0..info.obj3_num).into_iter().map(|_| {
+            let val: AnimationEvent = from_bytes!(V, &data[offset..])?;
+            offset += val.size::<V>();
+            Ok(val)
+        }).collect::<Result<Vec<_>>>()?;
         let bones = from_bytes!(V, &data[info.bones_offset as usize..], (info.vals_num + info.obj1_num) as usize)?;
         let (obj5_a, obj5_b) = if info.obj5_offset != 0 {
             let obj5_header: animation::Obj5Header = from_bytes!(V, &data[info.obj5_offset as usize..])?;
@@ -432,7 +493,7 @@ impl <'a, 'b> AsData<'a, 'b> for Animation {
         info.obj1_num = self.obj1.len() as u32 / 2;
         data.extend(dump_bytes!(V, self.obj1));
         info.obj2_offset = if self.obj2.is_empty() { 0 } else { data.len() as u32 };
-        info.obj2_num = self.obj2.len() as u32 / 4;
+        info.obj2_num = self.obj2.len() as u32;
         data.extend(dump_bytes!(V, self.obj2));
         
         info.vals_num = self.blocks[0].0.len() as u32;
@@ -494,7 +555,9 @@ impl <'a, 'b> AsData<'a, 'b> for Animation {
         } else {
             info.obj3_offset = data.len() as u32;
             info.obj3_num = self.obj3.len() as u32;
-            data.extend(dump_bytes!(V, self.obj3));
+            for obj in &self.obj3 {
+                data.extend(dump_bytes!(V, obj))
+            }
         }
         info.bones_offset = data.len() as u32;
         data.extend(dump_bytes!(V, self.bones));

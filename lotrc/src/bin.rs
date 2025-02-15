@@ -145,15 +145,11 @@ pub enum Tex {
         #[serde_as(as = "Vec::<serde_with::hex::Hex>")]
         levels: Vec<Vec<u8>>,
         info: TextureInfo,
-        format: u32,
-        kind: u32,
     },
     CubeTexture {
         #[serde_as(as = "Vec::<serde_with::hex::Hex>")]
         faces: Vec<Vec<u8>>,
         info: TextureInfo,
-        format: u32,
-        kind: u32,
     },
     Unknown { 
         #[serde_as(as = "Vec::<serde_with::hex::Hex>")]
@@ -176,17 +172,17 @@ impl Tex {
 
     fn get_img(&self, i: usize) -> Result<(Vec<u8>, usize, usize, u32)> {
         match self {
-            Self::Texture { levels, info, format, .. } => {
-                let height = (info.height >> i) as usize; 
-                let width = (info.width >> i) as usize; 
+            Self::Texture { levels, info } => {
+                let height = ((info.height >> i) as usize).max(1); 
+                let width = ((info.width >> i) as usize).max(1); 
                 get_img(
                     &levels.get(i).ok_or(anyhow::anyhow!("Invalid Index"))?[..], 
-                    height, width, *format
+                    height, width, info.format
                 )
             },
-            Tex::CubeTexture { faces, info, format, .. } => get_img(
+            Tex::CubeTexture { faces, info } => get_img(
                 &faces.get(i).ok_or(anyhow::anyhow!("Invalid Index"))?[..], 
-                info.height as usize, info.width as usize, *format
+                info.height as usize, info.width as usize, info.format
             ),
             _ => Err(anyhow::anyhow!("Unsupported Texture Type"))
         }
@@ -232,8 +228,8 @@ impl AsData<'_, '_> for Tex {
 impl Tex {
     pub fn kind(&self) -> u32 {
         match self {
-            Self::Texture { kind, .. } => *kind,
-            Self::CubeTexture { kind, .. } => *kind,
+            Self::Texture { info, .. } => info.asset_type,
+            Self::CubeTexture { info, .. } => info.asset_type,
             _ => 0,
         }
     }
@@ -255,7 +251,7 @@ impl Tex {
             return (vec![], vec![]);
         }
         match self {
-            Self::Texture { levels, format, .. } => match format {
+            Self::Texture { levels, info } => match info.format {
                 3 | 4 | 6 | 7 | 8 | 10 | 0xb | 0xc | 0x11 => {
                     if levels.len() > 1 {
                         (levels[0].clone(), levels[1..].iter().flatten().cloned().collect())
@@ -267,7 +263,7 @@ impl Tex {
                     (levels[0].clone(), levels[1].clone())
                 }
             },
-            Self::CubeTexture { faces, format, .. } => match format {
+            Self::CubeTexture { faces, info } => match info.format {
                 3 | 4 | 7 | 8 | 10 | 0xb | 0xc | 0x11 => (vec![], faces.iter().flatten().cloned().collect()),
                 _ => (faces[0].clone(), faces[1].clone()),
             },
@@ -293,13 +289,13 @@ impl Tex {
 
     pub fn to_file(&self, writer: Writer) -> Result<()> {
         match self {
-            Self::Texture { levels, info, format, .. } => {
+            Self::Texture { levels, info } => {
                 writer.with_extension("json").write(&serde_json::to_vec_pretty(info)?)?;
                 let mut dds = ddsfile::Dds::new_d3d(ddsfile::NewD3dParams {
                     height: info.height as u32,
                     width: info.width as u32,
                     depth: None, 
-                    format: get_format(*format).unwrap(),
+                    format: get_format(info.format).expect(format!("Unknown format {}", info.format).as_str()),
                     mipmap_levels: Some(levels.len() as u32), 
                     caps2: None
                 }).unwrap();
@@ -309,13 +305,13 @@ impl Tex {
                 dds.write(&mut out).unwrap();
                 writer.with_extension("dds").write(&out)?;
             },
-            Self::CubeTexture { faces, info, format, .. } => {
+            Self::CubeTexture { faces, info } => {
                 writer.with_extension("json").write(&serde_json::to_vec_pretty(info)?)?;
                 let mut dds = ddsfile::Dds::new_d3d(ddsfile::NewD3dParams { 
                     height: info.height as u32,
                     width: info.width as u32,
                     depth: None,
-                    format: get_format(*format).expect(format!("Unknown format {}", format).as_str()),
+                    format: get_format(info.format).expect(format!("Unknown format {}", info.format).as_str()),
                     mipmap_levels: None, 
                     caps2: Some(ddsfile::Caps2::CUBEMAP | ddsfile::Caps2::CUBEMAP_ALLFACES),
                 }).unwrap();
@@ -364,16 +360,12 @@ impl Tex {
 
     fn texture_from_data<O: Version>(data0: &[u8], data1: &[u8], info: &mut TextureInfo) -> Self {
         let sizes = (0..info.levels).map(|x| 2u32.pow(x as u32)).map(|x| (info.width as u32/x, info.height as u32/x)).collect::<Vec<_>>();
-        let mut format = info.format;
-        let kind = info.asset_type;
-        let (s, d) = match get_stride_width(format) {
+        let (s, d) = match get_stride_width(info.format) {
             Some((s,d)) => (s,d),
             None => {
-                warn!("Unhandled Texture Format {}", format);
+                warn!("Unhandled Texture Format {}", info.format);
                 return Self::Texture {
                     levels: vec![data0.to_vec(), data1.to_vec()],
-                    format,
-                    kind,
                     info: info.clone()
                 }
             }
@@ -392,7 +384,7 @@ impl Tex {
             levels
         } else {
             if info.levels == 1 {
-                vec![conv_img(&data[..], sizes[0].1 as usize, sizes[0].0 as usize, format).0]
+                vec![conv_img(&data[..], sizes[0].1 as usize, sizes[0].0 as usize, info.format).0]
             } else {
                 let data_sizes = block_sizes.iter().map(|(x,y)| (x.max(&32) * y.max(&32) * d) as usize).collect::<Vec<_>>();
                 let wide_img = info.width > info.height;
@@ -404,14 +396,14 @@ impl Tex {
                 for i in 0..info.levels as usize {
                     let (m, m_) = (sizes[i].0.min(sizes[i].1) as usize, sizes[i].0.max(sizes[i].1) as usize);
                     if m > 16 {
-                        levels.push(conv_img(&data[offset..offset+data_sizes[i]], sizes[i].1 as usize, sizes[i].0 as usize, format).0);
+                        levels.push(conv_img(&data[offset..offset+data_sizes[i]], sizes[i].1 as usize, sizes[i].0 as usize, info.format).0);
                         offset += data_sizes[i];
                     } else {
                         if m == 16 {
                             (packed_data, d, pw, _ph) = if wide_img {
-                                conv_img(&data[offset..], sizes[i].1 as usize*2, sizes[i].0 as usize, format)
+                                conv_img(&data[offset..], sizes[i].1 as usize*2, sizes[i].0 as usize, info.format)
                             } else {
-                                conv_img(&data[offset..], sizes[i].1 as usize, sizes[i].0 as usize*2, format)
+                                conv_img(&data[offset..], sizes[i].1 as usize, sizes[i].0 as usize*2, info.format)
                             };
                         }
                         if m >= 4 {
@@ -432,7 +424,6 @@ impl Tex {
                     }
                 }
                 if info.format == 13 {
-                    format = 6;
                     info.format = 6;
                     levels = levels.into_iter().enumerate().map(|(i, x)| decomp_bc4(&x[..], sizes[i].0.max(4) as usize, sizes[i].1.max(4) as usize)).collect();
                     levels[info.levels as usize-2] = bin_mip(&levels[info.levels as usize-3][..], sizes[info.levels as usize-3].0 as usize);
@@ -442,21 +433,17 @@ impl Tex {
             }
         };
 
-        Self::Texture { levels, format, kind, info: info.clone() }
+        Self::Texture { levels, info: info.clone() }
     }
 
     pub fn cube_from_data<O: Version>(data0: &[u8], data1: &[u8], info: &TextureInfo) -> Result<Self> {
-        let format = info.format;
-        let kind = info.asset_type;
         assert!(info.levels <= 1, "Cube Textures with > 1 level are unhanded");
-        let (s, d) = match get_stride_width(format) {
+        let (s, d) = match get_stride_width(info.format) {
             Some(val) => val,
             None => {
-                warn!("Unhandled Cube Texture Format {}", format);
+                warn!("Unhandled Cube Texture Format {}", info.format);
                 return Ok(Self::CubeTexture {
                     faces: vec![data0.to_vec(), data1.to_vec()],
-                    format,
-                    kind,
                     info: info.clone()
                 })
             }
@@ -476,16 +463,11 @@ impl Tex {
             let data_size = (block_size.0.max(32) * block_size.1.max(32) * d) as usize;
             data1.len().ge(&(data_size*6)).then_some(()).ok_or(anyhow::anyhow!("{:?}, texture data is too small. Expected {} got {}", info.key, data_size*6, data1.len()))?;
             for i in 0..6 {
-                faces.push(conv_img(&data1[data_size*i..data_size*i+data_size], size.1 as usize, size.0 as usize, format).0);
+                faces.push(conv_img(&data1[data_size*i..data_size*i+data_size], size.1 as usize, size.0 as usize, info.format).0);
             }
         }
 
-        Ok(Self::CubeTexture {
-            faces,
-            format,
-            kind,
-            info: info.clone(),
-        })
+        Ok(Self::CubeTexture { faces, info: info.clone() })
     }
 }
 

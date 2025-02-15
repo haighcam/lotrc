@@ -127,7 +127,11 @@ def parse_level_block(level):
         elif ty == "child_object":
             obj.matrix_world = mat_to_blender(fields['Transform'][0])
 
-        col['lotrc'] = {k: v.to_json() for k,v in fields.items() if k not in skip_store}
-        col['lotrc']['__type__'] = fields['__type__']
-    
+        col['__lotrc__'] = ['__type__']
+        col['__type__'] = fields['__type__']
+        for k,v in fields.items():
+            if k in skip_store: continue
+            col[k] = to_json(v)
+            col['__lotrc__'].append(k)
+        
     level_col.hide_viewport = False

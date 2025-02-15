@@ -100,11 +100,11 @@ class ValuePanel(PanelBase):
     
     @classmethod
     def poll(cls, context):
-        return 'lotrc' in context.view_layer.active_layer_collection.collection
+        return '__lotrc__' in context.view_layer.active_layer_collection.collection
 
     def draw(self, context):
-        self.layout.prop(context.scene.lotrc_props, 'object_key', text='Key')
-        self.layout.prop(context.scene.lotrc_props, 'object_value', text='Value')
+        for key in context.view_layer.active_layer_collection.collection['__lotrc__']:
+            self.layout.prop(context.view_layer.active_layer_collection.collection, f'["{key}"]', text=key)
 
 CLASSES = [
     ValuePanel,

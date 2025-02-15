@@ -1,24 +1,21 @@
 import bpy
 import numpy as np
 from mathutils import Matrix, Vector, Quaternion
-
-def pos_to_blender(pos):
-    return [[i, -k, j] for i,j,k in zip(pos[0], pos[1], pos[2])]
     
 def pos_to_blender_alt(pos):
     return [[i, -k, j] for i,j,k in pos]
-    
-def pos_to_blender_single(pos):
-    return [pos[0], -pos[2], pos[1]]
 
-def size_to_blender(s):
+def size_from_blender(s):
     return [s[0], s[2], s[1]]
     
 def pos_from_blender(pos):
     return [[i, k, -j] for i,j,k in zip(pos[0], pos[1], pos[2])]
 
-def quat_to_blender(q):
-    return Quaternion([q[3], q[0], -q[2], q[1]])
+def pos_from_blender_single(pos):
+    return [pos[0], pos[2], -pos[1]]
+
+def quat_from_blender(q):
+    return Quaternion([q[1], q[3], -q[2], q[0]])
 
 def mat_to_blender(m):
     return Matrix([
