@@ -402,7 +402,7 @@ pub struct Animation {
     pub info: AnimationInfo,
     pub obj1: Vec<u32>,
     pub obj2: Vec<Vector4>,
-    pub obj3: Vec<AnimationEvent>,
+    pub events: Vec<AnimationEvent>,
     pub bones: Vec<Crc>,
     pub obj5_a: Vec<animation::Obj5Val>,
     pub obj5_b: Vec<animation::Obj5Val>,
@@ -426,7 +426,7 @@ impl <'a, 'b> AsData<'a, 'b> for Animation {
         let obj1 = from_bytes!(V, &data[info.obj1_offset as usize..], info.obj1_num as usize * 2)?;
         let obj2 = from_bytes!(V, &data[info.obj2_offset as usize..], info.obj2_num as usize)?;
         let mut offset = info.obj3_offset as usize;
-        let obj3 = (0..info.obj3_num).into_iter().map(|_| {
+        let events = (0..info.obj3_num).into_iter().map(|_| {
             let val: AnimationEvent = from_bytes!(V, &data[offset..])?;
             offset += val.size::<V>();
             Ok(val)
@@ -482,7 +482,7 @@ impl <'a, 'b> AsData<'a, 'b> for Animation {
             warn!("Unknown animation type {}", info.kind);
             (vec![], vec![], vec![])
         };
-        Ok(Self { info, obj1, obj2, obj3, bones, obj5_a, obj5_b, obj_c3, obj_c4, blocks })
+        Ok(Self { info, obj1, obj2, events, bones, obj5_a, obj5_b, obj_c3, obj_c4, blocks })
     }
 
     fn dump_bytes<V: Version>(&self, (offset, infos): Self::OutArgs) -> Vec<u8> {
@@ -549,13 +549,13 @@ impl <'a, 'b> AsData<'a, 'b> for Animation {
         info.block_size = block.len() as u32;
         info.block_offset = data.len() as u32;
         data.extend(block);
-        if self.obj3.is_empty() {
+        if self.events.is_empty() {
             info.obj3_offset = 0;
             info.obj3_num = 0;
         } else {
             info.obj3_offset = data.len() as u32;
-            info.obj3_num = self.obj3.len() as u32;
-            for obj in &self.obj3 {
+            info.obj3_num = self.events.len() as u32;
+            for obj in &self.events {
                 data.extend(dump_bytes!(V, obj))
             }
         }

@@ -129,6 +129,10 @@ impl LevelInfo {
         }
     }
 
+    fn dump_files(&self, path: String, zip: bool) -> Result<()> {
+        self.to_file(Writer::new(path, zip)?)
+    }
+
     fn dump_pc(&self, path: String) -> Result<()> {
         self.dump::<PC, _>(path)
     }
@@ -209,7 +213,7 @@ impl LevelInfo {
     }
 
     pub fn from_file(reader: Reader) -> Result<Self> {
-        let mut val = serde_json::from_slice::<Self>(&reader.join("index.json").read()?)?;
+        let mut val = serde_json::from_slice::<Self>(&reader.join("index.json").read()?).context("index.json")?;
         val.strings = types::Strings::from_file(reader.join("debug_strings"))?;
         val.string_keys = types::StringKeys::from_file(reader.join("string_keys"))?;
         val.locale_strings = types::SubBlocks::from_file(reader.join("locale_strings"), None)?;

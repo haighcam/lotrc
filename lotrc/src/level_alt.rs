@@ -63,6 +63,10 @@ impl Level {
         }
     }
 
+    fn dump_files(&self, path: String, zip: bool) -> Result<()> {
+        self.to_file(Writer::new(path, zip)?, None)
+    }
+
     fn dump_pc(&self, path: String) -> Result<()> {
         self.dump::<PC, _>(path, None)
     }
@@ -182,12 +186,7 @@ impl Level {
 
         let models = from_bytes!(O, Vec<pak::ModelInfo>, &block1[pak_header.model_info_offset as usize..], pak_header.model_info_num as usize)?.into_iter().map(|info| {
             sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(info.key.to_string())});
-            let mut model = Model::from_data::<O>(info, &block1[..])?;
-            if model.info.vbuff_num != 0 || model.info.ibuff_num != 0 {
-                let buffer = model_data.get(&model.info.asset_key.clone()).unwrap();
-                model.vertex_data.extend(model.vbuffs.iter_mut().map(|info| from_bytes!(O, pak::VertexBuffer, &buffer[..], info)).collect::<Result<Vec<_>>>()?);
-                model.index_data.extend(model.ibuffs.iter().map(|info| from_bytes!(O, pak::IndexBuffer, &buffer[..], info)).collect::<Result<Vec<_>>>()?);    
-            }
+            let model = Model::from_data::<O>(info, &block1[..], &model_data)?;
             Ok((model.info.key.clone(), model))
         }).collect::<Result<IndexMap<_, _>>>()?;
 
@@ -1041,7 +1040,7 @@ impl Level {
                     if let types::SubBlock::Lua(val) = block {
                         let mut name = val.name.clone();
                         name.truncate(name.len()-4);
-                        script_manager.insert(Crc::from_string(&name), val.conv("L4808")?);
+                        script_manager.insert(Crc::from_string(&name), val.conv(&crate::lua_stuff::TOOL_FORMAT)?);
                     }
                 }
             }
@@ -1075,11 +1074,11 @@ impl Level {
         
         bar.as_ref().map(|x| { x.inc(1); x.set_message("headers") }); 
         sub_bar.as_ref().map(|x| { x.set_length(0); x.reset() });
-        let bin_header = serde_json::from_slice::<bin::Header>(&reader.join("bin_header.json").read()?)?;
+        let bin_header = serde_json::from_slice::<bin::Header>(&reader.join("bin_header.json").read()?).context("bin_header")?;
         let bin_strings = types::Strings::from_file(reader.join("bin_strings"))?;
         types::update_strings(&bin_strings.strings);
 
-        let pak_header = serde_json::from_slice::<pak::Header>(&reader.join("pak_header.json").read()?)?;
+        let pak_header = serde_json::from_slice::<pak::Header>(&reader.join("pak_header.json").read()?).context("pak_header")?;
         let pak_strings = types::Strings::from_file(reader.join("pak_strings"))?;
         types::update_strings(&pak_strings.strings);
 
@@ -1088,9 +1087,9 @@ impl Level {
 
         bar.as_ref().map(|x| { x.inc(1); x.set_message("unused objs") }); 
         sub_bar.as_ref().map(|x| { x.set_length(0); x.reset() });
-        let objas = serde_json::from_slice::<Vec<pak::ObjA>>(&reader.join("objas.json").read()?)?;
-        let obj0s = serde_json::from_slice::<Vec<pak::Obj0>>(&reader.join("obj0s.json").read()?)?;
-        let pak_vals_a = serde_json::from_slice::<Vec<pak::BlockAVal>>(&reader.join("pak_vals_a.json").read()?)?;
+        let objas = serde_json::from_slice::<Vec<pak::ObjA>>(&reader.join("objas.json").read()?).context("objas")?;
+        let obj0s = serde_json::from_slice::<Vec<pak::Obj0>>(&reader.join("obj0s.json").read()?).context("obj0s")?;
+        let pak_vals_a = serde_json::from_slice::<Vec<pak::BlockAVal>>(&reader.join("pak_vals_a.json").read()?).context("pak_vals_a")?;
         info!("unused objs in {:?}", time.elapsed());
 
         bar.as_ref().map(|x| { x.inc(1); x.set_message("models") }); 
@@ -1103,12 +1102,12 @@ impl Level {
             if let Some(data) = match path.path().extension().and_then(|x| x.to_str()) {
                 Some("glb") => {
                     let data = path.read()?;
-                    let glb = gltf::Glb::from_slice(&data)?;
+                    let glb = gltf::Glb::from_slice(&data).with_context(|| format!("{:?}", path.path().display()))?;
                     let bin = glb.bin.as_ref().unwrap();
-                    let root = gltf::json::Root::from_slice(&glb.json)?;
-                    Some(Model::from_gltf(&root, bin)?)
+                    let root = gltf::json::Root::from_slice(&glb.json).with_context(|| format!("{:?}", path.path().display()))?;
+                    Some(Model::from_gltf(&root, bin).with_context(|| format!("{:?}", path.path().display()))?)
                 },
-                Some("json") => Some(serde_json::from_slice::<Model>(&path.read()?)?),
+                Some("json") => Some(serde_json::from_slice::<Model>(&path.read()?).with_context(|| format!("{:?}", path.path().display()))?),
                 _ => None
 
             } {
@@ -1136,7 +1135,7 @@ impl Level {
         for path in data {
             let key = Crc::from_string(path.name());
             sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string())});
-            let data = serde_json::from_slice::<Vec<(pak::FoliageInfo, pak::Foliage)>>(&path.read()?)?;
+            let data = serde_json::from_slice::<Vec<(pak::FoliageInfo, pak::Foliage)>>(&path.read()?).with_context(|| format!("{:?}", path.path().display()))?;
             foliages.insert(key, data);
         }
         info!("foliage objs in {:?}", time.elapsed());
@@ -1161,7 +1160,7 @@ impl Level {
         for path in data {
             let key = Crc::from_string(path.name());
             sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string())});
-            let data = serde_json::from_slice::<Animation>(&path.read()?)?;
+            let data = serde_json::from_slice::<Animation>(&path.read()?).with_context(|| format!("{:?}", path.path().display()))?;
             animations.insert(key, data);
         }
         info!("animations in {:?}", time.elapsed());
@@ -1181,7 +1180,7 @@ impl Level {
         bar.as_ref().map(|x| { x.inc(1); x.set_message("radiosity") }); 
         let rad_path = reader.join("radiosity.json");
         let radiosity = if rad_path.is_file() {
-            Some(serde_json::from_slice::<Radiosity>(&reader.join("radiosity.json").read()?)?)
+            Some(serde_json::from_slice::<Radiosity>(&reader.join("radiosity.json").read()?).context("radiosity")?)
         } else {
             None
         };

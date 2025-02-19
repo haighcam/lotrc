@@ -67,6 +67,10 @@ impl AudioTable {
         }
     }
 
+    fn dump_files(&self, path: String) -> () {
+        self.to_file(path)
+    }
+
     fn dump_pc(&self, path: String) {
         self.dump::<PC, _>(path)
     }
@@ -135,7 +139,7 @@ impl AsData<'_, '_> for AudioTable {
 
     fn size<V: Version>(&self) -> usize {
         self.header.size::<V>()
-            + self.obj1s.size::<V>()
++ self.obj1s.size::<V>()
             + self.obj2s.iter().map(|(obj, objs)| obj.size::<V>() + objs.size::<V>()).sum::<usize>()
             + self.obj3s.iter().map(|(obj, objs)| obj.size::<V>() + objs.size::<V>()).sum::<usize>()
             + self.obj4s.size::<V>()

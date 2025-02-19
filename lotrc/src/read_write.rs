@@ -97,7 +97,7 @@ impl Reader {
 
     pub fn read(&self) -> Result<Vec<u8>> {
         Ok(match self {
-            Self::File(path) => fs::read(path)?,
+            Self::File(path) => fs::read(path).with_context(|| format!("{:?}", path.as_os_str()))?,
             Self::Zip(zip, path, _) => {
                 let mut zip = zip.lock().unwrap();
                 let name = format_path(path);
@@ -178,12 +178,13 @@ impl Writer {
         match self {
             Self::File(path) => {
                 fs::create_dir_all(path.parent().unwrap())?;
-                fs::write(path, contents)?;
+                fs::write(path, contents).with_context(|| format!("{:?}", path.as_os_str()))?;
             },
             Self::Zip(zip, path, _) => {
                 let mut zip = zip.lock().unwrap();
-                zip.start_file(format_path(path), SimpleFileOptions::default())?;
-                zip.write_all(contents)?;
+                let name = format_path(path);
+                zip.start_file(&name, SimpleFileOptions::default()).with_context(||name.clone())?;
+                zip.write_all(contents).with_context(|| name.clone())?;
                 zip.flush()?;
             }
         }

@@ -9,7 +9,7 @@ use flate2::write::ZlibEncoder;
 use serde::{Serialize, Deserialize};
 use std::sync::Mutex;
 use std::io::prelude::*;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use indicatif::ProgressBar;
 use indexmap::IndexMap;
 use pyo3::prelude::*;
@@ -635,8 +635,8 @@ impl Strings {
     }
 
     pub fn from_file(reader: Reader) -> Result<Self> {
-        let vals = from_slice::<Value>(&reader.with_extension("json").read()?)?;
-        let strings = vals.as_array().unwrap().iter().map(|x| x.as_str().unwrap().to_string()).collect::<Vec<_>>();
+        let name = reader.path().display().to_string();
+        let strings = from_slice::<Vec<String>>(&reader.with_extension("json").read()?).context(format!("{}", name))?;
         Ok(Self { strings })
     }
 }
@@ -706,6 +706,12 @@ pub struct Vector2 {
     pub y: f32,
 }
 
+impl From<(f32, f32)> for Vector2 {
+    fn from((x,y): (f32, f32)) -> Self {
+        Self { x, y }
+    }
+}
+
 impl <'py> IntoPyObject<'py> for Vector2 {
     type Target = <(f32, f32) as IntoPyObject<'py>>::Target;
     type Output = <(f32, f32) as IntoPyObject<'py>>::Output;
@@ -718,8 +724,7 @@ impl <'py> IntoPyObject<'py> for Vector2 {
 
 impl <'py> FromPyObject<'py> for Vector2 {
     fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
-        let (x, y) = <(f32, f32)>::extract_bound(ob)?;
-        Ok(Self { x, y })
+        Ok(<(f32, f32)>::extract_bound(ob)?.into())
     }
 }
 
@@ -728,6 +733,12 @@ pub struct Vector3 {
     pub x: f32,
     pub y: f32,
     pub z: f32,
+}
+
+impl From<(f32, f32, f32)> for Vector3 {
+    fn from((x,y,z): (f32, f32, f32)) -> Self {
+        Self { x, y, z }
+    }
 }
 
 impl <'py> IntoPyObject<'py> for Vector3 {
@@ -742,8 +753,7 @@ impl <'py> IntoPyObject<'py> for Vector3 {
 
 impl <'py> FromPyObject<'py> for Vector3 {
     fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
-        let (x,y,z) = <(f32, f32, f32)>::extract_bound(ob)?;
-        Ok(Self { x, y, z })
+        Ok(<(f32, f32, f32)>::extract_bound(ob)?.into())
     }
 }
 
@@ -753,6 +763,12 @@ pub struct Vector4 {
     pub y: f32,
     pub z: f32,
     pub w: f32,
+}
+
+impl From<(f32, f32, f32, f32)> for Vector4 {
+    fn from((x,y,z,w): (f32, f32, f32, f32)) -> Self {
+        Self { x, y, z, w }
+    }
 }
 
 impl <'py> IntoPyObject<'py> for Vector4 {
@@ -767,8 +783,7 @@ impl <'py> IntoPyObject<'py> for Vector4 {
 
 impl <'py> FromPyObject<'py> for Vector4 {
     fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
-        let (x,y,z,w) = <(f32, f32, f32, f32)>::extract_bound(ob)?;
-        Ok(Self { x, y, z, w })
+        Ok(<(f32, f32, f32, f32)>::extract_bound(ob)?.into())
     }
 }
 
@@ -878,6 +893,12 @@ pub struct Weight {
     pub d: u8,
 }
 
+impl From<(u32, u8, u8, u8, u8)> for Weight {
+    fn from((x, a, b, c, d): (u32, u8, u8, u8, u8)) -> Self {
+        Self { x, a, b, c, d }
+    }
+}
+
 impl <'py> IntoPyObject<'py> for Weight {
     type Target = <(u32, u8, u8, u8, u8) as IntoPyObject<'py>>::Target;
     type Output = <(u32, u8, u8, u8, u8) as IntoPyObject<'py>>::Output;
@@ -890,8 +911,7 @@ impl <'py> IntoPyObject<'py> for Weight {
 
 impl <'py> FromPyObject<'py> for Weight {
     fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
-        let (x, a, b, c, d) = <(u32, u8, u8, u8, u8)>::extract_bound(ob)?;
-        Ok(Self { x, a, b, c, d })
+        Ok(<(u32, u8, u8, u8, u8)>::extract_bound(ob)?.into())
     }
 }
 
@@ -1227,60 +1247,29 @@ impl BaseTypes {
         }
     }
 
-    pub fn from_json(val: &Value, kind: u32) -> Self {
-        match kind {
-            Self::CRC_KEY => Self::CRC(Crc::from_string(val.as_str().unwrap())),
-            Self::GUID_KEY => Self::GUID(val.as_u64().unwrap() as u32),
-            Self::COLOR_KEY => Self::Color(Color::try_from(val.as_str().unwrap()).unwrap()),
-            Self::VECTOR2_KEY => Self::Vector2({
-                let vals = val.as_array().unwrap().into_iter().map(|x| x.as_f64().unwrap() as f32).collect::<Vec<_>>();
-                Vector2 { x: vals[0], y: vals[1] }
-            }),
-            Self::VECTOR3_KEY => Self::Vector3({
-                let vals = val.as_array().unwrap().into_iter().map(|x| x.as_f64().unwrap() as f32).collect::<Vec<_>>();
-                Vector3 { x: vals[0], y: vals[1], z: vals[2] }
-            }),
-            Self::VECTOR4_KEY => Self::Vector4({
-                let vals = val.as_array().unwrap().into_iter().map(|x| x.as_f64().unwrap() as f32).collect::<Vec<_>>();
-                Vector4 { x: vals[0], y: vals[1], z: vals[2], w: vals[4] }
-            }),
-            Self::MATRIX4X4_KEY => Self::Matrix4x4({
-                let vals = val.as_array().unwrap().into_iter().map(|x| x.as_f64().unwrap() as f32).collect::<Vec<_>>();
-                Matrix4x4 { 
-                    x: Vector4 { x: vals[0], y: vals[1], z: vals[2], w: vals[3]}, 
-                    y: Vector4 { x: vals[4], y: vals[5], z: vals[6], w: vals[7]}, 
-                    z: Vector4 { x: vals[8], y: vals[9], z: vals[10], w: vals[11]}, 
-                    w: Vector4 { x: vals[12], y: vals[13], z: vals[14], w: vals[15]}, 
-                }
-            }),
-            Self::FLOAT_KEY => Self::Float(val.as_f64().unwrap() as f32),
-            Self::INT_KEY  => Self::Int(val.as_i64().unwrap() as i32),
-            Self::BOOL_KEY => Self::Bool(Bool { val: val.as_bool().unwrap() as u8, _pad1: 0, _pad2: 0, _pad3: 0 }),
-            Self::BYTE_KEY => Self::Byte(val.as_u64().unwrap() as u8),
-            Self::STRING_KEY => Self::String(val.as_str().unwrap().into()),
-            Self::STRINGLIST_KEY => Self::StringList(val.as_array().unwrap().into_iter().map(|x| x.as_str().unwrap().into()).collect()),
-            Self::OBJECTLIST_KEY => Self::ObjectList(val.as_array().unwrap().into_iter().map(|x| x.as_u64().unwrap() as u32).collect()),
-            Self::NODELIST_KEY => Self::NodeList(val.as_array().unwrap().into_iter().map(|x| {
-                let vals = x.as_array().unwrap().into_iter().map(|x| x.as_f64().unwrap() as f32).collect::<Vec<_>>();
-                Vector4 { x: vals[0], y: vals[1], z: vals[2], w: vals[3] }
-            }).collect()),
-            Self::INTLISTS_KEY => Self::IntList(val.as_array().unwrap().into_iter().map(|x| x.as_i64().unwrap() as i32).collect()),
-            Self::CRCLIST_KEY => Self::CRCList(val.as_array().unwrap().into_iter().map(|x| Crc::from_string(x.as_str().unwrap())).collect()),
-            Self::WEIGHTLIST_KEY => Self::WeightList(val.as_array().unwrap().into_iter().map(|x| {
-                let vals = x.as_array().unwrap().into_iter().map(|x| x.as_u64().unwrap() as u32).collect::<Vec<_>>();
-                Weight { x: vals[0], a: vals[1] as u8, b: vals[2] as u8, c: vals[3] as u8, d: vals[4] as u8}
-            }).collect()),
-            Self::MATRIXLIST_KEY => Self::MatrixList(val.as_array().unwrap().into_iter().map(|x| {
-                let vals = x.as_array().unwrap().into_iter().map(|x| x.as_f64().unwrap() as f32).collect::<Vec<_>>();
-                Matrix4x4 {
-                    x: Vector4 { x: vals[0], y: vals[1], z: vals[2], w: vals[3]}, 
-                    y: Vector4 { x: vals[4], y: vals[5], z: vals[6], w: vals[7]}, 
-                    z: Vector4 { x: vals[8], y: vals[9], z: vals[10], w: vals[11]}, 
-                    w: Vector4 { x: vals[12], y: vals[13], z: vals[14], w: vals[15]}, 
-                }
-            }).collect()),
-            _ => panic!("Unkown Type {:?}", kind)
-        }
+    pub fn from_json(val: Value, kind: u32) -> Result<Self> {
+        Ok(match kind {
+            Self::CRC_KEY => Self::CRC(Crc::from_string(&serde_json::from_value::<String>(val)?)),
+            Self::GUID_KEY => Self::GUID(serde_json::from_value::<u32>(val)?),
+            Self::COLOR_KEY => Self::Color(Color::try_from(serde_json::from_value::<String>(val)?.as_str())?),
+            Self::VECTOR2_KEY => Self::Vector2(serde_json::from_value::<(f32, f32)>(val)?.into()),
+            Self::VECTOR3_KEY => Self::Vector3(serde_json::from_value::<(f32, f32, f32)>(val)?.into()),
+            Self::VECTOR4_KEY => Self::Vector4(serde_json::from_value::<(f32, f32, f32, f32)>(val)?.into()),
+            Self::MATRIX4X4_KEY => Self::Matrix4x4((&serde_json::from_value::<[f32; 16]>(val)?).into()),
+            Self::FLOAT_KEY => Self::Float(serde_json::from_value::<f32>(val)?),
+            Self::INT_KEY  => Self::Int(serde_json::from_value::<i32>(val)?),
+            Self::BOOL_KEY => Self::Bool(serde_json::from_value::<bool>(val)?.into()),
+            Self::BYTE_KEY => Self::Byte(serde_json::from_value::<u8>(val)?),
+            Self::STRING_KEY => Self::String(serde_json::from_value::<String>(val)?),
+            Self::STRINGLIST_KEY => Self::StringList(serde_json::from_value::<Vec<String>>(val)?),
+            Self::OBJECTLIST_KEY => Self::ObjectList(serde_json::from_value::<Vec<u32>>(val)?),
+            Self::NODELIST_KEY => Self::NodeList(serde_json::from_value::<Vec<(f32, f32, f32, f32)>>(val)?.into_iter().map(|x| x.into()).collect()),
+            Self::INTLISTS_KEY => Self::IntList(serde_json::from_value::<Vec<i32>>(val)?),
+            Self::CRCLIST_KEY => Self::CRCList(serde_json::from_value::<Vec<String>>(val)?.into_iter().map(|x| Crc::from_string(&x)).collect()),
+            Self::WEIGHTLIST_KEY => Self::WeightList(serde_json::from_value::<Vec<(u32, u8, u8, u8, u8)>>(val)?.into_iter().map(|x| x.into()).collect()),
+            Self::MATRIXLIST_KEY => Self::MatrixList(serde_json::from_value::<Vec<[f32; 16]>>(val)?.iter().map(|x| x.into()).collect()),
+            _ => Err(anyhow!("Unkown Type {:?}", kind))?
+        })
     }
 }
 
@@ -1621,7 +1610,7 @@ impl SubBlocks {
     }
 
     pub fn from_file(reader: Reader, prog: Option<&ProgressBar>) -> Result<Self> {
-        let keys = from_slice::<Vec<Crc>>(&reader.join("index.json").read()?)?;
+        let keys = from_slice::<Vec<Crc>>(&reader.join("index.json").read()?).context(format!("{}/index.json", reader.path().display()))?;
         prog.map(|x| x.set_length(keys.len() as u64));
         let blocks = keys.into_iter().map(|key| {
             prog.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string())});
@@ -1713,7 +1702,8 @@ impl StringKeys {
     }
 
     pub fn from_file(reader: Reader) -> Result<Self> {
-        Ok(from_slice::<Self>(&reader.with_extension("json").read()?)?)
+        let name = reader.path().display().to_string();
+        Ok(from_slice::<Self>(&reader.with_extension("json").read()?).context(format!("{}", name))?)
     }
 }
 
@@ -1777,14 +1767,15 @@ impl LangStrings {
     pub const KEY_NORWEGIAN: u32 = hash_string("Norwegian".as_bytes(), None);
 
     pub fn to_file(&self, writer: Writer, keys: &StringKeys) -> Result<()> {
-        let vals = zip(&keys.vals, &self.strings).map(|(key, string)| (key.to_string(), json!(string))).collect::<Map<_,_>>();
+        let vals = zip(&keys.vals, &self.strings).map(|(key, string)| (key.clone(), string.clone())).collect::<IndexMap<_,_>>();
         writer.with_extension("json").write(&to_vec_pretty(&vals)?)?;
         Ok(())
     }
 
     pub fn from_file(reader: Reader) -> Result<Self> {
-        let vals = from_slice::<Value>(&reader.with_extension("json").read()?)?;
-        let strings = vals.as_object().unwrap().iter().map(|(_, s)| s.as_str().unwrap().to_string()).collect::<Vec<_>>();
+        let name = reader.path().display().to_string();
+        let vals = from_slice::<IndexMap<Crc, String>>(&reader.with_extension("json").read()?).context(format!("{}.json", name))?;
+        let strings: Vec<_> = vals.into_iter().map(|(_, val)| val).collect();
         Ok(Self { strings })
     }
 }
@@ -1848,7 +1839,7 @@ impl SSA {
     }
 
     pub fn from_file(reader: Reader) -> Result<Self> {
-        Ok(from_slice(&reader.with_extension("json").read()?)?)
+        from_slice(&reader.with_extension("json").read()?).with_context(|| anyhow!("{}.json", reader.path().display()))
     }
 }
 
@@ -1858,44 +1849,41 @@ impl SSA {
 pub struct Lua {
     pub name: String,
     pub data: Vec<u8>,
-    pub code: String,
 }
 
 impl AsData<'_, '_> for Lua {
     type InArgs = (usize, String);
     type OutArgs = NoArgs;
     fn from_bytes<V: Version>(data: &[u8], (size, name): Self::InArgs) -> Result<Self> {
-        let data = data[..size].to_vec();
-        let code = if *DECOMP_LUA.lock().unwrap() {
-            lua::decomp(data.as_slice(), UNLUAC.lock().unwrap().clone())?
-        } else {
-            String::new()
-        };
-        Ok(Self { code, data, name })
-    }
-    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
-        if *DECOMP_LUA.lock().unwrap() {
-            match lua::compile(&self.code, &self.name) {
-                Ok(val) => val,
-                Err(e) => {
-                    println!("{:?}", self.name);
-                    println!("{}", self.code);
-                    panic!("{:?}", e)
-                }
+        let data = if size >= 4 && data[..4] == [27, 76, 117, 97] {
+            if *DECOMP_LUA.lock().unwrap() {
+                lua::decomp(&data[..size], UNLUAC.lock().unwrap().clone()).context(name.clone())?.as_bytes().to_vec()
+            } else if size >= 11 && data[5..11] != [0, 1, 4, 4, 4, 4] {
+                lua::convert(&data[..size], &lua::PC_FORMAT).context(name.clone())?
+            } else {
+                (&data[..size]).to_vec()
             }
-        } else if *RECOMP_LUA.lock().unwrap() {
-            lua::convert(&self.data, "L4404").unwrap()
         } else {
-            self.data.clone()
-        }
+            if *RECOMP_LUA.lock().unwrap() {
+                lua::compile(&data[..size], &name).context(name.clone()).with_context(|| String::from_utf8(data.to_vec()).unwrap_or("Non utf8 shader".to_string()))?
+            } else {
+                (&data[..size]).to_vec()
+            }
+        };
+        Ok(Self { data, name })
     }
+
+    fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
+        self.data.clone()
+    }
+
     fn size<V: Version>(&self) -> usize {
         self.data.len()
     }
 }
 
 impl Lua {
-    pub fn conv(&self, fmt: &str) -> Result<Vec<u8>> {
+    pub fn conv(&self, fmt: &lunify::Format) -> Result<Vec<u8>> {
         let val = &self.data;
         Ok(if (val.len() > 3) && (val[0] == 0x1bu8) && (val[1] == 76) && (val[2] == 117) && (val[3] == 97) {
             lua::convert(&val, fmt)?
@@ -1905,38 +1893,31 @@ impl Lua {
     }
 
     pub fn to_file(&self, writer: Writer) -> Result<()> {
-        if *DECOMP_LUA.lock().unwrap() {
-            writer.write(self.code.as_bytes())?;
-        } else {
-            writer.write(&self.data)?;
-        }
-        Ok(())
+        writer.write(&self.data)
     }
 
     pub fn from_file(reader: Reader) -> Result<Self> {
-        let name: String = reader.path().file_name().unwrap().to_str().unwrap().into();
-        let mut val = reader.read()?;
-        let (data, code) = if (val.len() > 3) && (val[0] == 0x1bu8) && (val[1] == 76) && (val[2] == 117) && (val[3] == 97) {
-            let code = if *DECOMP_LUA.lock().unwrap() {
-                lua::decomp(&val, UNLUAC.lock().unwrap().clone())?
+        let name: String = reader.name().to_string();
+        let name_path = reader.path().display();
+        let data = reader.read()?;
+        let size = data.len();
+        let data = if size >= 4 && data[..4] == [27, 76, 117, 97] {
+            if *DECOMP_LUA.lock().unwrap() {
+                lua::decomp(&data, UNLUAC.lock().unwrap().clone()).context(format!("{}", name_path))?.as_bytes().to_vec()
+            } else if size >= 11 && data[5..11] != [0, 1, 4, 4, 4, 4] {
+                lua::convert(&data, &lua::PC_FORMAT).context(format!("{}", name_path))?
             } else {
-                String::new()
-            };
-            if *RECOMP_LUA.lock().unwrap() {
-                val = lua::convert(&val, "L4404")?;
+                data
             }
-            (val, code)
         } else {
-            let code = String::from_utf8(val.clone())?;
-            let data = if *RECOMP_LUA.lock().unwrap() {
-                lua::compile(&code, &name)?
+            if *RECOMP_LUA.lock().unwrap() {
+                lua::compile(&data, &name).context(format!("{}", name_path)).with_context(|| String::from_utf8(data.to_vec()).unwrap_or("Non utf8 shader".to_string()))?
             } else {
-                val
-            };
-            (data, code)
+                data.to_vec()
+            }
         };
         
-        Ok(Self { code, name, data })
+        Ok(Self { name, data })
     }
 }
 
@@ -2168,54 +2149,67 @@ impl GameObjs {
                     }).collect::<Vec<_>>()
                 })
             }).collect::<Vec<_>>(),
-
         });
         writer.with_extension("json").write(&to_vec_pretty(&val)?)?;
         Ok(())
     }
 
     pub fn from_file(reader: Reader) -> Result<Self> {
-        let val = from_slice::<Value>(&reader.with_extension("json").read()?)?;
-        let ts = val["types"].as_array().unwrap();
+        let name = reader.path().display();
+        let mut val = from_slice::<Value>(&reader.with_extension("json").read()?).with_context(|| format!("{}", name))?;
+        let ts = val.get("types").ok_or(anyhow!("{} missing types", name))?.as_array().ok_or(anyhow!("{} types is not array", name))?;
         let mut types = IndexMap::with_capacity(ts.len());
-        for t in ts {
+        for (i, t) in ts.into_iter().enumerate() {
+            let ty_name = t.get("name").ok_or(anyhow!("{} type {} missing name", name, i))?.as_str().ok_or(anyhow!("{} type {} name is not string", name, i))?;
             types.insert(
-                Crc::from_string(t["name"].as_str().unwrap()),
-                t["fields"].as_array().unwrap().iter().map(|v| GameObjsTypeField {
-                    key: Crc::from_string(v["name"].as_str().unwrap()),
-                    kind: Crc::from_string(v["type"].as_str().unwrap()),
-                    offset: v["offset"].as_u64().unwrap() as u32,
-                }).collect::<Vec<_>>(),
+                Crc::from_string(ty_name),
+                t.get("fields").ok_or(anyhow!("{} type {} missing fields", name, ty_name))?.as_array().ok_or(anyhow!("{} type {} fields is not array", name, ty_name))?.iter().enumerate().map(|(i, v)| {
+                    let f_name = v.get("name").ok_or(anyhow!("{} type {} field {} missing name", name, ty_name, i))?.as_str().ok_or(anyhow!("{} type {} field {} name is not string", name, ty_name, i))?;
+                    Ok(GameObjsTypeField {
+                        key: Crc::from_string(f_name),
+                        kind: Crc::from_string(v.get("type").ok_or(anyhow!("{} type {} field {} missing kind", name, ty_name, f_name))?.as_str().ok_or(anyhow!("{} type {} field {} kind is not string", name, ty_name, f_name))?),
+                        offset: v.get("offset").ok_or(anyhow!("{} type {} field {} missing offset", name, ty_name, f_name))?.as_u64().and_then(|x| u32::try_from(x).ok()).ok_or(anyhow!("{} type {} field {} offset not u32", name, ty_name, f_name))?,
+                    })
+                }).collect::<Result<Vec<_>>>()?,
             );
         }
         let types_order: HashMap<_, _> = types.iter().map(|(key, fields)| {
             let mut order: Vec<_> = (0..fields.len()).collect();
             order.sort_by_key(|x| fields[*x].offset);
+            let mut order = fields.clone();
+            order.sort_by_key(|x| x.offset);
+            //let order: Vec<_> = order.into_iter().map(|x| x.kind.key()).collect();
             (key.clone(), order)
         }).collect();
 
-        let os = val["objs"].as_array().unwrap();
+        let os = val.get_mut("objs").ok_or(anyhow!("{} missing objs", name))?.as_array_mut().ok_or(anyhow!("{} obs is not array", name))?;
         let mut objs = IndexMap::with_capacity(os.len());
 
-        for o in os {
-            let key = Crc::from_string(o["type"].as_str().unwrap());
-            let ts = types.get(&key).unwrap();
-            let order = types_order.get(&key).unwrap();
-            let o_: HashMap<_,_> = o["fields"].as_object().unwrap().into_iter().map(|(k,v)| (Crc::from_string(k), v)).collect();
-            let fields: IndexMap<Crc, BaseTypes> = order.iter().map(|i| &ts[*i]).map(|t| (t.key.clone(), BaseTypes::from_json(&o_[&t.key], t.kind.key()))).collect();
-            let guid = if let Some(BaseTypes::GUID(val)) = fields.get(&Crc::Key(3482846511)) {
-                Some(*val)
-            } else { None }.unwrap();
+        for (i, o) in os.into_iter().enumerate() {
+            let o_name = o.get("type").ok_or(anyhow!("{} obj index {} missing type", name, i))?.as_str().ok_or(anyhow!("{} obj index {} type is not string", name, i))?;
+            let key = Crc::from_string(o_name);
+            let order = types_order.get(&key).ok_or(anyhow!("{} type {} not in types", name, o_name))?;
+            let mut o_: HashMap<_,_> = o.get_mut("fields").ok_or(anyhow!("{} obj index {} missing fields", name, i))?.as_object_mut().ok_or(anyhow!("{} obj index {} fields not map", name, i))?.into_iter().map(|(k,v)| (Crc::from_string(k), v.take())).collect();
+            let fields: IndexMap<Crc, BaseTypes> = order.iter().map(|t| Ok((
+                    t.key.clone(), 
+                    BaseTypes::from_json(o_.remove(&t.key).ok_or_else(|| anyhow!("{} obj index {} missing field {}", name, i, t.key.to_string()))?, t.kind.key()).with_context(|| format!("{} obj index {} field {}", name, i, t.key.to_string()))?
+            ))).collect::<Result<_>>()?;
+            let guid = if let BaseTypes::GUID(val) = fields.get(&Crc::Key(3482846511)).ok_or(anyhow!("{} obj index {} missing guid field", name, i))? {
+                *val
+            } else {
+                panic!("Parsing BaseType returned incorrect type")
+            };
             objs.insert(guid, GameObj { 
-                layer: o["layer"].as_u64().unwrap() as u32,
+                layer: o.get("layer").ok_or(anyhow!("{} obj {} missing layer", name, guid))?.as_u64().and_then(|x| u32::try_from(x).ok()).ok_or(anyhow!("{} obj {} layer is not u32", name, guid))?,
                 key,
                 fields
             });
         }
-        let gamemodemask = val["gamemodemask"].as_i64().unwrap() as i32;
+        let gamemodemask = val["gamemodemask"].as_i64().ok_or(anyhow!("{}", name))? as i32;
         Ok(Self { gamemodemask, types, objs })
     }
 }
+
 
 #[basicpymethods]
 #[pyclass(module="types", set_all, get_all)]
@@ -2293,7 +2287,7 @@ impl Spray {
     }
 
     pub fn from_file(reader: Reader) -> Result<Self> {
-        Ok(from_slice(&reader.with_extension("json").read()?)?)
+        from_slice(&reader.with_extension("json").read()?).with_context(|| format!("{}.json", reader.path().display()))
     }
 }
 
@@ -2427,7 +2421,7 @@ impl Crowd {
     }
 
     pub fn from_file(reader: Reader) -> Result<Self> {
-        Ok(from_slice(&reader.with_extension("json").read()?)?)
+        from_slice(&reader.with_extension("json").read()?).with_context(|| format!("{}.json", reader.path().display()))
     }
 }
 
@@ -2493,7 +2487,7 @@ impl AtlasUV {
     }
 
     pub fn from_file(reader: Reader) -> Result<Self> {
-        Ok(from_slice(&reader.with_extension("json").read()?)?)
+        from_slice(&reader.with_extension("json").read()?).with_context(|| format!("{}.json", reader.path().display()))
     }
 }
 
@@ -2587,7 +2581,7 @@ impl PFields {
     }
 
     pub fn from_file(reader: Reader) -> Result<Self> {
-        Ok(from_slice(&reader.with_extension("json").read()?)?)
+        from_slice(&reader.with_extension("json").read()?).with_context(|| format!("{}.json", reader.path().display()))
     }
 }
 

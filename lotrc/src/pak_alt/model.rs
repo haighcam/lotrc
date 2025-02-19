@@ -3,10 +3,10 @@ use itertools::Itertools;
 use serde::{Serialize, Deserialize};
 use serde_json::json;
 use gltf::{
-    json::{Root, Index, validation::Checked, buffer::Target, Accessor, Node},
+    json::{Root, Index, validation::Checked, buffer::Target, Accessor, Node, accessor::ComponentType},
     accessor::{DataType, Dimensions},
 };
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use pyo3::prelude::*;
 
 use lotrc_proc::{basicpymethods, PyMethods};
@@ -131,8 +131,6 @@ pub struct Model {
     pub mat_order: Vec<u32>,
     pub mesh_order: Vec<u32>, // order of models (mapped to lod0, lod1, lod2, lod3)
     pub mesh_bounding_boxes: Vec<BoundingBox>,
-    pub vbuff_order: Vec<u32>,
-    pub ibuff_order: Vec<u32>,
     pub skin_binds: Vec<Matrix4x4>, // mat4, bind matrices or something??
     pub vals_j: Vec<u32>, // bows & banners, maybe for strings?
     pub val_k_header: Vec<u16>,
@@ -145,8 +143,6 @@ pub struct Model {
     pub blocks: Vec<Block>,
     pub mats: Vec<Mat>,
     pub mat_extras: Vec<Option<MatExtra>>,
-    pub vbuffs: Vec<VBuffInfo>,
-    pub ibuffs: Vec<IBuffInfo>,
     pub buffer_infos: Vec<BufferInfo>,
     pub hk_constraint: Option<HkConstraint>, // stores bone transforms used for ragdoll ??
     pub hk_constraint_datas: Vec<HkConstraintData>,
@@ -156,7 +152,7 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn from_data<O: Version + 'static>(info: ModelInfo, data: &[u8]) -> Result<Self> {
+    pub fn from_data<O: Version + 'static>(info: ModelInfo, data: &[u8], model_data: &HashMap<Crc, Vec<u8>>) -> Result<Self> {
         let bone_parents: Vec<i32> = from_bytes!(O, &data[info.bone_parents_offset as usize..], info.bones_num as usize)?;
         let bones: Vec<Crc> = if info.bones_offset != 0 {
             from_bytes!(O, &data[info.bones_offset as usize..], info.bones_num as usize)?
@@ -234,13 +230,24 @@ impl Model {
         let mut vbuff_map: HashMap<_, _> = vbuffs.iter().enumerate().map(|(i, x)| (*x, i as u32)).collect();
         vbuff_order.iter_mut().for_each(|x| *x = *vbuff_map.get(x).unwrap());
         let vbuffs: Vec<VBuffInfo> = vbuffs.into_iter().map(|off| from_bytes!(O, &data[off as usize..])).collect::<Result<Vec<_>>>()?;
-        let vertex_data = Vec::with_capacity(vbuffs.len());
 
         let ibuffs = HashSet::<u32>::from_iter(ibuff_order.iter().cloned()).into_iter().sorted().collect::<Vec<_>>();
         let mut ibuff_map: HashMap<_, _> = ibuffs.iter().enumerate().map(|(i, x)| (*x, i as u32)).collect();
         ibuff_order.iter_mut().for_each(|x| *x = *ibuff_map.get(x).unwrap());
         let ibuffs: Vec<IBuffInfo> = ibuffs.into_iter().map(|off| from_bytes!(O, &data[off as usize..])).collect::<Result<Vec<_>>>()?;
-        let index_data = Vec::with_capacity(ibuffs.len());
+        let (vertex_data, index_data) = if info.vbuff_num != 0 || info.ibuff_num != 0 {
+            let buffer = model_data.get(&info.asset_key).unwrap();
+            (
+                vbuffs.into_iter().map(|info|
+                    from_bytes!(O, VertexBuffer, &buffer[..], info)
+                ).collect::<Result<Vec<_>>>()?,
+                ibuffs.into_iter().map(|info| 
+                    from_bytes!(O, IndexBuffer, &buffer[..], &info)
+                ).collect::<Result<Vec<_>>>()?,
+            )
+        } else {
+            (vec![], vec![])
+        };
 
         ibuff_map.insert(0, 0xFFFFFFFF);
         vbuff_map.insert(0, 0xFFFFFFFF);
@@ -261,8 +268,6 @@ impl Model {
             bone_bounding_boxes,
             mesh_order,
             mesh_bounding_boxes,
-            vbuff_order,
-            ibuff_order,
             skin_binds,
             vals_j,
             val_k_header,
@@ -275,8 +280,6 @@ impl Model {
             blocks,
             mats,
             mat_extras,
-            vbuffs,
-            ibuffs,
             buffer_infos,
             shapes,
             hk_constraint,
@@ -287,38 +290,47 @@ impl Model {
     }
 
     fn dump_mesh_data<O: Version + 'static>(&self, infos: &mut DumpInfos) -> (Vec<u8>, Vec<u32>, Vec<u32>) {
-        // size, offset, vsize, data
+        // size, offset, vsize, data, fmt_alt
         let mut tot_size = 0;
         let mut vbuffs_info: Vec<_> = self.vertex_data.iter().map(|data| {
             let v_size = data.v_size() as u32;
             let vals = dump_bytes!(O, data);
             let size = vals.len();
             tot_size += size + 16;
-            (size as u32, None, v_size, vals)
+            (size as u32, None, v_size, vals, (data.info.fmt1 & 0x40000) != 0)
         }).collect();
 
-        // size, offset, num, data
+        // size, offset, num, data, ty
         let mut ibuffs_info: Vec<_> = self.index_data.iter().map(|data| {
             let num = data.len();
             let vals = dump_bytes!(O, data);
             let size = vals.len();
             tot_size += size + 16;
-            (size as u32, None, num as u32, vals)
+            let ty = match data {
+                IndexBuffer::U16 { .. } => 16u32,
+                IndexBuffer::U32 { .. } => 32u32,
+            };
+            (size as u32, None, num as u32, vals, ty)
         }).collect();
 
-        let mut vbuff_map: HashMap<_, _> = (0..self.vbuffs.len()).map(|x| (x as u32, infos.header.vbuff_info_offset + (O::size::<VBuffInfo>() * (infos.vbuff.len() + x)) as u32)).collect();
-        let vbuff_order: Vec<u32> = self.vbuff_order.iter().map(|x| *vbuff_map.get(x).unwrap()).collect();
+        let vbuff_order: Vec<u32> = (0..self.vertex_data.len()).map(|x| infos.header.vbuff_info_offset + (O::size::<VBuffInfo>() * (infos.vbuff.len() + x)) as u32).collect();
+        let mut vbuff_map: HashMap<_, _> = vbuff_order.iter().enumerate().map(|(i,x)| (i as u32, *x)).collect();
         vbuff_map.insert(0xFFFFFFFF, 0);
 
-        let mut ibuff_map: HashMap<_, _> = (0..self.ibuffs.len()).map(|x| (x as u32, infos.header.ibuff_info_offset + (O::size::<IBuffInfo>() * (infos.ibuff.len() + x)) as u32)).collect();
-        let ibuff_order: Vec<u32> = self.ibuff_order.iter().map(|x| *ibuff_map.get(x).unwrap()).collect();
+        let ibuff_order: Vec<u32> = (0..self.index_data.len()).map(|x| infos.header.ibuff_info_offset + (O::size::<IBuffInfo>() * (infos.ibuff.len() + x)) as u32).collect();
+        let mut ibuff_map: HashMap<_, _> = ibuff_order.iter().enumerate().map(|(i,x)| (i as u32, *x)).collect();
         ibuff_map.insert(0xFFFFFFFF, 0);
 
         let mut buffer_infos = self.buffer_infos.clone();
+        let mut vbuffs: Vec<_> = self.vertex_data.iter().map(|x| x.info.clone()).collect();
+        let mut ibuffs: Vec<_> = self.index_data.iter().map(|_| IBuffInfo::default()).collect();
         
         let mut data = Vec::with_capacity(tot_size);
         for buffer_info in &mut buffer_infos {
-            let (vbuff_size, offset, v_size, vals) = &mut vbuffs_info[buffer_info.vbuff_info_offset as usize];
+            let (vbuff_size, offset, v_size, vals, alt) = &mut vbuffs_info[buffer_info.vbuff_info_offset as usize];
+            if *alt {
+                ibuffs[buffer_info.ibuff_info_offset as usize].vbuff_alt_fmt = 1;
+            }
             (buffer_info.vbuff_size, buffer_info.v_size) = (*vbuff_size, *v_size);
             if offset.is_none() {
                 data.extend(vec![0u8; ((data.len() + 15) & 0xFFFFFFF0) - data.len()]);
@@ -326,7 +338,7 @@ impl Model {
                 data.extend(vals.drain(..));
             }
             if buffer_info.vbuff_info_offset_2 != 0xFFFFFFFF {
-                let (vbuff_size, offset, v_size, vals) = &mut vbuffs_info[buffer_info.vbuff_info_offset_2 as usize];
+                let (vbuff_size, offset, v_size, vals, _) = &mut vbuffs_info[buffer_info.vbuff_info_offset_2 as usize];
                 (buffer_info.vbuff_size_2, buffer_info.v_size_2) = (*vbuff_size, *v_size);
                 if offset.is_none() {
                     data.extend(vec![0u8; ((data.len() + 15) & 0xFFFFFFF0) - data.len()]);
@@ -335,7 +347,7 @@ impl Model {
                 }
             }
             if buffer_info.vbuff_info_offset_3 != 0xFFFFFFFF {
-                let (vbuff_size, offset, v_size, vals) = &mut vbuffs_info[buffer_info.vbuff_info_offset_3 as usize];
+                let (vbuff_size, offset, v_size, vals, _) = &mut vbuffs_info[buffer_info.vbuff_info_offset_3 as usize];
                 (buffer_info.vbuff_size_3, buffer_info.v_size_3) = (*vbuff_size, *v_size);
                 if offset.is_none() {
                     data.extend(vec![0u8; ((data.len() + 15) & 0xFFFFFFF0) - data.len()]);
@@ -344,7 +356,7 @@ impl Model {
                 }
             }
             if buffer_info.ibuff_info_offset != 0xFFFFFFFF {
-                let (_, offset, num, vals) = &mut ibuffs_info[buffer_info.ibuff_info_offset as usize];
+                let (_, offset, num, vals, _) = &mut ibuffs_info[buffer_info.ibuff_info_offset as usize];
                 (buffer_info.i_num, buffer_info.tri_num) = (*num, (*num)/3);
                 if offset.is_none() {
                     data.extend(vec![0u8; ((data.len() + 15) & 0xFFFFFFF0) - data.len()]);
@@ -358,15 +370,14 @@ impl Model {
             buffer_info.ibuff_info_offset = *ibuff_map.get(&buffer_info.ibuff_info_offset).unwrap();
         }
     
-        let mut vbuffs = self.vbuffs.clone();
-        let mut ibuffs = self.ibuffs.clone();
-        for (info, (size, offset, _, _)) in vbuffs.iter_mut().zip(vbuffs_info) {
+        for (info, (size, offset, _, _, _)) in vbuffs.iter_mut().zip(vbuffs_info) {
             info.size = size;
             info.offset = offset.unwrap_or(0) as u32;
         }
-        for (info, (size, offset, _, _)) in ibuffs.iter_mut().zip(ibuffs_info) {
+        for (info, (size, offset, _, _, ty)) in ibuffs.iter_mut().zip(ibuffs_info) {
             info.size = size;
             info.offset = offset.unwrap_or(0) as u32;
+            info.format = ty;
         }
 
         infos.vbuff.extend(vbuffs);
@@ -780,8 +791,8 @@ impl Model {
             mat1_num, mat2_num, mat3_num, mat4_num,
             self.mat_extras.iter().map(|x| if x.is_some() { 1 } else { 0 }).sum::<u32>(),
             self.buffer_infos.len() as u32,
-            self.vbuffs.len() as u32,
-            self.ibuffs.len() as u32,
+            self.vertex_data.len() as u32,
+            self.index_data.len() as u32,
         )
     }
 
@@ -795,8 +806,9 @@ impl Model {
             IndexBuffer::U32 { vals } => GltfAsset { data: dump_bytes!(PC, vals), count: vals.len(), ty: DataType::U32, dim: Dimensions::Scalar,  target: Some(Target::ElementArrayBuffer), ..Default::default() },
         }.to_gltf(&mut root, &mut bin)).collect();
 
-        let vbuffs: Vec<HashMap<VertexUsage, Index<Accessor>>> = self.vertex_data.iter().map(|vbuff| 
-            vbuff.vals.iter().map(|val| (val.usage.clone(), GltfAsset { 
+        let vbuffs: Vec<(VBuffInfo, HashMap<VertexUsage, Index<Accessor>>)> = self.vertex_data.iter().map(|vbuff| (
+            vbuff.info.clone(),
+            vbuff.data.iter().map(|val| (val.usage.clone(), GltfAsset { 
                 data: val.gltf_data(),
                 count: val.val.len(),
                 stride: val.stride(),
@@ -808,7 +820,7 @@ impl Model {
                 normalized: val.normalized(),
                 extras: Some(json!(val.usage.clone())),
             }.to_gltf(&mut root, &mut bin))).collect()
-        ).collect();
+        )).collect();
 
         // add skeleton data if relevant
         let mut children = self.bones.iter().map(|_| Vec::new()).collect::<Vec<_>>();
@@ -881,7 +893,7 @@ impl Model {
         }
 
         let mut nodes: Vec<_> = self.buffer_infos.iter().zip(uses).enumerate().map(|(i, (info, usage))| {
-            let vbuff = &vbuffs[info.vbuff_info_offset as usize];
+            let vbuff = &vbuffs[info.vbuff_info_offset as usize].1;
             let indices = ibuffs.get(info.ibuff_info_offset as usize).copied();
             //let i_size = root.accessors[indices.unwrap().value()].max.as_ref().unwrap().as_u64().unwrap();
             let mut attributes = std::collections::BTreeMap::new();
@@ -1011,8 +1023,6 @@ impl Model {
             mat_order: self.mat_order.clone(),
             mesh_order: self.mesh_order.clone(),
             mesh_bounding_boxes: self.mesh_bounding_boxes.clone(),
-            vbuff_order: self.vbuff_order.clone(),
-            ibuff_order: self.ibuff_order.clone(),
             vals_j: self.vals_j.clone(),
             val_k_header: self.val_k_header.clone(),
             vals_k: self.vals_k.clone(),
@@ -1023,8 +1033,6 @@ impl Model {
             blocks: self.blocks.clone(),
             mats: self.mats.clone(),
             mat_extras: self.mat_extras.clone(),
-            vbuffs: self.vbuffs.clone(),
-            ibuffs: self.ibuffs.clone(),
             buffer_infos: self.buffer_infos.clone(),
             hk_constraint: self.hk_constraint.clone(),
             hk_constraint_datas: self.hk_constraint_datas.clone(),
@@ -1056,20 +1064,23 @@ impl Model {
         let model: ModelGltf = serde_json::from_str(root.extras.as_ref().unwrap().get())?;
 
         // get vertex / index data
-        let index_data = model.ibuffs.iter().zip(model.index_data).map(|(info, i)| match info.format {
-            0x10 => IndexBuffer::U16 { vals: GltfData::from_buffer(i, root, bin).u16().unwrap() },
-            _ => IndexBuffer::U32 { vals: GltfData::from_buffer(i, root, bin).u32().unwrap() },
-        }).collect();
+        let index_data = model.index_data.into_iter().map(|i| {
+            match root.get::<Accessor>(i.clone()).unwrap().component_type.as_ref().unwrap().0 {
+                ComponentType::U32 => Ok(IndexBuffer::U32 { vals: GltfData::from_buffer(i, root, bin).u32().unwrap() }),
+                ComponentType::U16 => Ok(IndexBuffer::U16 { vals: GltfData::from_buffer(i, root, bin).u16().unwrap() }),
+                x => Err(anyhow!("Invlaid Index Buffer Format {:?}", x))
+            }
+        }).collect::<Result<Vec<_>>>()?;
 
-        let vertex_data = model.vbuffs.iter().zip(model.vertex_data).map(|(info, data)| {
+        let vertex_data = model.vertex_data.iter().map(|(info, data)| {
             let fmt = VertexBuffer::from_vertex_format::<PC>(info.fmt1, info.fmt2);
 
-            let mut vals = fmt.vals.clone();
+            let mut vals = fmt.clone();
             for val in &mut vals {
                 let i = data.get(&val.usage).unwrap();
                 val.from_gltf(GltfData::from_buffer(*i, root, bin)).unwrap();
             }
-            VertexBuffer { vals }
+            VertexBuffer { info: info.clone(), data: vals }
         }).collect();
 
         let mut bones = Vec::with_capacity(model.bones.len());
@@ -1106,8 +1117,6 @@ impl Model {
             mat_order: model.mat_order,
             mesh_order: model.mesh_order,
             mesh_bounding_boxes: model.mesh_bounding_boxes,
-            vbuff_order: model.vbuff_order,
-            ibuff_order: model.ibuff_order,
             vals_j: model.vals_j,
             val_k_header: model.val_k_header,
             vals_k: model.vals_k,
@@ -1118,8 +1127,6 @@ impl Model {
             blocks: model.blocks,
             mats: model.mats,
             mat_extras: model.mat_extras,
-            vbuffs: model.vbuffs,
-            ibuffs: model.ibuffs,
             buffer_infos: model.buffer_infos,
             hk_constraint: model.hk_constraint,
             hk_constraint_datas: model.hk_constraint_datas,
@@ -1135,8 +1142,6 @@ struct ModelGltf {
     pub mat_order: Vec<u32>,
     pub mesh_order: Vec<u32>, // order of meshes (mapped to lod0, lod1, lod2, lod3)
     pub mesh_bounding_boxes: Vec<BoundingBox>, // 1 per contained mesh, stores result of some absolute position calculation?
-    pub vbuff_order: Vec<u32>,
-    pub ibuff_order: Vec<u32>,
     pub vals_j: Vec<u32>,
     pub val_k_header: Vec<u16>,
     pub vals_k: Vec<u32>,
@@ -1147,14 +1152,12 @@ struct ModelGltf {
     pub blocks: Vec<Block>,
     pub mats: Vec<Mat>,
     pub mat_extras: Vec<Option<MatExtra>>,
-    pub vbuffs: Vec<VBuffInfo>,
-    pub ibuffs: Vec<IBuffInfo>,
     pub buffer_infos: Vec<BufferInfo>,
     pub hk_constraint: Option<HkConstraint>,
     pub hk_constraint_datas: Vec<HkConstraintData>,
     pub shapes: Vec<ShapeGltf>,
     pub index_data: Vec<Index<Accessor>>,
-    pub vertex_data: Vec<HashMap<VertexUsage, Index<Accessor>>>,
+    pub vertex_data: Vec<(VBuffInfo, HashMap<VertexUsage, Index<Accessor>>)>,
     pub bones: Vec<Index<Node>>,
 }
 

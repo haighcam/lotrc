@@ -217,7 +217,12 @@ impl Level {
                 val.ibuffs.push(vec![]);
             } else {
                 let buffer = &val.asset_data.get(&(info.asset_key.key(), info.asset_type)).unwrap().data;
-                val.vbuffs.push(model.vbuffs.iter().map(|info| from_bytes!(O, pak::VertexBuffer, &buffer[..], &mut val.vbuff_infos[*val.vbuff_info_map.get(&info).unwrap()])).collect::<Result<Vec<_>>>()?);
+                val.vbuffs.push(model.vbuffs.iter().map(|info| {
+                    let vbuff_info = &mut val.vbuff_infos[*val.vbuff_info_map.get(&info).unwrap()];
+                    let vbuff = from_bytes!(O, pak::VertexBuffer, &buffer[..], vbuff_info.clone())?;
+                    *vbuff_info = vbuff.info.clone();
+                    Ok(vbuff)
+                }).collect::<Result<Vec<_>>>()?);
                 val.ibuffs.push(model.ibuffs.iter().map(|info| from_bytes!(O, pak::IndexBuffer, &buffer[..], &val.ibuff_infos[*val.ibuff_info_map.get(&info).unwrap()])).collect::<Result<Vec<_>>>()?);    
             }
         }
@@ -269,15 +274,15 @@ impl Level {
                         data.extend(vals);
                         for buffer_info in &mut self.buffer_infos {
                             if buffer_info.vbuff_info_offset == off {
-                                buffer_info.v_size = vbuffs[i].vals.iter().map(|x| x.val.size()).sum::<usize>() as u32;
+                                buffer_info.v_size = vbuffs[i].v_size() as u32;
                                 buffer_info.vbuff_size = info.size;
                             }
                             if buffer_info.vbuff_info_offset_2 == off {
-                                buffer_info.v_size_2 = vbuffs[i].vals.iter().map(|x| x.val.size()).sum::<usize>() as u32;
+                                buffer_info.v_size_2 = vbuffs[i].v_size() as u32;
                                 buffer_info.vbuff_size_2 = info.size;
                             }
                             if buffer_info.vbuff_info_offset_3 == off {
-                                buffer_info.v_size_3 = vbuffs[i].vals.iter().map(|x| x.val.size()).sum::<usize>() as u32;
+                                buffer_info.v_size_3 = vbuffs[i].v_size() as u32;
                                 buffer_info.vbuff_size_3 = info.size;
                             }
                         }

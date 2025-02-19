@@ -237,7 +237,7 @@ pub struct ModelInfo {
     pub ibuff_num: u32,
     pub mesh_bounding_boxes_offset: u32,
     pub unk_46: f32, // maybe something to do with size? 
-    pub unk_47: u32, // maybe something to do with variation
+    pub variation_counts: u32, // maybe something to do with variation
     pub vals_j_num: u32,
     pub vals_j_offset: u32,
     pub block_offset: u32,
@@ -612,9 +612,9 @@ pub struct Mat3 {
     pub unk_111: u32,
     pub unk_112: u32,
     pub unk_113: u32,
-    pub unk_114a: u8,
-    pub unk_114b: u8,
-    pub unk_114c: u8,
+    pub variation_id_color: u8,
+    pub variation_id_texture: u8,
+    pub variation_id_specular: u8,
     pub unk_114d: u8,
     pub unk_115: u32,
     #[ordered_data(skipPC, skipXBOX)]
@@ -878,7 +878,7 @@ pub struct IBuffInfo {
     pub size: u32,
     #[name_ps3(unk_6)]
     pub format: u32,
-    pub unk_3: u32,
+    pub vbuff_alt_fmt: u32, // 1 if vbuff.fmt1 & 0x40000 != 0 else 0; 0 for Xbox
     #[name_ps3(unk_8)]
     pub offset: u32,
     #[name_ps3(size)]
@@ -1856,23 +1856,23 @@ lazy_static::lazy_static! {
 
 #[serde_as]
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
-#[serde(transparent)]
 pub struct VertexBuffer {
     //#[serde_as(as = "serde_with::Map<serde_with::DisplayFromStr, _>")]
+    pub info: VBuffInfo,
     #[serde_as(as="serde_with::KeyValueMap<_>")]
-    pub vals: Vec<VertexData>
+    pub data: Vec<VertexData>,
 }
 
 impl VertexBuffer {
     pub fn len(&self) -> usize {
-        self.vals.first().map(|x| x.val.len()).unwrap_or(0)
+        self.data.first().map(|x| x.val.len()).unwrap_or(0)
     }
 
     pub fn v_size(&self) -> usize {
-        self.vals.iter().map(|x| x.val.size()).sum::<usize>()
+        self.data.iter().map(|x| x.val.size()).sum::<usize>()
     }
 
-    pub fn from_vertex_format<V: Version>(fmt1: u32, fmt2: u32) -> Self {
+    pub fn from_vertex_format<V: Version>(fmt1: u32, fmt2: u32) -> Vec<VertexData> {
         let mut vals = Vec::new();
         let mut s = 0;
         if fmt2 == 0 {
@@ -2005,12 +2005,12 @@ impl VertexBuffer {
                 //s += 12;
             }
         }
-        Self { vals }
+        vals
     }
 
     pub fn get_vertex_format<V: Version>(&self) -> u32 {
         let mut fmt1 = 0u32;
-        for val in &self.vals {
+        for val in &self.data {
             match val {
                 VertexData { usage: VertexUsage::Position, val: VertexTypes::Vector3(..) } => {
                     fmt1 |= 1;
@@ -2070,17 +2070,22 @@ impl VertexBuffer {
     }
 }
 
-type VertexBufferAlt = IndexMap<VertexUsage, VertexTypes>;
+#[pyclass]
+#[derive(Clone)]
+pub struct VertexBufferAlt {
+    info: VBuffInfo,
+    data: IndexMap<VertexUsage, VertexTypes>
+}
 
 impl From<VertexBufferAlt> for VertexBuffer {
-    fn from(value: VertexBufferAlt) -> Self {
-        Self { vals: value.into_iter().map(|(usage, val)| VertexData { usage, val }).collect() }
+    fn from(VertexBufferAlt { info, data }: VertexBufferAlt) -> Self {
+        Self { info, data: data.into_iter().map(|(usage, val)| VertexData { usage, val }).collect() }
     }
 }
 
 impl From<VertexBuffer> for VertexBufferAlt {
-    fn from(value: VertexBuffer) -> Self {
-        Self::from_iter(value.vals.iter().map(|x| (x.usage.clone(), x.val.clone())))
+    fn from(VertexBuffer { info, data }: VertexBuffer) -> Self {
+        Self { info, data: IndexMap::from_iter(data.iter().map(|x| (x.usage.clone(), x.val.clone()))) }
     }
 }
 
@@ -2101,19 +2106,18 @@ impl <'py> FromPyObject<'py> for VertexBuffer {
 }
 
 impl <'a> AsData<'a, '_> for VertexBuffer {
-    type InArgs = &'a mut VBuffInfo;
+    type InArgs = VBuffInfo;
     type OutArgs = NoArgs;
 
-    fn from_bytes<V: Version>(data: &[u8], info: Self::InArgs) -> Result<Self> {
+    fn from_bytes<V: Version>(data: &[u8], mut info: Self::InArgs) -> Result<Self> {
         //let mut formats = FORMATS.lock().unwrap();
-        let fmt = VertexBuffer::from_vertex_format::<V>(info.fmt1, info.fmt2);
-        let size = fmt.v_size();
+        let mut vals =  VertexBuffer::from_vertex_format::<V>(info.fmt1, info.fmt2);
+        let size = vals.iter().map(|x| x.val.size()).sum::<usize>();
         if info.size as usize % size != 0 {
             warn!("Vertex Buffer size is not a multiple of assumed size");
         }
         let n = info.size as usize / size;
         let mut offset = info.offset as usize;
-        let mut vals = fmt.vals.clone();
         for _ in 0..n {
             // let mut val = Vec::with_capacity(fmt.len());
             for val in &mut vals {
@@ -2125,8 +2129,7 @@ impl <'a> AsData<'a, '_> for VertexBuffer {
         if V::xbox() {
             if (info.fmt1 & 0x80000 != 0) & (info.fmt1 & 0x400 == 0) {
                 info.fmt1 |= 0x400;
-                let fmt = VertexBuffer::from_vertex_format::<V>(info.fmt1, info.fmt2);
-                let mut vals_new = fmt.vals.clone();
+                let mut vals_new = VertexBuffer::from_vertex_format::<V>(info.fmt1, info.fmt2);
                 let mut blend_inds = Vec::with_capacity(n);
                 let mut blend_weights = Vec::with_capacity(n);
                 for val in &mut vals {
@@ -2190,17 +2193,17 @@ impl <'a> AsData<'a, '_> for VertexBuffer {
                 }
             }
         }
-        Ok(Self { vals })
+        Ok(Self { info: info.clone(), data: vals })
     }
 
     fn dump_bytes<V: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
-        let i = self.vals.iter().map(|x| x.val.len()).min().unwrap();
-        let sorted_vals: Vec<_> = self.vals.iter().sorted_by_key(|val| val.order()).collect();
+        let i = self.data.iter().map(|x| x.val.len()).min().unwrap();
+        let sorted_vals: Vec<_> = self.data.iter().sorted_by_key(|val| val.order()).collect();
         (0..i).flat_map(|i| sorted_vals.iter().flat_map(move |val| dump_bytes!(V, val.val.get(i)))).collect()
     }
 
     fn size<V: Version>(&self) -> usize {
-        self.vals.iter().map(|x| x.size()).sum::<usize>()
+        self.data.iter().map(|x| x.size()).sum::<usize>()
     }
 }
 

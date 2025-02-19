@@ -39,7 +39,7 @@ struct CliArgs {
     command: Commands,
 
     /// Decompile lua files when loading a level
-    #[arg(long, requires="unluac")]
+    #[arg(long)]
     lua_decomp: bool,
 
     /// Compile lua files when loading a level, also converts endianess for xbox lua files
@@ -175,7 +175,7 @@ fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parse
             }
         } {
             parsed.insert(src.clone());
-        } else if src.is_dir(){
+        } else if src.is_dir() {
             parsed.insert(src.clone());
             for path in fs::read_dir(&src).unwrap().map(|x| x.unwrap().path()) {
                 q.push_back((name.clone(), path));
@@ -212,15 +212,20 @@ fn main() -> Result<()> {
     log::set_max_level(level);
 
     let exe_dir = std::env::current_exe().unwrap().parent().unwrap().to_owned();
-    let arg_file = exe_dir.join("args.txt");
-    let file_args = if arg_file.is_file() {
+    let mut args = CliArgs::parse_from(wild::args_os());
+    for arg_file in args.input.clone().iter()
+        .filter(|x| x.ends_with(".arg"))
+        .map(|x| PathBuf::from(x))
+        .chain(std::iter::once(exe_dir.join("args.txt")))
+        .filter(|x| x.is_file()) {
+
         let data = fs::read_to_string(arg_file)?;
-        CliArgs::parse_from(std::iter::once("").chain(data.as_str().split_whitespace()))
-        
-    } else {
-        CliArgs::default()
-    };
-    let args = CliArgs::parse_from(wild::args_os()).combine(file_args);
+        args = args.combine(CliArgs::parse_from(std::iter::once("").chain(data.as_str().split_whitespace())));
+    }
+    let unluac = exe_dir.join("unluac.jar");
+    if unluac.is_file() {
+        args.unluac = args.unluac.or(Some(unluac.to_string_lossy().to_string()))
+    }
 
     *DECOMP_LUA.lock().unwrap() = args.lua_decomp;
     *RECOMP_LUA.lock().unwrap() = args.lua_recomp;
@@ -232,6 +237,9 @@ fn main() -> Result<()> {
     }
     if let Some(unluac) = args.unluac {
         *UNLUAC.lock().unwrap() = unluac;
+    }
+    if args.lua_decomp && !PathBuf::from((*UNLUAC.lock().unwrap()).clone()).is_file() {
+        panic!("Need to know where unluac.jar is for --lua_decomp. Add to executable directory or specify file with --unluac")
     }
 
     if args.command.hash {

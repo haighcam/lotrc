@@ -3,11 +3,37 @@ use mlua::prelude::*;
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, Arc};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 
 use super::types::Crc;
 
-const LUA_BYTECODE: &str = include_str!("../res/lua-bytecode.github.io/lua-bytecode.lua");
+pub const PC_FORMAT: lunify::Format = lunify::Format {
+    format: 0,
+    endianness: lunify::Endianness::Little,
+    integer_width: lunify::BitWidth::Bit32,
+    size_t_width: lunify::BitWidth::Bit32,
+    instruction_width: lunify::BitWidth::Bit32,
+    number_width: lunify::BitWidth::Bit32,
+    is_number_integral: false
+};
+pub const XBOX_FORMAT: lunify::Format = lunify::Format {
+    format: 0,
+    endianness: lunify::Endianness::Little,
+    integer_width: lunify::BitWidth::Bit32,
+    size_t_width: lunify::BitWidth::Bit32,
+    instruction_width: lunify::BitWidth::Bit32,
+    number_width: lunify::BitWidth::Bit32,
+    is_number_integral: false
+};
+pub const TOOL_FORMAT: lunify::Format = lunify::Format {
+    format: 0,
+    endianness: lunify::Endianness::Little,
+    integer_width: lunify::BitWidth::Bit32,
+    size_t_width: lunify::BitWidth::Bit64,
+    instruction_width: lunify::BitWidth::Bit32,
+    number_width: lunify::BitWidth::Bit64,
+    is_number_integral: false
+};
 
 lazy_static::lazy_static! {
     pub static ref LUA: Lua = new().unwrap();
@@ -15,9 +41,24 @@ lazy_static::lazy_static! {
 
 fn new() -> Result<Lua> {
     let lua: Lua = Lua::new();
-    lua.globals().set("lua_bytecode", lua.load(LUA_BYTECODE).eval::<LuaFunction>()?)?;
+    //lua.globals().set("lua_bytecode", lua.load(LUA_BYTECODE).eval::<LuaFunction>()?)?;
     Ok(lua)
 }
+
+pub fn convert(code: &[u8], format: &lunify::Format) -> Result<Vec<u8>> {
+    lunify::unify(code, format, &Default::default()).map_err(|e| anyhow!("{:?}", e))
+
+}
+
+pub fn compile(code: &[u8], name: &str) -> Result<Vec<u8>> {
+    let code = LUA.create_string(LUA.load(code).set_name(name).into_function().map_err(|e| anyhow!(e.to_string()))?.dump(false)).map_err(|e| anyhow!(e.to_string()))?;
+    convert(
+        &code.as_bytes(),
+        &PC_FORMAT
+    )
+}
+/*
+const LUA_BYTECODE: &str = include_str!("../res/lua-bytecode.github.io/lua-bytecode.lua");
 
 pub fn convert(code: &[u8], format: &str) -> LuaResult<Vec<u8>> {
     Ok(LUA.globals().get::<LuaFunction>("lua_bytecode")?.call::<LuaString>((
@@ -32,6 +73,7 @@ pub fn compile(code: &str, name: &str) -> LuaResult<Vec<u8>> {
         "L4404" // "B4404" for xbox?
     ))?.as_bytes().to_vec())
 }
+*/
 
 pub fn decomp(code: &[u8], unluac: String) -> LuaResult<String> {
     let mut temp_file = tempfile::NamedTempFile::new().unwrap();
@@ -48,11 +90,8 @@ pub struct LuaCompiler {
 }
 
 impl LuaCompiler {
-    pub fn new() -> LuaResult<Self> {
-        let lua: Lua = Lua::new();
-        lua.globals().set("lua_bytecode", lua.load(LUA_BYTECODE).eval::<LuaFunction>()?)?;
-        // let lua_bytecode: LuaFunction = lua.load(LUA_BYTECODE).eval()?;
-        Ok(Self { lua })
+    pub fn new() -> Result<Self> {
+        Ok(Self { lua: new()? })
     }
 }
 

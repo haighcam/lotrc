@@ -9,6 +9,7 @@ pub mod lua_stuff;
 pub mod pak;
 pub mod pak_alt;
 pub mod read_write;
+pub mod shader;
 pub mod types;
 
 pub use flate2::Compression;
@@ -98,6 +99,14 @@ mod lotrc {
                 HkaSplineSkeletalAnimationFlags, HkaSplineSkeletalAnimation, Obj5Header, Obj3,
             };
         }
+    }
+    
+    #[pymodule]
+    mod shader {
+        #[pymodule_export]
+        use crate::shader::{
+            Header, ShaderHeader, Shaders
+        };
     }
 
     #[pymodule]
