@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashSet, VecDeque}, fs, path::{Path, PathBuf}
+    collections::{HashSet, VecDeque}, fs, path::{Path, PathBuf}, io::Read,
 };
 use log::error;
 use clap::{Parser, Args};
@@ -12,6 +12,7 @@ use lotrc::{
     level_alt::Level as LevelAlt,
     level_info::LevelInfo,
     read_write::{Reader, Writer, PathStuff},
+    shader::Shaders,
     types::{PC, Crc, DECOMP_LUA, RECOMP_LUA, ZIP, ANIM_TABLES, GLTF, COMPRESSION, UNLUAC},
 };
 
@@ -58,9 +59,9 @@ struct CliArgs {
     #[arg(short='a', long)]
     no_anim_table: bool,
 
-    /// Don't dump to zip files 
+    /// Dump to zip files instead of folders 
     #[arg(short='z', long)]
-    no_zip: bool,
+    zip: bool,
 
     /// Dump models as gltfs
     #[arg(long)]
@@ -78,7 +79,7 @@ impl CliArgs {
             compression: self.compression.or(other.compression),
             unluac: self.unluac.or(other.unluac),
             no_anim_table: self.no_anim_table || other.no_anim_table,
-            no_zip: self.no_zip || other.no_zip,
+            zip: self.zip || other.zip,
             gltf: self.gltf || other.gltf
         }
     }
@@ -136,10 +137,25 @@ fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parse
             }
         } else if !src.with_extension("PAK").is_file() && src.with_extension("bin").is_file() && ext == "bin" {
             parsed.insert(src.with_extension("bin"));
-            let table: AudioTable = AudioTable::parse(src)?;
-            match args {
-                Commands { compile: true, .. } => table.dump::<PC, _>(dest.join(name)),
-                _ => table.to_file(dest.join(name)),
+            let mut vals = vec![0;4];
+            {
+                let mut f = fs::File::open(&src)?;
+                f.read_exact(&mut vals)?;
+            }
+            if vals[0] == 1 || vals[3] == 1 {
+                let shaders = Shaders::parse(src)?;
+                match args {
+                    Commands { compile: true, .. } => shaders.dump::<PC, _>(dest.join(name))?,
+                    _ => shaders.to_file(Writer::new(dest.join(name), *ZIP.lock().unwrap())?)?,
+                }
+            } else if vals[0] == 2 || vals[3] == 2 {
+                let table = AudioTable::parse(src)?;
+                match args {
+                    Commands { compile: true, .. } => table.dump::<PC, _>(dest.join(name)),
+                    _ => table.to_file(dest.join(name)),
+                }
+            } else {
+                error!("Unhandled .bin filetype {}", src.display());
             }
         } else if ext == "audio.json" {
             parsed.insert(src.clone());
@@ -165,6 +181,13 @@ fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parse
                     match args {
                         Commands { dump: true, .. } => level.to_file(Writer::new(dest.join(name), *ZIP.lock().unwrap())?, mp.cloned())?,
                         _ => level.dump::<PC, _>(dest.join(name), mp)?
+                    }
+                    true
+                } else if reader.join("vertex_headers.json").is_file() {
+                    let shaders = Shaders::from_file(reader)?;
+                    match args {
+                        Commands { dump: true, .. } => shaders.to_file(Writer::new(dest.join(name), *ZIP.lock().unwrap())?)?,
+                        _ => shaders.dump::<PC, _>(dest.join(name))?,
                     }
                     true
                 } else {
@@ -230,7 +253,7 @@ fn main() -> Result<()> {
     *DECOMP_LUA.lock().unwrap() = args.lua_decomp;
     *RECOMP_LUA.lock().unwrap() = args.lua_recomp;
     *ANIM_TABLES.lock().unwrap() = !args.no_anim_table;
-    *ZIP.lock().unwrap() = !args.no_zip;
+    *ZIP.lock().unwrap() = args.zip;
     *GLTF.lock().unwrap() = args.gltf;
     if let Some(compression) = args.compression {
         *COMPRESSION.lock().unwrap() = lotrc::Compression::new(compression);

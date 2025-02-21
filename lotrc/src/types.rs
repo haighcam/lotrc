@@ -344,7 +344,7 @@ lazy_static::lazy_static! {
 
     pub static ref ANIM_TABLES: Mutex<bool> = Mutex::new(true);
 
-    pub static ref ZIP: Mutex<bool> = Mutex::new(true);
+    pub static ref ZIP: Mutex<bool> = Mutex::new(false);
 
     pub static ref GLTF: Mutex<bool> = Mutex::new(false);
 }
@@ -685,12 +685,27 @@ impl CompressedBlock {
         Self { data }
     }
 
-    pub fn dump(&self) -> Vec<u8> {
-        if self.data.is_empty() { return Vec::new(); }
-        // let mut z = ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
-        let mut z = ZlibEncoder::new(Vec::new(), COMPRESSION.lock().unwrap().clone());
-        z.write_all(self.data.as_slice()).unwrap();
-        z.finish().unwrap()
+    pub fn dump(&self, zero_alt: bool) -> Result<Vec<u8>> {
+        if self.data.is_empty() { return Ok(Vec::new()); }
+        let mut c = COMPRESSION.lock().unwrap().clone();
+        Ok(if c.level() == 0 && zero_alt {
+            self.data.clone()
+        } else {
+            // let mut z = ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
+            let mut z = ZlibEncoder::new(Vec::new(), c);
+            z.write_all(self.data.as_slice())?;
+            let mut data = z.finish()?;
+            while data.len() > 0xffffff {
+                if c.level() == 9 {
+                    return Err(anyhow!("Bin Asset could not be compressed to a small enough size"))
+                }
+                c = flate2::Compression::new(c.level() + 1);
+                z = ZlibEncoder::new(Vec::new(), c);
+                z.write_all(self.data.as_slice())?;
+                data = z.finish()?;
+            }
+            data
+        })
     }
 }
 

@@ -297,7 +297,7 @@ impl Level {
                 }
 
                 asset_handle.size = data.len() as u32;
-                data = types::CompressedBlock { data }.dump();
+                data = types::CompressedBlock { data }.dump(false).with_context(|| format!("{}", asset_handle.key.to_string()))?;
                 asset_handle.size_comp = data.len() as u32;
                 asset_handle.offset = bin_data.len() as u32;
                 bin_data.extend(data);
@@ -314,7 +314,7 @@ impl Level {
             let asset_handle = dump_asset_handles.get_mut(i).unwrap();
             let mut data = data0;
             asset_handle.size = data.len() as u32;
-            data = types::CompressedBlock { data }.dump();
+            data = types::CompressedBlock { data }.dump(false).with_context(|| format!("{}", asset_handle.key.to_string()))?;
             asset_handle.size_comp = data.len() as u32;
             asset_handle.offset = bin_data.len() as u32;
             bin_data.extend(data);
@@ -324,7 +324,7 @@ impl Level {
             let asset_handle = dump_asset_handles.get_mut(j).unwrap();
             let mut data = data1;
             asset_handle.size = data.len() as u32;
-            data = types::CompressedBlock { data }.dump();
+            data = types::CompressedBlock { data }.dump(false).with_context(|| format!("{}", asset_handle.key.to_string()))?;
             asset_handle.size_comp = data.len() as u32;
             asset_handle.offset = bin_data.len() as u32;
             bin_data.extend(data);
@@ -338,7 +338,7 @@ impl Level {
 
             let asset_handle = dump_asset_handles.get_mut(i).unwrap();
             asset_handle.size = data.len() as u32;
-            data = types::CompressedBlock { data }.dump();
+            data = types::CompressedBlock { data }.dump(false).with_context(|| format!("{}", asset_handle.key.to_string()))?;
             asset_handle.size_comp = data.len() as u32;
             asset_handle.offset = bin_data.len() as u32;
             bin_data.extend(data);
@@ -386,9 +386,12 @@ impl Level {
             pak_data.extend(vec![0u8; off-pak_data.len()]);
             info.size = data.len() as u32;
             let block = types::CompressedBlock { data }; 
-            let data_comp = block.dump();
+            let data_comp = block.dump(true).with_context(|| format!("{}", info.key.to_string()))?;
             info.size_comp = data_comp.len() as u32;
             info.offset = pak_data.len() as u32;
+            if info.size_comp == info.size {
+                info.size_comp = 0;
+            }
             pak_data.extend(data_comp);
             self.dump_animation_blocks.push(block);
 
@@ -482,18 +485,24 @@ impl Level {
         pak_data.extend(vec![0u8; off-pak_data.len()]);
         dump_pak_header.block1_size = dump_block1.len() as u32;
         self.dump_block1.replace(types::CompressedBlock { data: dump_block1 });
-        let data = self.dump_block1.as_ref().unwrap().dump();
+        let data = self.dump_block1.as_ref().unwrap().dump(true).context("pak_block1")?;
         dump_pak_header.block1_offset = pak_data.len() as u32;
         dump_pak_header.block1_size_comp = data.len() as u32;
+        if dump_pak_header.block1_size_comp == dump_pak_header.block1_size {
+            dump_pak_header.block1_size_comp = 0;
+        }
         pak_data.extend(data);
 
         let off = (pak_data.len() + 4096) & 0xfffff000;
         pak_data.extend(vec![0u8; off-pak_data.len()]);
         dump_pak_header.block2_size = dump_block2.len() as u32;
         self.dump_block2.replace(types::CompressedBlock { data: dump_block2 });
-        let data = self.dump_block2.as_ref().unwrap().dump();
+        let data = self.dump_block2.as_ref().unwrap().dump(true).context("pak_block2")?;
         dump_pak_header.block2_offset = pak_data.len() as u32;
         dump_pak_header.block2_size_comp = data.len() as u32;
+        if dump_pak_header.block2_size_comp == dump_pak_header.block2_size {
+            dump_pak_header.block2_size_comp = 0;
+        }
         pak_data.extend(data);
 
         let off = (pak_data.len() + 4096) & 0xfffff000;

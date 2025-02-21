@@ -13,8 +13,8 @@ soundbnks = [
     "SFXBalrog.bnk",
 ]
 
-src_path = "DumpedLevels/Shire.zip"
-dst_path = "DumpedLevels/MinasTirith_Top.zip"
+src_path = "DumpedLevels/Shire"
+dst_path = "DumpedLevels/MinasTirith_Top"
 
 # these are the guids for the corresponding objects in the dst level
 spawn_emmiter_guid = 7052754

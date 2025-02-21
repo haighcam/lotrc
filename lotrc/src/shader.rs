@@ -64,7 +64,7 @@ impl Shaders {
         self.to_file(Writer::new(path, zip)?)
     }
 
-    fn dump_pc(&self, path: String) {
+    fn dump_pc(&self, path: String) -> Result<()> {
         self.dump::<PC, _>(path)
     }
 }
@@ -166,9 +166,10 @@ impl Shaders {
         }
     }
 
-    pub fn dump<O: Version + 'static, P: AsRef<Path>>(&self, path: P) {
+    pub fn dump<O: Version + 'static, P: AsRef<Path>>(&self, path: P) -> Result<()> {
         path.as_ref().parent().map(fs::create_dir_all);
-        fs::write(path.as_ref().with_extension("bin"), dump_bytes!(O, self)).unwrap();
+        fs::write(path.as_ref().with_extension("bin"), dump_bytes!(O, self))?;
+        Ok(())
     }
 
     pub fn to_file(&self, writer: Writer) -> Result<()> {

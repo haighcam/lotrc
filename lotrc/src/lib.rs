@@ -73,7 +73,7 @@ mod lotrc {
             Shape, HkShape, Animation, Mat1, HkConstraint, Model, HkShapeInfo, AnimationInfo, AnimationBlockInfo,
             HkConstraintInfo, HkConstraintData, ModelInfo, Mat2, Mat3, Mat4, VBuffInfo, IBuffInfo, Header,
             ObjA, Obj0, LodMeshes, BufferInfo, MatBase, MatExtra, ShapeInfo, TextureInfo, EffectInfo, PFieldInfo, 
-            GFXBlockInfo, FoliageInfo, RadiosityValsInfo, BlockAVal, VertexTypes, IndexBuffer, BoundingBox
+            GFXBlockInfo, FoliageInfo, RadiosityValsInfo, BlockAVal, VertexTypes, IndexBuffer, BoundingBox,
         };
 
         #[pymodule]

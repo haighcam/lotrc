@@ -4,7 +4,7 @@ import json
 # constructs a .glb file containing static models from a templatelevel
 
 # point to a dumped level folder or zip
-src = "DumpedLevels/Shire.zip"
+src = "DumpedLevels/Shire"
 
 # where to save the resulting file, should be a .glb file
 dst = "Shire.glb"

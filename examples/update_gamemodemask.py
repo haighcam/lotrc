@@ -2,7 +2,7 @@ import json
 import utils
 # try to add required objects to a gamemode by setting the corresponding gamemodemask
 
-src_path = "DumpedLevels/MinasTirith_Top.zip"
+src_path = "DumpedLevels/MinasTirith_Top"
 gamemodeguid = 144015924
 
 # for finding missing objects in the gamemode, set to dst of get_obj_index.py

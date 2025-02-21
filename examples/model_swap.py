@@ -9,8 +9,8 @@ import utils
 new_model = 'CH_hum_Wormtongue_01'
 targ_clss = 'CH_NML_SIL_Scout'
 
-src_path = "DumpedLevels/Isengard.zip"
-dst_path = "DumpedLevels/Helm'sDeep.zip"
+src_path = "DumpedLevels/Isengard"
+dst_path = "DumpedLevels/Helm'sDeep"
 
 to_remove = set()
 to_add = {}

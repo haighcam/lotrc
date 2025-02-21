@@ -474,10 +474,13 @@ impl Level {
             sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(info.key.to_string())});
             pak_data.extend(vec![0u8; ((pak_data.len() + 4095) & 0xfffff000)-pak_data.len()]);
             let size = data.len();
-            let data = CompressedBlock { data }.dump();
+            let data = CompressedBlock { data }.dump(true).with_context(|| format!("{}", info.key.to_string()))?;
             info.offset = pak_data.len() as u32;
             info.size = size as u32;
             info.size_comp = data.len() as u32;
+            if info.size_comp == info.size {
+                info.size_comp = 0;
+            }
             pak_data.extend(data);
         }
         info!("animations in {:?}", time.elapsed());
@@ -768,19 +771,25 @@ impl Level {
         sub_bar.as_ref().map(|x| { x.inc(1); x.set_message("block1")});
         pak_data.extend(vec![0u8; ((pak_data.len() + 4095) & 0xfffff000)-pak_data.len()]);
         let size = block1.len();
-        let data = CompressedBlock { data: block1 }.dump();
+        let data = CompressedBlock { data: block1 }.dump(true).context("pak_block1")?;
         pak_header.block1_size = size as u32;
         pak_header.block1_size_comp = data.len() as u32;
         pak_header.block1_offset = pak_data.len() as u32;
+        if pak_header.block1_size_comp == pak_header.block1_size {
+            pak_header.block1_size_comp = 0;
+        }
         pak_data.extend(data);
 
         sub_bar.as_ref().map(|x| { x.inc(1); x.set_message("block2")});
         pak_data.extend(vec![0u8; ((pak_data.len() + 4095) & 0xfffff000)-pak_data.len()]);
         let size = block2.len();
-        let data = CompressedBlock { data: block2 }.dump();
+        let data = CompressedBlock { data: block2 }.dump(true).context("pak_block2")?;
         pak_header.block2_size = size as u32;
         pak_header.block2_size_comp = data.len() as u32;
         pak_header.block2_offset = pak_data.len() as u32;
+        if pak_header.block2_size_comp == pak_header.block2_size {
+            pak_header.block2_size_comp = 0;
+        }
         pak_data.extend(data);
 
         sub_bar.as_ref().map(|x| { x.inc(1); x.set_message("strings")});
@@ -821,35 +830,35 @@ impl Level {
             let size = data.len() as u32;
             let offset = bin_data.len() as u32;
             let size_comp = if size != 0 {
-                let data = CompressedBlock { data }.dump();
+                let data = CompressedBlock { data }.dump(false).with_context(|| format!("{}", key.to_string()))?;
                 let size_comp = data.len() as u32;
                 bin_data.extend(data);
                 bin_data.extend(vec![0u8; ((bin_data.len() + 2047) & 0xfffff800)-bin_data.len()]);
                 size_comp
             } else { 0 };
-            bin::AssetHandle { key, offset, size, size_comp, kind }
-        }).collect::<Vec<_>>();
+            Ok(bin::AssetHandle { key, offset, size, size_comp, kind })
+        }).collect::<Result<Vec<_>>>()?;
 
         let mut texture_asset_handles = texture_data.into_iter().map(|((key, kind), data)| {
             sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string())});
             let size = data.len() as u32;
             let offset = bin_data.len() as u32;
             let size_comp = if size != 0 {
-                let data = CompressedBlock { data }.dump();
+                let data = CompressedBlock { data }.dump(false).with_context(|| format!("{}", key.to_string()))?;
                 let size_comp = data.len() as u32;
                 bin_data.extend(data);
                 bin_data.extend(vec![0u8; ((bin_data.len() + 2047) & 0xfffff800)-bin_data.len()]);
                 size_comp
             } else { 0 };
-            bin::AssetHandle { key, offset, size, size_comp, kind }
-        }).collect::<Vec<_>>();
+            Ok(bin::AssetHandle { key, offset, size, size_comp, kind })
+        }).collect::<Result<Vec<_>>>()?;
 
         if let Some(rad_data) = rad_data {
             sub_bar.as_ref().map(|x| { x.inc(1); x.set_message(rad_name.to_string())});
             let size = rad_data.len() as u32;
             let offset = bin_data.len() as u32;
             let size_comp = if size != 0 {
-                let data = CompressedBlock { data: rad_data }.dump();
+                let data = CompressedBlock { data: rad_data }.dump(false).with_context(|| format!("{}", rad_name.to_string()))?;
                 let size_comp = data.len() as u32;
                 bin_data.extend(data);
                 bin_data.extend(vec![0u8; ((bin_data.len() + 2047) & 0xfffff800)-bin_data.len()]);

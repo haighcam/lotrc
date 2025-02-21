@@ -10,7 +10,7 @@ from pathlib import Path
 src_dir = "DumpedLevels"
 dst = "DumpedLevels/index.json"
 
-files = [i for i in os.listdir(src_dir) if i.endswith('.zip') and not i.startswith('level_info')]
+files = [i for i in os.listdir(src_dir) if (i.endswith('.zip') or os.path.isdir(i)) and not i.startswith('level_info')]
 animations = {}
 effects = {}
 models = {}

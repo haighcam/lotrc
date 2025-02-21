@@ -1,5 +1,4 @@
 use std::{collections::HashMap, fmt::Display, iter::zip, num::ParseIntError, ops::Div, str::FromStr};
-use indexmap::IndexMap;
 use std::sync::Mutex;
 use log::warn;
 use serde::{Serialize, Deserialize};
@@ -8,6 +7,7 @@ use serde_with::serde_as;
 use anyhow::Result;
 use pyo3::prelude::*;
 use pyo3::exceptions::PyTypeError;
+use pyo3::types::PyDict;
 use itertools::Itertools;
 
 use lotrc_proc::{OrderedData, basicpymethods, PyMethods};
@@ -2070,38 +2070,28 @@ impl VertexBuffer {
     }
 }
 
-#[pyclass]
-#[derive(Clone)]
-pub struct VertexBufferAlt {
-    info: VBuffInfo,
-    data: IndexMap<VertexUsage, VertexTypes>
-}
-
-impl From<VertexBufferAlt> for VertexBuffer {
-    fn from(VertexBufferAlt { info, data }: VertexBufferAlt) -> Self {
-        Self { info, data: data.into_iter().map(|(usage, val)| VertexData { usage, val }).collect() }
-    }
-}
-
-impl From<VertexBuffer> for VertexBufferAlt {
-    fn from(VertexBuffer { info, data }: VertexBuffer) -> Self {
-        Self { info, data: IndexMap::from_iter(data.iter().map(|x| (x.usage.clone(), x.val.clone()))) }
-    }
-}
-
 impl <'py> IntoPyObject<'py> for VertexBuffer {
-    type Target = <VertexBufferAlt as IntoPyObject<'py>>::Target;
-    type Output = <VertexBufferAlt as IntoPyObject<'py>>::Output;
-    type Error = <VertexBufferAlt as IntoPyObject<'py>>::Error;
+    type Target = PyDict;
+    type Output = Bound<'py, Self::Target>;
+    type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        VertexBufferAlt::from(self).into_pyobject(py)
+        let dict = PyDict::new(py);
+        for v in self.data {
+            dict.set_item(v.usage, v.val)?;
+        }
+        dict.set_item("info", self.info)?;
+        Ok(dict)
     }
 }
 
 impl <'py> FromPyObject<'py> for VertexBuffer {
     fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
-        Ok(VertexBufferAlt::extract_bound(ob)?.into())
+        let dict = ob.downcast::<PyDict>()?;
+        let info: VBuffInfo = dict.get_item("info")?.ok_or(anyhow::anyhow!("dict missing info key"))?.extract()?;
+        dict.del_item("info")?;
+        let data: Vec<VertexData> = dict.into_iter().map(|(k, v)| Ok(VertexData { usage: k.extract()?, val: v.extract()? })).collect::<Result<_>>()?;
+        Ok(Self { info, data })
     }
 }
 
