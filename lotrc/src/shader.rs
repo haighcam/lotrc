@@ -173,7 +173,6 @@ impl Shaders {
     }
 
     pub fn to_file(&self, writer: Writer) -> Result<()> {
-        writer.join("index.json").write(&serde_json::to_vec_pretty(self)?)?;
         self.strings.to_file(writer.join("debug_strings"))?;
         writer.join("vertex_headers.json").write(&serde_json::to_vec_pretty(&self.vertex_headers)?)?;
         writer.join("fragment_headers.json").write(&serde_json::to_vec_pretty(&self.fragment_headers)?)?;
