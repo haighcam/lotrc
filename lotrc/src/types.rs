@@ -347,6 +347,8 @@ lazy_static::lazy_static! {
     pub static ref ZIP: Mutex<bool> = Mutex::new(false);
 
     pub static ref GLTF: Mutex<bool> = Mutex::new(false);
+
+    pub static ref ALT_OBJS: Mutex<bool> = Mutex::new(false);
 }
 
 #[pyfunction]
@@ -413,6 +415,16 @@ pub fn zip_(val: Option<bool>) -> bool {
 #[pyo3(signature = (val=None))]
 pub fn gltf(val: Option<bool>) -> bool {
     let mut global = GLTF.lock().unwrap();
+    if let Some(val) = val {
+        *global = val;
+    }
+    *global
+}
+
+#[pyfunction]
+#[pyo3(signature = (val=None))]
+pub fn alt_objs(val: Option<bool>) -> bool {
+    let mut global = ALT_OBJS.lock().unwrap();
     if let Some(val) = val {
         *global = val;
     }
@@ -1963,7 +1975,9 @@ pub struct GameObjsTypeHeader {
 #[pyclass(module="types", get_all, set_all)]
 #[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
 pub struct GameObjsTypeField {
+    #[serde(rename = "name")]
     pub key: Crc,
+    #[serde(rename = "type")]
     pub kind: Crc,
     pub offset: u32,
 }
@@ -2143,6 +2157,22 @@ impl GameObjs {
     }
 
     pub fn to_file(&self, writer: Writer) -> Result<()> {
+        if *ALT_OBJS.lock().unwrap() {
+            self.to_file_new(writer)
+        } else {
+            self.to_file_old(writer)
+        }
+    }
+
+    pub fn from_file(reader: Reader) -> Result<Self> {
+        if *ALT_OBJS.lock().unwrap() {
+            Self::from_file_new(reader)
+        } else {
+            Self::from_file_old(reader)
+        }
+    }
+    
+    pub fn to_file_old(&self, writer: Writer) -> Result<()> {
         let val = json!({
             "gamemodemask": self.gamemodemask,
             "objs": self.objs.values().map(|GameObj { layer, key, fields }| {
@@ -2169,7 +2199,7 @@ impl GameObjs {
         Ok(())
     }
 
-    pub fn from_file(reader: Reader) -> Result<Self> {
+    pub fn from_file_old(reader: Reader) -> Result<Self> {
         let name = reader.path().display();
         let mut val = from_slice::<Value>(&reader.with_extension("json").read()?).with_context(|| format!("{}", name))?;
         let ts = val.get("types").ok_or(anyhow!("{} missing types", name))?.as_array().ok_or(anyhow!("{} types is not array", name))?;
@@ -2210,6 +2240,70 @@ impl GameObjs {
                     BaseTypes::from_json(o_.remove(&t.key).ok_or_else(|| anyhow!("{} obj index {} missing field {}", name, i, t.key.to_string()))?, t.kind.key()).with_context(|| format!("{} obj index {} field {}", name, i, t.key.to_string()))?
             ))).collect::<Result<_>>()?;
             let guid = if let BaseTypes::GUID(val) = fields.get(&Crc::Key(3482846511)).ok_or(anyhow!("{} obj index {} missing guid field", name, i))? {
+                *val
+            } else {
+                panic!("Parsing BaseType returned incorrect type")
+            };
+            objs.insert(guid, GameObj { 
+                layer: o.get("layer").ok_or(anyhow!("{} obj {} missing layer", name, guid))?.as_u64().and_then(|x| u32::try_from(x).ok()).ok_or(anyhow!("{} obj {} layer is not u32", name, guid))?,
+                key,
+                fields
+            });
+        }
+        let gamemodemask = val["gamemodemask"].as_i64().ok_or(anyhow!("{}", name))? as i32;
+        Ok(Self { gamemodemask, types, objs })
+    }
+
+    pub fn to_file_new(&self, writer: Writer) -> Result<()> {
+        let val = json!({
+            "gamemodemask": self.gamemodemask,
+            "objs": self.objs.iter().map(|(guid, GameObj { layer, key, fields })| (
+                guid.to_string(),
+                json!({
+                    "type": key.to_string(),
+                    "layer": layer,
+                    "fields": fields.iter().filter(|(key, _)| key.key() != 3482846511).map(|(key, val)| (key.to_string(), val.to_json())).collect::<Map<_,_>>()
+                })
+            )).collect::<Map<_, _>>(),
+            "types": self.types
+        });
+        writer.with_extension("json").write(&to_vec_pretty(&val)?)?;
+        Ok(())
+    }
+
+    pub fn from_file_new(reader: Reader) -> Result<Self> {
+        let name = reader.path().display();
+        let mut val = from_slice::<Value>(&reader.with_extension("json").read()?).with_context(|| format!("{}", name))?;
+
+        let types = serde_json::from_value::<IndexMap<Crc, Vec<GameObjsTypeField>>>(val.get("types").ok_or(anyhow!("{} missing types", name))?.clone()).with_context(|| format!("{} types", name))?;
+        
+        let types_order: HashMap<_, _> = types.iter().map(|(key, fields)| {
+            let mut order: Vec<_> = (0..fields.len()).collect();
+            order.sort_by_key(|x| fields[*x].offset);
+            let mut order = fields.clone();
+            order.sort_by_key(|x| x.offset);
+            //let order: Vec<_> = order.into_iter().map(|x| x.kind.key()).collect();
+            (key.clone(), order)
+        }).collect();
+
+        let os = val.get_mut("objs").ok_or(anyhow!("{} missing objs", name))?.as_object_mut().ok_or(anyhow!("{} obs is not map", name))?;
+        let mut objs = IndexMap::with_capacity(os.len());
+
+        for (guid, o) in os.into_iter() {
+            let guid = guid.parse::<u32>()?;
+            let o_name = o.get("type").ok_or(anyhow!("{} obj {} missing type", name, guid))?.as_str().ok_or(anyhow!("{} obj {} type is not string", name, guid))?;
+            let key = Crc::from_string(o_name);
+            let order = types_order.get(&key).ok_or(anyhow!("{} type {} not in types", name, o_name))?;
+            let mut o_: HashMap<_,_> = o.get_mut("fields").ok_or(anyhow!("{} obj {} missing fields", name, guid))?.as_object_mut().ok_or(anyhow!("{} obj {} fields not map", name, guid))?.into_iter().map(|(k,v)| (Crc::from_string(k), v.take())).collect();
+            let fields: IndexMap<Crc, BaseTypes> = order.iter().map(|t| Ok((
+                    t.key.clone(),
+                    if t.key.key() == 3482846511 {
+                        BaseTypes::GUID(guid)
+                    } else {
+                        BaseTypes::from_json(o_.remove(&t.key).ok_or_else(|| anyhow!("{} obj {} missing field {}", name, guid, t.key.to_string()))?, t.kind.key()).with_context(|| format!("{} obj {} field {}", name, guid, t.key.to_string()))?
+                    }
+            ))).collect::<Result<_>>()?;
+            let guid = if let BaseTypes::GUID(val) = fields.get(&Crc::Key(3482846511)).ok_or(anyhow!("{} obj index {} missing guid field", name, guid))? {
                 *val
             } else {
                 panic!("Parsing BaseType returned incorrect type")

@@ -13,7 +13,7 @@ use lotrc::{
     level_info::LevelInfo,
     read_write::{Reader, Writer, PathStuff},
     shader::Shaders,
-    types::{PC, Crc, DECOMP_LUA, RECOMP_LUA, ZIP, ANIM_TABLES, GLTF, COMPRESSION, UNLUAC},
+    types::{PC, Crc, DECOMP_LUA, RECOMP_LUA, ZIP, ANIM_TABLES, GLTF, COMPRESSION, UNLUAC, ALT_OBJS},
 };
 
 fn v3_styling() -> clap::builder::styling::Styles {
@@ -66,6 +66,10 @@ struct CliArgs {
     /// Dump models as gltfs
     #[arg(long)]
     gltf: bool,
+
+    /// Dump / Load GameObjs blocks in alternate format
+    #[arg(long)]
+    alt_objs: bool,
 }
 
 impl CliArgs {
@@ -80,7 +84,8 @@ impl CliArgs {
             unluac: self.unluac.or(other.unluac),
             no_anim_table: self.no_anim_table || other.no_anim_table,
             zip: self.zip || other.zip,
-            gltf: self.gltf || other.gltf
+            gltf: self.gltf || other.gltf,
+            alt_objs: self.alt_objs || other.alt_objs
         }
     }
 }
@@ -203,7 +208,7 @@ fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parse
             for path in fs::read_dir(&src).unwrap().map(|x| x.unwrap().path()) {
                 q.push_back((name.clone(), path));
             }
-        } else if ext != "bnk" && !parsed.contains(&src.with_extension("PAK")) {
+        } else if ext != "bnk" && ext != "arg" && !parsed.contains(&src.with_extension("PAK")) {
             error!("Could not parse input {:?}", src);
         }
     }
@@ -255,6 +260,7 @@ fn main() -> Result<()> {
     *ANIM_TABLES.lock().unwrap() = !args.no_anim_table;
     *ZIP.lock().unwrap() = args.zip;
     *GLTF.lock().unwrap() = args.gltf;
+    *ALT_OBJS.lock().unwrap() = args.alt_objs;
     if let Some(compression) = args.compression {
         *COMPRESSION.lock().unwrap() = lotrc::Compression::new(compression);
     }

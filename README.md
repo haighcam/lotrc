@@ -38,8 +38,9 @@ Options:
       --compression <COMPRESSION>  Zlib compression level to use when compiling levels, lower numbers are faster
       --unluac <UNLUAC>            Path to unluac.jar if decompiling lua files
   -a, --no-anim-table              Don't dump animation tables
-  -z, --no-zip                     Don't dump to zip files
+  -z, --zip                        Dump to zip files instead of folders
       --gltf                       Dump models as gltfs
+      --alt-objs                   Dump / Load GameObjs blocks in alternate format
   -h, --help                       Print help
   -V, --version                    Print version
 ```
