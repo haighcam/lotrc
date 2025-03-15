@@ -53,7 +53,6 @@ def parse_hk_skeleton(arma_obj):
     bones = [i for i, _ in arma_obj['bone_names']] 
 
     bone_order = {bone.name: i for i,bone in enumerate(bones)}
-    bone_order = {
     bone_parents = []
     bone_transforms = []
     for name in bones:
@@ -74,79 +73,10 @@ def parse_hk_skeleton(arma_obj):
     hk_constraint.bone_transforms = bone_transforms
     return hk_constraint
 
-def add_collision_box(obj, shape, name):
-    tree, tree_in, tree_out = GEOM_TREES['Box.COLLISION']
-    mod = obj.modifiers.new(name, 'NODES')
-    mod.node_group = tree
-    mod[tree_in.outputs['half_extents'].identifier] = size_to_blender(shape.half_extents)
-
-def add_collision_sphere(obj, shape, name):
-    tree, tree_in, tree_out = GEOM_TREES['Sphere.COLLISION']
-    mod = obj.modifiers.new(name, 'NODES')
-    mod.node_group = tree
-    mod[tree_in.outputs['radius'].identifier] = shape.radius
-    return obj
-
-def add_collision_cylinder(obj, shape, name):
-    tree, tree_in, tree_out = GEOM_TREES['Cylinder.COLLISION']
-    mod = obj.modifiers.new(name, 'NODES')
-    mod.node_group = tree
-    mod[tree_in.outputs['point1'].identifier] = pos_to_blender_single(shape.point1)
-    mod[tree_in.outputs['point2'].identifier] = pos_to_blender_single(shape.point2)
-    mod[tree_in.outputs['radius'].identifier] = shape.radius
-    return obj
-
-def add_collision_capsule(obj, shape, name):
-    tree, tree_in, tree_out = GEOM_TREES['Capsule.COLLISION']
-    mod = obj.modifiers.new(name, 'NODES')
-    mod.node_group = tree
-    mod[tree_in.outputs['point1'].identifier] = pos_to_blender_single(shape.point1)
-    mod[tree_in.outputs['point2'].identifier] = pos_to_blender_single(shape.point2)
-    mod[tree_in.outputs['radius'].identifier] = shape.radius
-    return obj
-
-def add_collision(shape, col, base_name, i, skeleton, bones):
-    par_obj = bpy.data.objects.new(f"{base_name}.COLLISION{i}", None)
-    col.objects.link(par_obj)
-#    bone = skeleton.pose.bones[bones[shape.info.offset]]
-    if shape.info.kind != 0 and bones[shape.info.offset] != '':
-        par_obj.parent = skeleton
-        par_obj.parent_type = "BONE"
-        par_obj.parent_bone = bones[shape.info.offset]
-        # account for the position being at the tail of the bone
-        par_obj.matrix_local = Matrix.Translation([0, -0.2, 0])
-    par_obj.empty_display_size = 0.1
-    for j, hkshp in enumerate(shape.hk_shapes):
-        name = hkshp.__class__.__name__.split('_')[-1]
-        name = f"{base_name}.COLLISION{i}.{name}{j}"
-        mesh = bpy.data.meshes.new(name)
-        obj = bpy.data.objects.new(name, mesh)
-        obj.parent = par_obj
-        obj.display_type = 'WIRE'      
-        col.objects.link(obj)
-        if isinstance(hkshp, lotrc.pak_alt.HkShape.Box):
-            add_collision_box(obj, hkshp.info, name)
-        elif isinstance(hkshp, lotrc.pak_alt.HkShape.Sphere):
-            add_collision_sphere(obj, hkshp.info, name)
-        elif isinstance(hkshp, lotrc.pak_alt.HkShape.Capsule):
-            add_collision_capsule(obj, hkshp.info, name)
-        elif isinstance(hkshp, lotrc.pak_alt.HkShape.Cylinder):
-            add_collision_cylinder(obj, hkshp.info, name)
-        elif isinstance(hkshp, lotrc.pak_alt.HkShape.ConvexVertices):
-            mesh.from_pydata(pos_to_blender_alt(hkshp.shape.verts), [], [])
-        elif isinstance(hkshp, lotrc.pak_alt.HkShape.BVTreeMesh):
-            inds = hkshp.shape.inds
-            mesh.from_pydata(pos_to_blender_alt(hkshp.shape.verts), [], [inds[i:i+3] for i in range(0,len(inds),3)])
-        else:
-            return
-        
-        obj.matrix_local = Matrix.LocRotScale(
-            pos_to_blender_single(hkshp.info.translation),
-            quat_to_blender(hkshp.info.rotation),
-            (1,1,1)
         )
 
 def parse_collision(obj):
+    """TBA"""
     ty = obj['type']
     if ty == 'Box':
         hkshp = lotrc.pak_alt.HkShape.Box()
@@ -161,15 +91,106 @@ def parse_collision(obj):
     elif ty == 'BVTreeMesh':
         hkshp = lotrc.pak_alt.HkShape.BVTreeMesh()
     else:
-        return
-    
-    
+        return 
 
 def parse_mat():
     pass
 
-def parse_mesh():
+def parse_mesh(obj, vertex_data, index_data):
+    mesh = obj.data
+    # check if mesh in existing data
+    # if yes then just grab existing indices
+    # if no then add them
+    info = 
+    return info
+
     pass
+
+
+def add_mesh(info, vertex_data, index_data, usage, name, col, obj_arma, skin_bones):
+    mesh = bpy.data.meshes.new(name)
+    mesh['variation_id'] = info.variation_id
+    mesh['variation'] = info.variation
+    obj = bpy.data.objects.new(mesh.name, mesh)
+    col.objects.link(obj)
+
+    skinned = usage & SKINNED != 0 and obj_arma is not None
+    if skinned:
+        skin = obj.modifiers.new("Armature", "ARMATURE")
+        skin.object = obj_arma
+        
+    inds = index_data[info.ibuff_info_offset].vals
+    offset = info.vbuff_info_offset_2
+    if offset == 0xFFFFFFFF:
+        offset = info.vbuff_info_offset
+    attrs = {i: j for i,j in vertex_data[offset].items()}
+    mesh['info'] = attrs.pop('info')
+    mesh.from_pydata(pos_to_blender(attrs.pop('Position')), [], [inds[i:i+3] for i in range(0,len(inds),3)])
+    normals = attrs.pop('Normal', None)
+    if normals is not None:
+        if isinstance(normals, lotrc.pak.VertexTypes.Unorm4x8):
+            normals = np.frombuffer(np.array(normals[0], 'I').tobytes(), 'B').reshape(-1, 4).astype('f') / 127.5 - 1.0
+            #normals[:, [0,2]] *= normals[:, 3, None]
+            attribute = mesh.attributes.new(f'raw_norms', 'FLOAT_COLOR', 'POINT')
+            attribute.data.foreach_set('color', normals.flatten().copy())
+        elif isinstance(normals, lotrc.pak.VertexTypes.Vector4):
+            normals = np.array([normals[0], normals[1], normals[2]]).T
+        mesh.normals_split_custom_set_from_vertices(pos_to_blender(normals.T))
+    
+    for i in range(4):
+        uv = attrs.pop(f'TextureCoord({i})', None)
+        if uv is not None:
+            uv_layer = mesh.uv_layers.new(name='UVMap' if i == 0 else f'UV{i}')
+            uv_layer.uv.foreach_set('vector', np.array([uv[0],uv[1]], 'f').T[inds].flatten())
+    
+    psize = attrs.pop('PSize', None)
+    if psize is not None:
+        attribute = mesh.attributes.new(f'PSize', 'FLOAT_VECTOR', 'POINT')
+        attribute.data.foreach_set('vector', [i for j in zip(psize[0], psize[1], psize[2]) for i in j])
+        tree, tree_in, tree_out = GEOM_TREES['Billboard']
+        mod = obj.modifiers.new('Billboard', 'NODES')
+        mod.node_group = tree
+    
+    weights = attrs.pop('BlendWeight', None)
+    indices = attrs.pop('BlendIndices', None)
+    if skinned and weights is not None and indices is not None:
+        vertex_groups = [obj.vertex_groups.new(name=i) for i in skin_bones[info.skin_offset:info.skin_offset+info.skin_size]]
+        n = len(weights[0])
+        weights = np.array(weights[0], 'I').tobytes()
+        indices = np.array(indices[0], 'I').tobytes()
+        for j in range(len(weights)//4):
+            for i,w in zip([2,1,0,3], weights[j*4:j*4+4]):
+                if w != 0:
+                    vertex_groups[indices[j*4+i]].add((j,), w/255.0, 'REPLACE')      
+
+    for i, (attr, data) in enumerate(attrs.items()):
+        if isinstance(data, lotrc.pak.VertexTypes.Vector3):
+            ty = 'FLOAT_VECTOR'
+            data = [i for j in zip(data[0], data[1], data[2]) for i in j]
+            dat_name = 'vector'
+        elif isinstance(data, lotrc.pak.VertexTypes.Vector4):
+            ty = 'FLOAT_COLOR'
+            data = [i for j in zip(data[0], data[1], data[2], data[3]) for i in j]
+            dat_name = 'color'
+        elif isinstance(data, lotrc.pak.VertexTypes.Vector2):
+            ty = 'FLOAT2'
+            data = [i for j in zip(data[0], data[1]) for i in j]
+            dat_name = 'vector'
+        elif isinstance(data, lotrc.pak.VertexTypes.Unorm4x8):
+            ty = 'BYTE_COLOR'
+            data = np.frombuffer(np.array(data[0], 'I').tobytes(), 'B').astype('f')/255.0
+            dat_name = 'color'
+        elif isinstance(data, lotrc.pak.VertexTypes.Pad):
+            ty = 'INT'
+            data = data[0]
+            dat_name = 'value'
+        else:
+            # handle buffer_info case
+            continue
+        attribute = mesh.attributes.new(attr, ty, 'POINT')
+        attribute.data.foreach_set(dat_name, data)
+    return obj
+
 
 def parse_model():
     pass

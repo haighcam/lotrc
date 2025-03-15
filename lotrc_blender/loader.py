@@ -208,4 +208,5 @@ class Level:
             GEOM_TREES.update(create_geom_trees())
 
     def dump(self, path):
+        print(str(pathlib.Path(path).joinpath(self.col.name)))
         self.level.dump_pc(str(pathlib.Path(path).joinpath(self.col.name)))

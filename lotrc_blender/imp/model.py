@@ -204,7 +204,7 @@ def add_mesh(info, vertex_data, index_data, usage, name, col, obj_arma, skin_bon
     if offset == 0xFFFFFFFF:
         offset = info.vbuff_info_offset
     attrs = {i: j for i,j in vertex_data[offset].items()}
-    mesh['info'] = attrs.pop('info')
+    mesh['info'] = to_json(attrs.pop('info'))
     mesh.from_pydata(pos_to_blender(attrs.pop('Position')), [], [inds[i:i+3] for i in range(0,len(inds),3)])
     normals = attrs.pop('Normal', None)
     if normals is not None:

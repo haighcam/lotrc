@@ -18,3 +18,4 @@ Cargo.lock
 *.bin
 *.idea
 **/__pycache__
+!lotrc/res/*.*
