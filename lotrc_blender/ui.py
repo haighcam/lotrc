@@ -84,15 +84,19 @@ class DumpPanel(PanelBase):
 
     def draw(self, context):
         props = context.scene.lotrc_props
-        self.layout.prop(props, 'dump_filepath', text='folder')
-        row = self.layout.row()
-        row.enabled = props.dump_filepath != ''
-        row.operator('lotrc.dump_level', text='Dump Level')
-
         (header, box) = self.layout.panel('dump_level_block')
         header.label(text='Level Block')
         if box is not None:
             box.operator('lotrc.dump_level_block', text='Dump')
+        (header, box) = self.layout.panel('dump_models')
+        header.label(text='Models')
+        if box is not None:
+            box.operator('lotrc.dump_models', text=f'Dump: {props.selected_model}')
+
+        self.layout.prop(props, 'dump_filepath', text='folder')
+        row = self.layout.row()
+        row.enabled = props.dump_filepath != ''
+        row.operator('lotrc.dump_level', text='Dump Level')
 
 class ValuePanel(PanelBase):
     bl_idname = "lotrc.value_panel"

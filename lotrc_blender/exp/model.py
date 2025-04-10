@@ -8,21 +8,16 @@ from .conv import *
 
 class DumpModels(bpy.types.Operator):
     """Dump Models from a Lord of the Rings Conquest Level"""
-    bl_idname = "lotrc.load_models"
+    bl_idname = "lotrc.dump_models"
     bl_label = "Load LOTRC Models"
 
     def execute(self, context):
         model = context.scene.lotrc_props.selected_model
-        import_models(LOADED_LEVELS[context.scene.name], model, context)
+        parse_models(self, LOADED_LEVELS[context.scene.name], model, context)
         return {'FINISHED'}
 
-CLASSES = [LoadModels, ClearModels]
+CLASSES = [DumpModels]
 
-UNKNOWN = np.uint32(1)
-STATIC = np.uint32(2)
-SKINNED = np.uint32(4)
-PHYSICS = np.uint32(8)
-BREAKABLE = np.uint32(16)
 
 def parse_skeleton(model, arma_obj):
     bones = arma_obj['bones']
@@ -43,16 +38,15 @@ def parse_skeleton(model, arma_obj):
     model.bone_parents = bone_parents
     model.bone_mats = bone_mats
 
-def parse_hk_skeleton(arma_obj):
+def parse_hk_skeleton(model, arma_obj):
     hk_constraint = lotrc.pak_alt.HkConstraint()
     hk_constraint.info = lotrc.pak.HkConstraintInfo.from_json(arma_obj['info'])
     hk_constraint.vals2 = arma_obj['vals2']
     hk_constraint.bone_names = arma_obj['bone_names'] 
-    hk_constraint.bone_order = arma_obj['bone_order']
 
-    bones = [i for i, _ in arma_obj['bone_names']] 
+    bones = [i for i in arma_obj['bone_names']] 
 
-    bone_order = {bone.name: i for i,bone in enumerate(bones)}
+    bone_order = {bone: i for i,bone in enumerate(bones)}
     bone_parents = []
     bone_transforms = []
     for name in bones:
@@ -64,105 +58,112 @@ def parse_hk_skeleton(arma_obj):
             bone_parent = bone_order[parent.name]
         bone_parents.append(bone_parent)
         transform = lotrc.pak_alt.TRS()
-        transform.translation = pos_from_blender_single(mat.to_translation())
+        transform.translation = pos_from_blender_single(mat.to_translation()) + (1,)
         transform.rotation = quat_from_blender(mat.to_quaternion())
-        transform.scale = size_from_blender(mat.to_scale())
+        transform.scale = size_from_blender(mat.to_scale()) + (0,)
         bone_transforms.append(transform)
 
     hk_constraint.bone_parents = bone_parents
     hk_constraint.bone_transforms = bone_transforms
-    return hk_constraint
+    model.hk_constraint = hk_constraint
 
-        )
-
-def parse_collision(obj):
-    """TBA"""
-    ty = obj['type']
-    if ty == 'Box':
-        hkshp = lotrc.pak_alt.HkShape.Box()
-    elif ty == 'Sphere':
-        hkshp = lotrc.pak_alt.HkShape.Sphere()
-    elif ty == 'Capsule':
-        hkshp = lotrc.pak_alt.HkShape.Capsule()
-    elif ty == 'Cylinder':
-        hkshp = lotrc.pak_alt.HkShape.Cylinder()
-    elif ty == 'ConvexVertices':
-        hkshp = lotrc.pak_alt.HkShape.ConvexVertices()
-    elif ty == 'BVTreeMesh':
-        hkshp = lotrc.pak_alt.HkShape.BVTreeMesh()
-    else:
-        return 
-
-def parse_mat():
-    pass
-
-def parse_mesh(obj, vertex_data, index_data):
+def parse_mesh(obj, info, vertex_data, index_data):
     mesh = obj.data
-    # check if mesh in existing data
-    # if yes then just grab existing indices
-    # if no then add them
-    info = 
-    return info
+    info.variation_id = mesh["variation_id"]
+    info.variation = mesh["variation"]
+    
+    skin_name = "Armature"
+    if skin_name in obj.modifiers:
+        skin = obj.modifiers[skin_name]
 
-    pass
+    inds = index_data[info.ibuff_info_offset]
+    vals = [i for tri in mesh.polygons for i in tri.vertices]
+    if isinstance(inds, lotrc.pak.IndexBuffer.U16):
+        inds = lotrc.pak.IndexBuffer.U16(vals)
+    elif isinstance(inds, lotrc.pak.IndexBuffer.U32):
+        inds = lotrc.pak.IndexBuffer.U32(vals)
+    index_data[info.ibuff_info_offset] = inds
 
-
-def add_mesh(info, vertex_data, index_data, usage, name, col, obj_arma, skin_bones):
-    mesh = bpy.data.meshes.new(name)
-    mesh['variation_id'] = info.variation_id
-    mesh['variation'] = info.variation
-    obj = bpy.data.objects.new(mesh.name, mesh)
-    col.objects.link(obj)
-
-    skinned = usage & SKINNED != 0 and obj_arma is not None
-    if skinned:
-        skin = obj.modifiers.new("Armature", "ARMATURE")
-        skin.object = obj_arma
-        
-    inds = index_data[info.ibuff_info_offset].vals
+    vertex_inds = np.zeros(len(mesh.vertices), 'I')
+    for i, j in enumerate(vals):
+        vertex_inds[j] = i    
+    
     offset = info.vbuff_info_offset_2
     if offset == 0xFFFFFFFF:
         offset = info.vbuff_info_offset
     attrs = {i: j for i,j in vertex_data[offset].items()}
-    mesh['info'] = attrs.pop('info')
-    mesh.from_pydata(pos_to_blender(attrs.pop('Position')), [], [inds[i:i+3] for i in range(0,len(inds),3)])
-    normals = attrs.pop('Normal', None)
-    if normals is not None:
+    positions = attrs.pop('Position', None)
+    new_attrs = {} 
+    pos = pos_from_blender(np.array([vert.co for vert in mesh.vertices]))
+    if isinstance(positions, lotrc.pak.VertexTypes.Vector3):
+        positions = lotrc.pak.VertexTypes.Vector3(*pos)
+    if isinstance(positions, lotrc.pak.VertexTypes.Vector4):
+        positions = lotrc.pak.VertexTypes.Vector4(*pos, np.zeros(len(mesh.vertices)))
+    new_attrs['Position'] = positions
+
+    if (normals := attrs.pop('Normal', None)) is not None:
+        norms = np.empty(3 * len(mesh.loops))
+        mesh.loops.foreach_get("normal", norms)
+        norms = np.vstack([pos_from_blender(norms.reshape(-1, 3)[vertex_inds]), np.zeros(len(vertex_inds))])
         if isinstance(normals, lotrc.pak.VertexTypes.Unorm4x8):
-            normals = np.frombuffer(np.array(normals[0], 'I').tobytes(), 'B').reshape(-1, 4).astype('f') / 127.5 - 1.0
-            #normals[:, [0,2]] *= normals[:, 3, None]
-            attribute = mesh.attributes.new(f'raw_norms', 'FLOAT_COLOR', 'POINT')
-            attribute.data.foreach_set('color', normals.flatten().copy())
+            normals = lotrc.pak.VertexTypes.Unorm4x8(
+                np.frombuffer(((norms.T + 1.0) * 127.5).astype('B').tobytes(), 'I')
+            )
         elif isinstance(normals, lotrc.pak.VertexTypes.Vector4):
-            normals = np.array([normals[0], normals[1], normals[2]]).T
-        mesh.normals_split_custom_set_from_vertices(pos_to_blender(normals.T))
-    
+            normals = lotrc.pak.VertexTypes.Vector4(*norms)
+        new_attrs['Normal'] = normals
+
     for i in range(4):
-        uv = attrs.pop(f'TextureCoord({i})', None)
-        if uv is not None:
-            uv_layer = mesh.uv_layers.new(name='UVMap' if i == 0 else f'UV{i}')
-            uv_layer.uv.foreach_set('vector', np.array([uv[0],uv[1]], 'f').T[inds].flatten())
-    
-    psize = attrs.pop('PSize', None)
-    if psize is not None:
-        attribute = mesh.attributes.new(f'PSize', 'FLOAT_VECTOR', 'POINT')
-        attribute.data.foreach_set('vector', [i for j in zip(psize[0], psize[1], psize[2]) for i in j])
-        tree, tree_in, tree_out = GEOM_TREES['Billboard']
-        mod = obj.modifiers.new('Billboard', 'NODES')
-        mod.node_group = tree
+        uv_attr_name = f'TextureCoord({i})'
+        uv_name = 'UVMap' if i == 0 else f'UV{i}'
+        if (uv := attrs.pop(uv_attr_name, None)) is not None and (uv_layer := mesh.uv_layers.get(uv_name)) is not None:
+            vals = np.empty(2 * len(uv_layer.data))
+            uv_layer.data.foreach_get("uv", vals)
+            vals = vals.reshape(-1, 2)[vertex_inds].T
+            new_attrs[uv_attr_name] = lotrc.pak.VertexTypes.Vector2(*vals)
+
+    if (psize := attrs.pop('PSize', None)) is not None and (attr := mesh.attributes.get('PSize')) is not None:
+        vals = np.empty(len(attr.data) * 3)
+        attr.data.foreach_get('vector', vals)
+        vals = vals.reshape(-1, 3).T
+        new_attrs['PSize'] = lotrc.pak.VertexTypes.Vector3(*vals)
     
     weights = attrs.pop('BlendWeight', None)
     indices = attrs.pop('BlendIndices', None)
-    if skinned and weights is not None and indices is not None:
-        vertex_groups = [obj.vertex_groups.new(name=i) for i in skin_bones[info.skin_offset:info.skin_offset+info.skin_size]]
-        n = len(weights[0])
-        weights = np.array(weights[0], 'I').tobytes()
-        indices = np.array(indices[0], 'I').tobytes()
-        for j in range(len(weights)//4):
-            for i,w in zip([2,1,0,3], weights[j*4:j*4+4]):
-                if w != 0:
-                    vertex_groups[indices[j*4+i]].add((j,), w/255.0, 'REPLACE')      
+    if weights is not None and indices is not None:
+        inds = np.zeros((len(mesh.vertices),4))
+        ws = np.zeros((len(mesh.vertices),4))
+        for i, v in enumerate(mesh.vertices):
+            for j, (g, k) in enumerate(zip(v.groups, [2,1,0,3])):
+                inds[i][j] = g.group
+                ws[i][k] = g.weight
+        new_attrs['BlendWeight'] = lotrc.pak.VertexTypes.Unorm4x8(np.frombuffer((ws * 255.0).astype('B').tobytes(), 'I'))
+        new_attrs['BlendIndices'] = lotrc.pak.VertexTypes.Unorm4x8(np.frombuffer(inds.astype('B').tobytes(), 'I'))
+    for i, (attr_name, data) in enumerate(attrs.items()):
+        attr = mesh.attributes.get(attr_name)
+        if attr is None: continue
+        if isinstance(data, lotrc.pak.VertexTypes.Vector3):
+            vals = np.empty(len(attr.data) * 3)
+            attr.data.foreach_get('vector', vals)
+            data = lotrc.pak.VertexTypes.Vector3(*vals.reshape(-1, 3).T)
+        elif isinstance(data, lotrc.pak.VertexTypes.Vector4):
+            vals = np.empty(len(attr.data) * 4)
+            attr.data.foreach_get('color', vals)
+            data = lotrc.pak.VertexTypes.Vector4(*vals.reshape(-1, 4).T)
+        elif isinstance(data, lotrc.pak.VertexTypes.Unorm4x8):
+            vals = np.empty(len(attr.data) * 4)
+            attr.data.foreach_get('color', vals)
+            data = lotrc.pak.VertexTypes.Unorm4x8(np.frombuffer(vals.reshape(-1, 4).astype('B').tobytes(), 'I'))
+        elif isinstance(data, lotrc.pak.VertexTypes.Pad):
+            vals = np.empty(len(attr.data), dtype='I')
+            attr.data.foreach_get('value', vals)
+            data = lotrc.pak.VertexTypes.Pad(vals)
+        new_attrs[attr_name] = data
+    
+    new_attrs.update({i:j for i,j in attrs.items() if i not in new_attrs})
+    vertex_data[offset] = new_attrs
 
+def add_mesh(info, vertex_data, index_data, usage, name, col, obj_arma, skin_bones):
     for i, (attr, data) in enumerate(attrs.items()):
         if isinstance(data, lotrc.pak.VertexTypes.Vector3):
             ty = 'FLOAT_VECTOR'
@@ -192,8 +193,91 @@ def add_mesh(info, vertex_data, index_data, usage, name, col, obj_arma, skin_bon
     return obj
 
 
-def parse_model():
-    pass
+def parse_model(op, model, name, col):
+    skeleton_name = "SKELETON.{name}"
+    if skeleton_name in col.objects:
+        parse_skeleton(model, col.objects[skeleton_name])
+    hk_skeleton_name = f"HK_SKELETON.{name}"
+    if hk_skeleton_name in col.objects:
+        parse_hk_skeleton(model, col.objects[hk_skeleton_name])
 
-def parse_models():
-    pass
+    vertex_data = model.vertex_data
+    index_data = model.index_data
+    buffer_infos = model.buffer_infos
+    meshes_name = f"MESHES.{name}"
+    if meshes_name not in col.children:
+        op.report({"WARNING"}, f"Model {name} collection {meshes_name} not found")
+        return
+    meshes_col = col.children[meshes_name]
+    for i, info in enumerate(zip(model.buffer_infos)):
+        mesh_name =  f"MESH{i}.{name}"
+        if mesh_name not in meshes_col.objects:
+            op.report({"WARNING"}, f"Model {name} mesh {mesh_name} not found")
+            continue
+        info = buffer_infos[i]
+        parse_mesh(meshes_col.objects[mesh_name], info, vertex_data, index_data)
+        buffer_infos[i] = info
+    model.vertex_data = vertex_data
+    model.index_data = index_data
+    model.buffer_infos = buffer_infos
+
+    # reconstruct lods based on mesh_order
+    
+
+
+def import_model(level, model, model_name, models_col, context):
+    
+    # collections to organize meshes
+    info = model.info
+    k = 0
+    col_base = bpy.data.collections.new(f"BASE.{model_name}")
+    model_col.children.link(col_base)
+    for i, lod in enumerate(lods):
+        col = bpy.data.collections.new(f"LOD{i}.{model_name}")
+        model_col.children.link(col)
+        for j, f in mesh_order[k:lod.start]:
+            obj = copy_mesh(f"LOD{i}.MESH{j}.UNKNOWN{f}.{model_name}", meshes[j])
+            col.objects.link(obj)
+            #if i == 0 and f != 1 and meshes[j].data['variation_id'] == 0xFF: col_base.objects.link(obj)
+            if i == 0 and f != 1: col_base.objects.link(obj)
+        for j, f in mesh_order[lod.start:lod.static_end]:
+            obj = copy_mesh(f"LOD{i}.MESH{j}.STATIC{f}.{model_name}", meshes[j])
+            col.objects.link(obj)
+            #if i == 0 and f != 1 and meshes[j].data['variation_id'] == 0xFF: col_base.objects.link(obj)
+            if i == 0 and f != 1: col_base.objects.link(obj)
+        for j, f in mesh_order[lod.static_end:lod.skinned_end]:
+            obj = copy_mesh(f"LOD{i}.MESH{j}.SKINNED{f}.{model_name}", meshes[j])
+            col.objects.link(obj)
+            #if i == 0 and f != 1 and meshes[j].data['variation_id'] == 0xFF: col_base.objects.link(obj)
+            if i == 0 and f != 1: col_base.objects.link(obj)
+        for j, f in mesh_order[lod.skinned_end:lod.physics_end]:
+            obj = copy_mesh(f"LOD{i}.MESH{j}.PHYSICS{f}.{model_name}", meshes[j])
+            col.objects.link(obj)
+            #if i == 0 and f != 1 and meshes[j].data['variation_id'] == 0xFF: col_base.objects.link(obj)
+            if i == 0 and f != 1: col_base.objects.link(obj)
+        for j, f in mesh_order[lod.physics_end:lod.breakable_end]:
+            obj = copy_mesh(f"LOD{i}.MESH{j}.BREAKABLE{f}.{model_name}", meshes[j])
+            col.objects.link(obj)
+            #if i == 0 and f != 1 and meshes[j].data['variation_id'] == 0xFF: col_base.objects.link(obj)
+            if i == 0 and f != 1: col_base.objects.link(obj)
+        k = lod.breakable_end
+    model_col['base'] = col_base
+
+def parse_models(op, level, model, context):
+    models = level.level.models
+    if model == 'All Models':
+        to_process = models
+    elif model in models:
+        to_process = {model: models[model]}
+    else:
+        return
+    
+    models_col = level.col.children["Models"]
+
+    for model_name, model in to_process.items():
+        if model_name not in models_col.children:
+            op.report({"WARNING"}, f"Model {model_name} not found")
+            continue
+        parse_model(op, model, model_name, models_col.children[model_name])
+        models[model_name] = model
+    level.level.models = models

@@ -66,7 +66,7 @@ def add_skeleton(model, name, model_col, context):
 def add_hk_skeleton(hk_constraint, name, model_col, context):
     if hk_constraint is None:
         return None, None
-    bones = [i[0] for i in hk_constraint.bone_names]
+    bones = [i for i in hk_constraint.bone_names]
     armature_data = bpy.data.armatures.new(f"HK_SKELETON.{name}")
     arma_obj = bpy.data.objects.new(armature_data.name, armature_data)
     arma_obj.show_in_front = True
@@ -236,12 +236,12 @@ def add_mesh(info, vertex_data, index_data, usage, name, col, obj_arma, skin_bon
     if skinned and weights is not None and indices is not None:
         vertex_groups = [obj.vertex_groups.new(name=i) for i in skin_bones[info.skin_offset:info.skin_offset+info.skin_size]]
         n = len(weights[0])
-        weights = np.array(weights[0], 'I').tobytes()
-        indices = np.array(indices[0], 'I').tobytes()
-        for j in range(len(weights)//4):
-            for i,w in zip([2,1,0,3], weights[j*4:j*4+4]):
+        weights = np.frombuffer(np.array(weights[0], 'I').tobytes(), "B").reshape(-1, 4)
+        indices = np.frombuffer(np.array(indices[0], 'I').tobytes(), "B").reshape(-1, 4)
+        for j in range(len(weights)):
+            for i,w in zip(indices[j], weights[j][[2,1,0,3]]):
                 if w != 0:
-                    vertex_groups[indices[j*4+i]].add((j,), w/255.0, 'REPLACE')      
+                    vertex_groups[i].add((j,), w/255.0, 'REPLACE')      
 
     for i, (attr, data) in enumerate(attrs.items()):
         if isinstance(data, lotrc.pak.VertexTypes.Vector3):
@@ -257,8 +257,8 @@ def add_mesh(info, vertex_data, index_data, usage, name, col, obj_arma, skin_bon
             data = [i for j in zip(data[0], data[1]) for i in j]
             dat_name = 'vector'
         elif isinstance(data, lotrc.pak.VertexTypes.Unorm4x8):
-            ty = 'BYTE_COLOR'
-            data = np.frombuffer(np.array(data[0], 'I').tobytes(), 'B').astype('f')/255.0
+            ty = 'FLOAT_COLOR'
+            data = np.frombuffer(np.array(data[0], 'I').tobytes(), 'B')
             dat_name = 'color'
         elif isinstance(data, lotrc.pak.VertexTypes.Pad):
             ty = 'INT'

@@ -3,9 +3,9 @@ from . import ui, loader
 from .imp import level, model, textures
 
 CLASSES = ui.CLASSES + loader.CLASSES + level.CLASSES + model.CLASSES + textures.CLASSES
-from .exp import level
+from .exp import level, model
 
-CLASSES += level.CLASSES
+CLASSES += level.CLASSES + model.CLASSES
 
 # things to add / fix
 #   - bow / banner mesh (second vbuff thing)
