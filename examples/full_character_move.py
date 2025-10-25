@@ -146,16 +146,25 @@ with utils.reader(src_path) as src, utils.writer(dst_path) as dst:
     # add the balrog to the evil team
     o = utils.find_obj(vals_dest, spawn_emmiter_guid)
     o['fields']['Classes'].append(class_guid)
+
+    # get radiosity vals
+    old_rad = json.loads(src.read(src_files['radiosity.json']))
+    new_rad = json.loads(dst.read(dst_files['radiosity.json']))
     
     # add the objects for the target class, only if they are missing
+    # also copy over radiosity data if there is any
     old_class_objs = []
     new_class_objs = []
     for i in class_items:
-        val = utils.find_obj(vals_dest, i['fields']['GUID'])
+        guid = i['fields']['GUID']
+        val = utils.find_obj(vals_dest, guid)
         if val is not None:
             old_class_objs.append(val)
         else:
             new_class_objs.append(i)
+            rad_val = old_rad['vals'].get(str(guid))
+            if rad_val is not None:
+                new_rad['vals'][str(guid)] = rad_val 
     
     vals_dest['objs'].extend(new_class_objs)
     valid_types = set(i['name'] for i in vals_dest['types'])
@@ -169,6 +178,7 @@ with utils.reader(src_path) as src, utils.writer(dst_path) as dst:
     
     to_remove.add('sub_blocks1/level.json')
     to_add[dst_files['sub_blocks1/level.json']] = json.dumps(vals_dest, indent=1)
+    to_add[dst_files['radiosity.json']] = json.dumps(new_rad, indent=1)
 
     bin_strings_src = json.loads(src.read(src_files['bin_strings.json']))
     pak_strings_src = json.loads(src.read(src_files['pak_strings.json']))
