@@ -1,14 +1,12 @@
 [package]
 name = "lotrc_rs"
-version = "0.6.0"
+version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-lotrc = { path = "../lotrc" }
-log = "0.4.21"
+lotrc = { path = "../lotrc", default-features = false }
+clap = { version = "4.5.35", features = ["derive"] }
 pretty_env_logger = "0.5.0"
 indicatif = "0.17.8"
 indicatif-log-bridge = "0.2.2"
-anyhow = "1.0.86"
-clap = { version = "4.5.7", features = ["derive"] }
-wild = "2.2.1"
+log = "0.4.21"
