@@ -14,6 +14,7 @@ Currently supports:
 
 Has somewhat sane default behavior for dragging and dropping files/folders onto the executable if command line parameters are not required.
 > An args.txt file can be placed in the same folder as the executable to provide additional arguments when the command line is not used.
+> When using the tool by dragging and dropping files, any error messages will generally not persist long enough for them to be read. To get around this a script can be used to wait after running the tool, eg: [lotrc.bat](examples/lotrc.bat).
 
 Uses [_lua-bytecode_](https://github.com/lua-bytecode/lua-bytecode.github.io) (included as a submodule), for converting lua files. This is only relevant for converting xbox level files.
 
