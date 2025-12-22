@@ -512,77 +512,151 @@ pub fn get_format(format: u32) -> Option<ddsfile::D3DFormat> {
     }
 }
 
-fn xg_address2d_tiled_xy(offset: u32, width: u32, texel_pitch: u32) -> (usize, usize) {
-    // https://github.com/NCDyson/RareView/blob/master/RareView/Texture.cs
-    let aligned_width = (width + 31) & !31;
-
-    let log_bpp = (texel_pitch >> 2) + ((texel_pitch >> 1) >> (texel_pitch >> 2));
-    let offset_b = offset << log_bpp;
-    let offset_t = ((offset_b & !4095) >> 3) + ((offset_b & 1792) >> 2) + (offset_b & 63);
-    let offset_m = offset_t >> (7 + log_bpp);
-
-    let macro_x = (offset_m % (aligned_width >> 5)) << 2;
-    let tile_x = (((offset_t >> (5 + log_bpp)) & 2) + (offset_b >> 6)) & 3;
-    let macro_x = (macro_x + tile_x) << 3;
-    let micro_x = ((((offset_t >> 1) & !15) + (offset_t & 15)) & ((texel_pitch << 3) - 1)) >> log_bpp;
-
-    let macro_y = (offset_m / (aligned_width >> 5)) << 2;
-    let tile_y = ((offset_t >> (6 + log_bpp)) & 1) + (((offset_b & 2048) >> 10));
-    let macro_y = (macro_y + tile_y) << 3;
-    let micro_y = (((offset_t & (((texel_pitch << 6) - 1) & !31)) + ((offset_t & 15) << 1)) >> (3 + log_bpp)) & !1;
-
-    (
-        (macro_x + micro_x) as usize,
-        (macro_y + micro_y + ((offset_t & 16) >> 4)) as usize
-    )
+pub fn conv_img_a8(
+    data: &[u8],
+    h: usize,
+    w: usize,
+    y_off: usize,
+    x_off: usize,
+    ys: usize,
+    xs: usize,
+) -> Vec<u8> {
+    let mut dst = vec![0u8; h*w];
+    let w = w >> 5;
+    for j in 0..((h*w) >> 4).max(1) {
+        let off = (j & 3) + ((j >> 1) & !3);
+        let x = (off % w) << 5;
+        let y = ((off / w) << 5) + ((j << 2) & 16);
+        for i in 0..512 {
+            let k = i + (j << 9);
+            if k >= dst.len() { break; }
+            let x = x + ((((i >> 4) & 16) + (i >> 3)) & 24) + (i & 7);
+            let y = y + ((i >> 5) & 8) + ((i >> 3) & 4) + ((i >> 2) & 2) + ((i >> 4) & 1);
+            if x < x_off || x >= x_off + xs || y < y_off || y >= y_off + ys {
+                continue;
+            }
+            let j = (y - y_off) * xs + (x - x_off);
+            dst[j] = data[k]
+        }
+    }
+    dst
 }
-    
+
+pub fn conv_img_argb8(
+    data: &[u8],
+    h: usize,
+    w: usize,
+    y_off: usize,
+    x_off: usize,
+    ys: usize,
+    xs: usize,
+) -> Vec<u8> {
+    let mut dst = vec![0u8; h*w*4];
+    let w = w >> 5;
+    for j in 0..((h*w) >> 5).max(1) {
+        let x = (j % w) << 5;
+        let y = (j / w) << 5;
+        for i in 0..1024 {
+            let k = (i + (j << 10)) << 2;
+            if k >= dst.len() { break; }
+            let x = x + ((((i >> 4) & 16) + (i >> 1)) & 24) + ((i >> 1) & 4) + (i & 3);
+            let y = y + ((i >> 5) & 8) + (((i >> 5) & 16)) + ((i >> 5) & 6) + ((i >> 2) & 1);
+            if x < x_off || x >= x_off + xs || y < y_off || y >= y_off + ys {
+                continue;
+            }
+            let j = ((y - y_off) * xs + (x - x_off)) << 2;
+            dst[j] = data[k+3];
+            dst[j+1] = data[k+2];
+            dst[j+2] = data[k+1];
+            dst[j+3] = data[k];
+        }
+    }
+    dst
+}
+
+pub fn conv_img_dxt1(
+    data: &[u8],
+    h: usize,
+    w: usize,
+    y_off: usize,
+    x_off: usize,
+    ys: usize,
+    xs: usize,
+) -> Vec<u8> {
+    let mut dst = vec![0u8; xs*ys*8];
+    let w = w >> 5;
+    for j in 0..((h*w) >> 5).max(1) {
+        let x = (j % w) << 5;
+        let y = (j / w) << 5;
+        for i in 0..1024 {
+            let mut k = i + (j << 10) << 3;
+            if k >= data.len() { break; }
+            let x = x + ((((i >> 5) & 16) + i) & 24) + ((i >> 3) & 4) + ((i >> 1) & 2) + (i & 1);
+            let y = y + ((i >> 6) & 8) + (((i >> 4) & 16)) + ((i >> 5) & 6) + ((i >> 1) & 1);
+            if x < x_off || x >= x_off + xs || y < y_off || y >= y_off + ys {
+                continue;
+            }
+            let mut j = ((y - y_off) * xs + (x - x_off)) << 3;
+            for _ in 0..4 {
+                dst[j] = data[k+1];
+                dst[j+1] = data[k];
+                j += 2;
+                k += 2;
+            }
+        }
+    }
+    dst
+}
+
+pub fn conv_img_dxt5(
+    data: &[u8],
+    h: usize,
+    w: usize,
+    y_off: usize,
+    x_off: usize,
+    ys: usize,
+    xs: usize,
+) -> Vec<u8> {
+    let mut dst = vec![0u8; xs*ys*16];
+    let w = w >> 5;
+    for j in 0..((h*w) >> 5).max(1) {
+        let x = (j % w) << 5;
+        let y = (j / w) << 5;
+        for i in 0..1024 {
+            let mut k = (i + (j << 10)) << 4;
+            if k > data.len() { break; }
+            let x = x + ((((i >> 5) & 16) + (i << 1)) & 24) + ((i >> 3) & 6) + ((i >> 1) & 1);
+            let y = y + ((i >> 6) & 8) + (((i >> 3) & 16)) + ((i >> 6) & 4) + ((i >> 5) & 2) + (i & 1);
+            if x < x_off || x >= x_off + xs || y < y_off || y >= y_off + ys {
+                continue;
+            }
+            let mut j = ((y - y_off) * xs + (x - x_off)) << 4;
+            for _ in 0..8 {
+                dst[j] = data[k+1];
+                dst[j+1] = data[k];
+                j += 2;
+                k += 2;
+            }
+        }
+    }
+    dst
+}
 
 pub fn conv_img(data: &[u8], height: usize, width: usize, f: u32) -> (Vec<u8>, usize, usize, usize) {
-    // https://github.com/NCDyson/RareView/blob/master/RareView/Texture.cs
-    let (data, s, d): (Vec<u8>, usize, usize) = match f {
-        10 | 0xb | 0xc | 0x11 => (
-            data.chunks(2).flat_map(|x| [x[1], x[0]]).collect::<Vec<_>>(),
-            4,
-            16
-        ),
-        7 | 8 | 13 => (
-            data.chunks(2).flat_map(|x| [x[1], x[0]]).collect::<Vec<_>>(),
-            4,
-            8
-        ),
-        3 | 4 => (
-            data.chunks(4).flat_map(|x| [x[3], x[2], x[1], x[0]]).collect::<Vec<_>>(),
-            1,
-            4
-        ),
-        _ => (
-            data.iter().cloned().collect::<Vec<_>>(),
-            1,
-            1
-        )
-    };
-    let h_ = height / s;
-    let w_ = width / s;
-    let (h, w) = match f {
-        7 | 8 | 10 | 13 | 0xb | 0xc | 0x11 => (
-            h_.max(32), w_.max(32)
-        ),
-        _ => (
-            h_, w_
-        )
-    };
-    let mut out_data = vec![0u8; w*h*d];
-    for i in 0..(h*w) {
-        let (x,y) = xg_address2d_tiled_xy(i as u32, w as u32, d as u32);
-        if x < w_ && y < h_ {
-            let j = y * w + x;
-            let src = &data[i * d..(i+1)*d];
-            let dst = &mut out_data[j*d..(j+1)*d];
-            dst.copy_from_slice(src);
-        }
-    };
-    (out_data.chunks(w*d).take(h_).flat_map(|x| &x[..w_*d]).cloned().collect(), d, w_, h_)
+    match f {
+        10 | 0xb | 0xc | 0x11 => {
+            let h = height >> 2;
+            let w = width >> 2;
+            (conv_img_dxt5(data, h.max(32), w.max(32), 0, 0, h, w), 16, w, h)
+        },
+        7 | 8 | 13 => {
+            let h = height >> 2;
+            let w = width >> 2;
+            (conv_img_dxt1(data, h.max(32), w.max(32), 0, 0, h, w), 8, w, h)
+        },
+        3 | 4 => (conv_img_argb8(data, height, width, 0, 0, height, width), 4, width, height),
+        _ => (conv_img_a8(data, height, width, 0, 0, height, width), 1, width, height)
+    }
 }
 
 fn bin_mip(arr: &[u8], w: usize) -> Vec<u8> {

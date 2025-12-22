@@ -796,7 +796,7 @@ impl Model {
         )
     }
 
-    pub fn to_gltf(&self) -> Result<gltf::Glb> {
+    pub fn to_gltf(&self) -> Result<gltf::Glb<'_>> {
         let mut root = gltf::json::root::Root::default();
         let mut bin = Vec::new();
 
