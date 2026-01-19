@@ -1,36 +1,21 @@
-#[cfg(feature = "python")]
-use crate::pyobj_ref;
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use indexmap::IndexMap;
-#[cfg(feature = "python")]
-use pyo3::prelude::*;
 use std::ptr::NonNull;
-use std::sync::Arc;
-use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
-use crate::types::{Color, RefFromData, Vector2, Vector3, Vector4};
+#[cfg(not(feature = "ffi"))]
+use crate::types::GetNative;
+use crate::types::{Color, RefFromData, Vector2, Vector3, Vector4, OrderedData, OrderedDataStrict, BufType, slice, Map, MapImpl};
 use crate::sub_blocks::gameobjs::keys::{INT_KEY, COLOR_KEY, VECTOR2_KEY, VECTOR3_KEY, VECTOR4_KEY};
 
 #[make_platforms]
 use crate::{
-    level::{model::{ModelVER, ModelInfoVER, ModelRawVER}, pak::objs::ObjsVER},
-    types::{ColorVER, Vector2VER, Vector3VER, Vector4VER, U16VER, U32VER},
+    level::model::{ModelInfoVER, ModelRawVER, ModelRefVER},
+    types::{ColorVER, Vector2VER, Vector3VER, Vector4VER, u16VER, u32VER, u8VER, },
 };
 use lotrc_proc::{make_platforms, OrderedData};
 
-#[cfg(feature = "python")]
-pub fn init(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
-    let m = PyModule::new(py, "data")?;
-    m.add_class::<BufferInfo>()?;
-    m.add_class::<IBuffInfo>()?;
-    m.add_class::<IndexBuffer>()?;
-    m.add_class::<VBuffInfo>()?;
-    m.add_class::<VertexData>()?;
-    Ok(m)
-}
 
 #[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(feature = "python", pyclass(module = "model.data", get_all, set_all))]
 pub struct BufferInfo {
     pub vbuff_info_offset: u32,   // pointer to objf
     pub vbuff_info_offset_2: u32, // optional pointer to objf
@@ -202,7 +187,6 @@ pub struct BufferInfo {
 }
 
 #[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(feature = "python", pyclass(module = "model.data", get_all, set_all))]
 pub struct VBuffInfo {
     pub unk_0: u32,
     #[name_ps3(unk_7)]
@@ -236,7 +220,6 @@ pub struct VBuffInfo {
 }
 
 #[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(feature = "python", pyclass(module = "model.data", get_all, set_all))]
 pub struct IBuffInfo {
     pub unk_0: u32,
     #[name_ps3(unk_5)]
@@ -280,38 +263,6 @@ pub enum VertexUsage {
     Pad(usize),
 }
 
-#[cfg(feature = "python")]
-impl<'py> IntoPyObject<'py> for VertexUsage {
-    type Target = <String as IntoPyObject<'py>>::Target;
-    type Output = <String as IntoPyObject<'py>>::Output;
-    type Error = <String as IntoPyObject<'py>>::Error;
-
-    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        format!("{}", self).into_pyobject(py)
-    }
-}
-
-#[cfg(feature = "python")]
-impl<'a, 'py> IntoPyObject<'py> for &'a VertexUsage {
-    type Target = <String as IntoPyObject<'py>>::Target;
-    type Output = <String as IntoPyObject<'py>>::Output;
-    type Error = <String as IntoPyObject<'py>>::Error;
-
-    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        format!("{}", self).into_pyobject(py)
-    }
-}
-
-#[cfg(feature = "python")]
-impl<'py> FromPyObject<'_, 'py> for VertexUsage {
-    type Error = PyErr;
-    fn extract(obj: Borrowed<'_, 'py, PyAny>) -> PyResult<Self> {
-        let s = String::extract(obj)?;
-        s.parse()
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyTypeError, _>(format!("{}", e)))
-    }
-}
-
 impl std::str::FromStr for VertexUsage {
     type Err = anyhow::Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -347,7 +298,7 @@ impl std::str::FromStr for VertexUsage {
                         .parse::<usize>()
                         .map(|i| Self::Pad(i))?)
                 } else {
-                    Err(anyhow::anyhow!("unknown vertex usage {}", s))
+                    Err(anyhow!("unknown vertex usage {}", s))
                 }
             }
         }
@@ -401,7 +352,7 @@ impl VertexUsage {
 
 #[make_platforms]
 pub enum VertexValVER {
-    Int(U32VER),
+    Int(u32VER),
     Color(ColorVER),
     Vector2(Vector2VER),
     Vector3(Vector3VER),
@@ -423,7 +374,6 @@ impl VertexValVER {
 }
 */
 
-#[cfg_attr(feature = "python", pyclass(module = "model.data", get_all, set_all))]
 #[derive(Debug, Clone)]
 pub enum VertexData {
     Int(Vec<u32>),
@@ -466,164 +416,62 @@ impl VertexData {
     }
 }
 
-#[make_platforms]
-#[derive(Debug, Clone)]
-struct VertexBufferVER {
-    _ptr: Arc<[u8]>,
-    _ptr_info: Arc<[u8]>,
-    info: NonNull<VBuffInfoVER>,
-    offsets: IndexMap<VertexUsage, VertexDataIndex>,
-    size: usize,
-    data: NonNull<[u8]>,
-}
-
-#[make_platforms]
-impl VertexBufferVER {
-    pub fn from_bytes(src: &Arc<[u8]>, info_src: &Arc<[u8]>, offset: usize) -> Result<Self> {
-        let info = VBuffInfoVER::from_data(&info_src[offset..]).context("info")?;
-
-        let fmt1 = info.fmt1.get();
-        let fmt2 = info.fmt2.get();
-        let offset = info.offset.get() as usize;
-        let size = info.size.get() as usize;
-        let mut vals = IndexMap::new();
-        let mut s = 0;
-        if fmt2 == 0 {
-            let b1: bool = (fmt1 & 0x40000) != 0;
-            if fmt1 & 1 != 0 {
-                if b1 {
-                    vals.insert(
-                        VertexUsage::Position,
-                        VertexDataIndex { key: VECTOR4_KEY, offset: s },
-                    );
-                    s += 16;
-                } else {
-                    vals.insert(
-                        VertexUsage::Position,
-                        VertexDataIndex { key: VECTOR3_KEY, offset: s },
-                    );
-                    s += 12;
-                }
-            }
-            if (fmt1 & 0x400) != 0 {
-                // blend weights
-                if b1 {
-                    vals.insert(
-                        VertexUsage::Pad(0),
-                        VertexDataIndex { key: COLOR_KEY, offset: s },
-                    );
-                } else {
-                    vals.insert(
-                        VertexUsage::BlendWeight,
-                        VertexDataIndex { key: COLOR_KEY, offset: s },
-                    );
-                }
-                s += 4;
-            }
-            if (fmt1 & 0x800) != 0 {
-                // blend indices
-                if b1 {
-                    vals.insert(
-                        VertexUsage::Pad(1),
-                        VertexDataIndex { key: COLOR_KEY, offset: s },
-                    );
-                } else {
-                    vals.insert(
-                        VertexUsage::BlendIndices,
-                        VertexDataIndex { key: COLOR_KEY, offset: s },
-                    );
-                }
-                s += 4;
-                // if b1 then Vec4 ??
-            }
-            if (fmt1 & 2) != 0 {
-                // normal
-                let usage = VertexUsage::Normal;
-                if b1 {
-                    let mut p = 2;
-                    for _ in (0..(((s + 15) & 0xFFFF0) - s)).step_by(4) {
-                        vals.insert(
-                            VertexUsage::Pad(p),
-                            VertexDataIndex { key: COLOR_KEY, offset: s },
-                        );
-                        s += 4;
-                        p += 1;
-                    }
-                    vals.insert(
-                        usage,
-                        VertexDataIndex { key: VECTOR4_KEY, offset: s },
-                    );
-                    s += 16;
-                //                } else if V::ps3() {
-                //                   vals.insert(VertexDataIndex { key: Vector3_KEY, offset: s } usage));
-                //                   s += 12;
-                } else {
-                    vals.insert(
-                        usage,
-                        VertexDataIndex { key: COLOR_KEY, offset: s },
-                    );
-                    s += 4;
-                }
-            }
-            if fmt1 & 0x100 != 0 {
-                // color(0)
+fn parse_fmt(fmt1: u32, fmt2: u32) -> (usize, IndexMap<VertexUsage, VertexDataIndex>) {
+    let mut vals = IndexMap::new();
+    let mut s = 0;
+    if fmt2 == 0 {
+        let b1: bool = (fmt1 & 0x40000) != 0;
+        if fmt1 & 1 != 0 {
+            if b1 {
                 vals.insert(
-                    VertexUsage::Color(0),
-                    VertexDataIndex { key: COLOR_KEY, offset: s },
+                    VertexUsage::Position,
+                    VertexDataIndex { key: VECTOR4_KEY, offset: s },
                 );
-                s += 4;
-            }
-            if fmt1 & 0x200 != 0 {
-                // color(1)
+                s += 16;
+            } else {
                 vals.insert(
-                    VertexUsage::Color(1),
-                    VertexDataIndex { key: COLOR_KEY, offset: s },
-                );
-                s += 4;
-            }
-            for i in 0..((fmt1 >> 2) & 0xF) {
-                // texture coords
-                vals.insert(
-                    VertexUsage::TextureCoord(i as usize),
-                    VertexDataIndex { key: VECTOR2_KEY, offset: s },
-                );
-                s += 8;
-            }
-            if fmt1 & 0x40 != 0 {
-                // tangent
-                let usage = VertexUsage::Tangent;
-                if b1 {
-                    let mut p = 5;
-                    for _ in (0..(((s + 15) & 0xFFFF0) - s)).step_by(4) {
-                        vals.insert(
-                            VertexUsage::Pad(p),
-                            VertexDataIndex { key: COLOR_KEY, offset: s },
-                        );
-                        s += 4;
-                        p += 1;
-                    }
-                    vals.insert(
-                        usage,
-                        VertexDataIndex { key: VECTOR4_KEY, offset: s },
-                    );
-                    s += 16;
-                } else {
-                    vals.insert(
-                        usage,
-                        VertexDataIndex { key: COLOR_KEY, offset: s },
-                    );
-                    s += 4;
-                }
-            }
-            if fmt1 & 0x80 != 0 {
-                vals.insert(
-                    VertexUsage::PSize,
+                    VertexUsage::Position,
                     VertexDataIndex { key: VECTOR3_KEY, offset: s },
                 );
                 s += 12;
             }
+        }
+        if (fmt1 & 0x400) != 0 {
+            // blend weights
             if b1 {
-                let mut p = 8;
+                vals.insert(
+                    VertexUsage::Pad(0),
+                    VertexDataIndex { key: COLOR_KEY, offset: s },
+                );
+            } else {
+                vals.insert(
+                    VertexUsage::BlendWeight,
+                    VertexDataIndex { key: COLOR_KEY, offset: s },
+                );
+            }
+            s += 4;
+        }
+        if (fmt1 & 0x800) != 0 {
+            // blend indices
+            if b1 {
+                vals.insert(
+                    VertexUsage::Pad(1),
+                    VertexDataIndex { key: COLOR_KEY, offset: s },
+                );
+            } else {
+                vals.insert(
+                    VertexUsage::BlendIndices,
+                    VertexDataIndex { key: COLOR_KEY, offset: s },
+                );
+            }
+            s += 4;
+            // if b1 then Vec4 ??
+        }
+        if (fmt1 & 2) != 0 {
+            // normal
+            let usage = VertexUsage::Normal;
+            if b1 {
+                let mut p = 2;
                 for _ in (0..(((s + 15) & 0xFFFF0) - s)).step_by(4) {
                     vals.insert(
                         VertexUsage::Pad(p),
@@ -632,89 +480,220 @@ impl VertexBufferVER {
                     s += 4;
                     p += 1;
                 }
-            }
-        } else {
-            if fmt1 & 1 != 0 {
                 vals.insert(
-                    VertexUsage::Position,
-                    VertexDataIndex { key: VECTOR3_KEY, offset: s },
+                    usage,
+                    VertexDataIndex { key: VECTOR4_KEY, offset: s },
                 );
-                s += 12;
-            }
-            if fmt1 & 0x400 != 0 {
+                s += 16;
+            //                } else if V::ps3() {
+            //                   vals.insert(VertexDataIndex { key: Vector3_KEY, offset: s } usage));
+            //                   s += 12;
+            } else {
                 vals.insert(
-                    VertexUsage::BlendWeight,
+                    usage,
                     VertexDataIndex { key: COLOR_KEY, offset: s },
                 );
                 s += 4;
-            }
-            if fmt1 & 0x800 != 0 {
-                vals.insert(
-                    VertexUsage::BlendIndices,
-                    VertexDataIndex { key: COLOR_KEY, offset: s },
-                );
-                s += 4;
-            }
-            if fmt1 & 2 != 0 {
-                vals.insert(
-                    VertexUsage::Normal,
-                    VertexDataIndex { key: COLOR_KEY, offset: s },
-                );
-                s += 4;
-            }
-            if fmt1 & 0x100 != 0 {
-                vals.insert(
-                    VertexUsage::Color(0),
-                    VertexDataIndex { key: COLOR_KEY, offset: s },
-                );
-                s += 4;
-            }
-            if fmt1 & 0x200 != 0 {
-                vals.insert(
-                    VertexUsage::Color(1),
-                    VertexDataIndex { key: COLOR_KEY, offset: s },
-                );
-                s += 4;
-            }
-            let n = (fmt1 >> 2) & 0xf;
-            if n <= 2 {
-                for i in 0..n {
-                    vals.insert(
-                        VertexUsage::TextureCoord(i as usize),
-                        VertexDataIndex { key: VECTOR2_KEY, offset: s },
-                    );
-                    s += 8;
-                }
-            }
-            if fmt1 & 0x40 != 0 {
-                vals.insert(
-                    VertexUsage::Tangent,
-                    VertexDataIndex { key: COLOR_KEY, offset: s },
-                );
-                s += 4;
-            }
-            if fmt1 & 0x80 != 0 {
-                vals.insert(
-                    VertexUsage::PSize,
-                    VertexDataIndex { key: VECTOR3_KEY, offset: s },
-                );
-                s += 12;
             }
         }
+        if fmt1 & 0x100 != 0 {
+            // color(0)
+            vals.insert(
+                VertexUsage::Color(0),
+                VertexDataIndex { key: COLOR_KEY, offset: s },
+            );
+            s += 4;
+        }
+        if fmt1 & 0x200 != 0 {
+            // color(1)
+            vals.insert(
+                VertexUsage::Color(1),
+                VertexDataIndex { key: COLOR_KEY, offset: s },
+            );
+            s += 4;
+        }
+        for i in 0..((fmt1 >> 2) & 0xF) {
+            // texture coords
+            vals.insert(
+                VertexUsage::TextureCoord(i as usize),
+                VertexDataIndex { key: VECTOR2_KEY, offset: s },
+            );
+            s += 8;
+        }
+        if fmt1 & 0x40 != 0 {
+            // tangent
+            let usage = VertexUsage::Tangent;
+            if b1 {
+                let mut p = 5;
+                for _ in (0..(((s + 15) & 0xFFFF0) - s)).step_by(4) {
+                    vals.insert(
+                        VertexUsage::Pad(p),
+                        VertexDataIndex { key: COLOR_KEY, offset: s },
+                    );
+                    s += 4;
+                    p += 1;
+                }
+                vals.insert(
+                    usage,
+                    VertexDataIndex { key: VECTOR4_KEY, offset: s },
+                );
+                s += 16;
+            } else {
+                vals.insert(
+                    usage,
+                    VertexDataIndex { key: COLOR_KEY, offset: s },
+                );
+                s += 4;
+            }
+        }
+        if fmt1 & 0x80 != 0 {
+            vals.insert(
+                VertexUsage::PSize,
+                VertexDataIndex { key: VECTOR3_KEY, offset: s },
+            );
+            s += 12;
+        }
+        if b1 {
+            let mut p = 8;
+            for _ in (0..(((s + 15) & 0xFFFF0) - s)).step_by(4) {
+                vals.insert(
+                    VertexUsage::Pad(p),
+                    VertexDataIndex { key: COLOR_KEY, offset: s },
+                );
+                s += 4;
+                p += 1;
+            }
+        }
+    } else {
+        if fmt1 & 1 != 0 {
+            vals.insert(
+                VertexUsage::Position,
+                VertexDataIndex { key: VECTOR3_KEY, offset: s },
+            );
+            s += 12;
+        }
+        if fmt1 & 0x400 != 0 {
+            vals.insert(
+                VertexUsage::BlendWeight,
+                VertexDataIndex { key: COLOR_KEY, offset: s },
+            );
+            s += 4;
+        }
+        if fmt1 & 0x800 != 0 {
+            vals.insert(
+                VertexUsage::BlendIndices,
+                VertexDataIndex { key: COLOR_KEY, offset: s },
+            );
+            s += 4;
+        }
+        if fmt1 & 2 != 0 {
+            vals.insert(
+                VertexUsage::Normal,
+                VertexDataIndex { key: COLOR_KEY, offset: s },
+            );
+            s += 4;
+        }
+        if fmt1 & 0x100 != 0 {
+            vals.insert(
+                VertexUsage::Color(0),
+                VertexDataIndex { key: COLOR_KEY, offset: s },
+            );
+            s += 4;
+        }
+        if fmt1 & 0x200 != 0 {
+            vals.insert(
+                VertexUsage::Color(1),
+                VertexDataIndex { key: COLOR_KEY, offset: s },
+            );
+            s += 4;
+        }
+        let n = (fmt1 >> 2) & 0xf;
+        if n <= 2 {
+            for i in 0..n {
+                vals.insert(
+                    VertexUsage::TextureCoord(i as usize),
+                    VertexDataIndex { key: VECTOR2_KEY, offset: s },
+                );
+                s += 8;
+            }
+        }
+        if fmt1 & 0x40 != 0 {
+            vals.insert(
+                VertexUsage::Tangent,
+                VertexDataIndex { key: COLOR_KEY, offset: s },
+            );
+            s += 4;
+        }
+        if fmt1 & 0x80 != 0 {
+            vals.insert(
+                VertexUsage::PSize,
+                VertexDataIndex { key: VECTOR3_KEY, offset: s },
+            );
+            s += 12;
+        }
+    }
+    (s, vals)
+}
 
+#[make_platforms]
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+#[repr(C)]
+pub struct VertexBufferRefVER<'a> {
+    pub info: &'a VBuffInfoVER,
+    pub offsets: Map<VertexUsage, VertexDataIndex>,
+    pub size: usize,
+    data: slice<'a, u8>
+}
+
+#[make_platforms]
+impl<'a> VertexBufferRefVER<'a> {
+    pub fn from_data(src: &'a [u8], info: &'a VBuffInfoVER) -> Result<Self> {
+        let (size, offsets) = parse_fmt(info.fmt1.get(), info.fmt2.get());
+        Ok(Self {
+            info: info.into(),
+            size,
+            offsets: MapImpl::from(offsets).into(),
+            data: (&src[info.offset.get() as usize..(info.offset.get() + info.size.get()) as usize]).into(),
+        })
+    }
+    pub fn iter(&self) -> VertexDataIter<'_> {
+        VertexDataIter {
+            data: &self.data[..],
+            size: self.size,
+            offsets: &self.offsets
+        }
+    }
+}
+
+#[make_platforms]
+#[derive(Debug, Clone)]
+struct VertexBufferVER {
+    _ptr: BufType,
+    _ptr_info: BufType,
+    info: NonNull<VBuffInfoVER>,
+    offsets: IndexMap<VertexUsage, VertexDataIndex>,
+    size: usize,
+    data: NonNull<[u8]>,
+}
+
+#[make_platforms]
+impl VertexBufferVER {
+    pub fn from_bytes(src: &BufType, info_src: &BufType, offset: usize) -> Result<Self> {
+        let info = VBuffInfoVER::from_data(&info_src[offset..]).context("info")?;
+        let (size, offsets) = parse_fmt(info.fmt1.get(), info.fmt2.get());
         Ok(Self {
             _ptr: src.clone(),
             _ptr_info: info_src.clone(),
             info: info.into(),
-            size: s,
-            offsets: vals,
-            data: NonNull::from_ref(&src[offset..offset+size]),
+            size,
+            offsets,
+            data: NonNull::from_ref(&src[info.offset.get() as usize..(info.offset.get() + info.size.get()) as usize]),
         })
     }
     pub fn info(&self) -> &VBuffInfoVER {
         unsafe { self.info.as_ref() }
     }
-    pub fn iter(&self) -> VertexDataIter {
+    pub fn iter(&self) -> VertexDataIter<'_> {
         VertexDataIter {
             data: unsafe { self.data.as_ref() },
             size: self.size,
@@ -723,7 +702,6 @@ impl VertexBufferVER {
     }
 }
 
-#[cfg_attr(feature = "python", pyclass(module = "model.data", get_all, set_all))]
 #[derive(Debug, Clone)]
 pub struct VertexBuffer {
     pub info: VBuffInfo,
@@ -776,27 +754,58 @@ impl From<&VertexBufferVER> for VertexBuffer {
         for data in val_iter {
             for (off, val) in val.offsets.values().zip(vals.values_mut()) {
                 match val {
-                    VertexData::Int(val) => val.push(data.get_int_ver(off).unwrap().into()),
-                    VertexData::Color(val) => val.push(data.get_color_ver(off).unwrap().into()),
-                    VertexData::Vector2(val) => val.push(data.get_vec2_ver(off).unwrap().into()),
-                    VertexData::Vector3(val) => val.push(data.get_vec3_ver(off).unwrap().into()),
-                    VertexData::Vector4(val) => val.push(data.get_vec4_ver(off).unwrap().into()),
+                    VertexData::Int(val) => val.push(data.get_int_ver(off).unwrap().conv()),
+                    VertexData::Color(val) => val.push(data.get_color_ver(off).unwrap().conv()),
+                    VertexData::Vector2(val) => val.push(data.get_vec2_ver(off).unwrap().conv()),
+                    VertexData::Vector3(val) => val.push(data.get_vec3_ver(off).unwrap().conv()),
+                    VertexData::Vector4(val) => val.push(data.get_vec4_ver(off).unwrap().conv()),
                 }
             }
         }
         Self {
-            info: val.info().into(),
+            info: val.info().conv(),
             vals,
         }
+    }
+}
 
+#[make_platforms]
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+#[repr(C)]
+pub struct IndexBufferRefVER<'a> {
+    pub info: &'a IBuffInfoVER,
+    data: slice<'a, u8>,
+}
+
+#[make_platforms]
+impl<'a> IndexBufferRefVER<'a> {
+    pub fn from_data(src: &'a [u8], info: &'a IBuffInfoVER) -> Result<Self> {
+        Ok(Self {
+            info,
+            data: (&src[info.offset.get() as usize..(info.offset.get() + info.size.get()) as usize]).into(),
+        })
+    }
+
+    pub fn u32(&self) -> Option<&[u32VER]> {
+        match self.info.format.get() {
+            0x10 => None,
+            _ => Some(u32VER::slice_from_data(&self.data[..], self.data.len()/4).unwrap())
+        }
+    }
+
+    pub fn u16(&self) -> Option<&[u16VER]> {
+        match self.info.format.get() {
+            0x10 => Some(u16VER::slice_from_data(&self.data[..], self.data.len()/2).unwrap()),
+            _ => None
+        }
     }
 }
 
 #[make_platforms]
 #[derive(Debug, Clone)]
-struct IndexBufferVER {
-    _ptr: Arc<[u8]>,
-    _ptr_info: Arc<[u8]>,
+pub struct IndexBufferVER {
+    _ptr: BufType,
+    _ptr_info: BufType,
     info: NonNull<IBuffInfoVER>,
     data: NonNull<[u8]>,
     is_u32: bool
@@ -804,7 +813,7 @@ struct IndexBufferVER {
 
 #[make_platforms]
 impl IndexBufferVER {
-    pub fn from_bytes(src: &Arc<[u8]>, src_info: &Arc<[u8]>, offset: usize) -> Result<Self> {
+    pub fn from_bytes(src: &BufType, src_info: &BufType, offset: usize) -> Result<Self> {
         let info = IBuffInfoVER::from_data(&src_info[offset..]).context("info")?;
         Ok(Self {
             _ptr: src.clone(),
@@ -815,24 +824,27 @@ impl IndexBufferVER {
         })
     }
 
-    pub fn u32(&self) -> Option<&[U32VER]> {
+    pub fn u32(&self) -> Option<&[u32VER]> {
         if self.is_u32 {
-            Some(U32VER::slice_from_data(unsafe { self.data.as_ref() }, self.data.len()/4).unwrap())
+            Some(u32VER::slice_from_data(unsafe { self.data.as_ref() }, self.data.len()/4).unwrap())
         } else {
             None
         }
     }
 
-    pub fn u16(&self) -> Option<&[U16VER]> {
+    pub fn u16(&self) -> Option<&[u16VER]> {
         if self.is_u32 {
             None
         } else {
-            Some(U16VER::slice_from_data(unsafe { self.data.as_ref() }, self.data.len()/2).unwrap())
+            Some(u16VER::slice_from_data(unsafe { self.data.as_ref() }, self.data.len()/2).unwrap())
         }
+    }
+
+    pub fn info(&self) -> &IBuffInfoVER {
+        unsafe { self.info.as_ref() }
     }
 }
 
-#[cfg_attr(feature = "python", pyclass(module = "model.data", get_all, set_all))]
 #[derive(Debug, Clone)]
 pub enum IndexBuffer {
     U16(Vec<u16>),
@@ -843,9 +855,9 @@ pub enum IndexBuffer {
 impl From<&IndexBufferVER> for IndexBuffer {
     fn from(val: &IndexBufferVER) -> Self {
         if val.is_u32 {
-            Self::U32(val.u32().unwrap().into_iter().map(|x| x.into()).collect())
+            Self::U32(val.u32().unwrap().into_iter().map(|x| x.conv()).collect())
         } else {
-            Self::U16(val.u16().unwrap().into_iter().map(|x| x.into()).collect())
+            Self::U16(val.u16().unwrap().into_iter().map(|x| x.conv()).collect())
         }
     }
 }
@@ -855,11 +867,11 @@ impl IndexBuffer {
     pub fn dump_ver(&self) -> Vec<u8> {
         match self {
             Self::U16 { vals } => {
-                let vals: Vec<_> = vals.iter().map(|x| U16VER::new(*x)).collect();
+                let vals: Vec<_> = vals.iter().map(|x| u16VER::new(*x)).collect();
                 RefFromDataArgs::as_bytes(&vals[..]).to_vec()
             }
             Self::U32 { vals } => {
-                let vals: Vec<_> = vals.iter().map(|x| U32VER::new(*x)).collect();
+                let vals: Vec<_> = vals.iter().map(|x| u32VER::new(*x)).collect();
                 RefFromDataArgs::as_bytes(&vals[..]).to_vec()
             }
         }
@@ -875,7 +887,6 @@ impl IndexBuffer {
         }
     }
 }
-
 
 pub struct VertexDataIter<'a> {
     data: &'a [u8],
@@ -921,7 +932,7 @@ impl ExactSizeIterator for VertexDataIter<'_> {
 
 #[make_platforms]
 enum VertexDataIterVER<'a> {
-    Int(&'a [U32VER]),
+    Int(&'a [u32VER]),
     Color(&'a [ColorVER]),
     Vector2(&'a [Vector2VER]),
     Vector3(&'a [Vector3VER]),
@@ -941,8 +952,8 @@ pub struct VertexValRef<'a> {
 
 impl<'a> VertexValRef<'a> {
     #[make_platforms]
-    pub fn get_int_ver(&'a self, ind: &VertexDataIndex) -> Result<&'a U32VER> {
-        U32VER::from_data(&self.data[ind.offset..])
+    pub fn get_int_ver(&'a self, ind: &VertexDataIndex) -> Result<&'a u32VER> {
+        u32VER::from_data(&self.data[ind.offset..])
     }
     #[make_platforms]
     pub fn get_color_ver(&'a self, ind: &VertexDataIndex) -> Result<&'a ColorVER> {
@@ -963,20 +974,60 @@ impl<'a> VertexValRef<'a> {
 }
 
 #[make_platforms]
-#[cfg_attr(feature = "python", pyclass(module = "model"))]
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+#[repr(C)]
+pub struct ModelDataRefVER<'a> {
+    infos: slice<'a, BufferInfoVER>,
+    vbuff_order: slice<'a, u32VER>,
+    ibuff_order: slice<'a, u32VER>,
+    vertex: Map<u32, VertexBufferRefVER<'a>>,
+    index: Map<u32, IndexBufferRefVER<'a>>
+}
+
+#[make_platforms]
+impl Default for ModelDataRefVER<'_> {
+    fn default() -> Self {
+        Self {
+            infos: slice::default(),
+            vbuff_order: slice::default(),
+            ibuff_order: slice::default(),
+            vertex: MapImpl::default().into(),
+            index: MapImpl::default().into()
+        }
+    }
+}
+
+#[make_platforms]
+impl<'a> TryFrom<&ModelRefVER<'a>> for ModelDataRefVER<'a> {
+    type Error = anyhow::Error;
+    fn try_from(val: &ModelRefVER<'a>) -> Result<Self> {
+        if let Some(data) = val.data {
+            let data = data.get();
+            Ok(Self {
+                infos: val.buffer_infos,
+                vbuff_order: val.vbuff_order,
+                ibuff_order: val.ibuff_order,
+                vertex: val.vbuffs.iter().map(|(k,info)| Ok((*k, VertexBufferRefVER::from_data(data, info).with_context(|| format!("vertex data {}", k))?))).collect::<Result<MapImpl<_,_>>>()?.into(),
+                index: val.ibuffs.iter().map(|(k,info)| Ok((*k, IndexBufferRefVER::from_data(data, info).with_context(|| format!("index data {}", k))?))).collect::<Result<MapImpl<_,_>>>()?.into(),
+            })
+        } else if val.buffer_infos.len() == 0 && val.vbuff_order.len() == 0 && val.ibuff_order.len() == 0 {
+            Ok(Self::default())
+        } else {
+            Err(anyhow!("missing mesh data"))
+        }
+    }
+}
+
+#[make_platforms]
 #[derive(Debug, Clone)]
 pub struct ModelDataVER {
-    _ptr: Arc<[u8]>,
+    _ptr: BufType,
     infos: NonNull<[BufferInfoVER]>,
-    vbuff_order: NonNull<[U32VER]>,
-    ibuff_order: NonNull<[U32VER]>,
+    vbuff_order: NonNull<[u32VER]>,
+    ibuff_order: NonNull<[u32VER]>,
     vertex: IndexMap<u32, VertexBufferVER>,
     index: IndexMap<u32, IndexBufferVER>
 }
-
-#[cfg(feature = "python")]
-#[make_platforms]
-pyobj_ref!(ModelDataVER);
 
 #[make_platforms]
 unsafe impl Sync for ModelDataVER {}
@@ -985,18 +1036,18 @@ unsafe impl Send for ModelDataVER {}
 
 #[make_platforms]
 impl ModelDataVER {
-    pub fn from_bytes(src: &Arc<[u8]>, src_info: &Arc<[u8]>, info: &ModelInfoVER) -> Result<Self> {
+    pub fn from_bytes(src: &BufType, src_info: &BufType, info: &ModelInfoVER) -> Result<Self> {
         let infos = BufferInfoVER::slice_from_data(
             &src[info.buffer_info_offset.get() as usize..],
             info.mat_num.get() as usize,
         )
         .context("buffer_infos")?;
-        let vbuff_order = U32VER::slice_from_data(
+        let vbuff_order = u32VER::slice_from_data(
             &src_info[info.vbuff_offset.get() as usize..],
             info.vbuff_num.get() as usize,
         )
         .context("vbuff_order")?;
-        let ibuff_order = U32VER::slice_from_data(
+        let ibuff_order = u32VER::slice_from_data(
             &src_info[info.ibuff_offset.get() as usize..],
             info.ibuff_num.get() as usize,
         )
@@ -1034,11 +1085,15 @@ impl TryFrom<&ModelRawVER> for ModelDataVER {
 }
 
 #[make_platforms]
-#[cfg_attr(feature = "python", pymethods)]
 impl ModelDataVER {
-    #[getter]
     pub fn infos(&self) -> &[BufferInfoVER] {
         unsafe { self.infos.as_ref() }
+    }
+    pub fn vbuff_order(&self) -> &[u32VER] {
+        unsafe { self.vbuff_order.as_ref() }
+    }
+    pub fn ibuff_order(&self) -> &[u32VER] {
+        unsafe { self.ibuff_order.as_ref() }
     }
     /*
     pub fn vertex(&self) -> &IndexMap<u32, IndexMap<VertexUsage, VertexDataVER>> {
@@ -1050,7 +1105,6 @@ impl ModelDataVER {
     */
 }
 
-#[cfg_attr(feature = "python", pyclass(module = "model", get_all, set_all))]
 #[derive(Debug, Clone)]
 pub struct ModelData {
     pub vertex: Vec<VertexBuffer>,

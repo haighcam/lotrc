@@ -1,32 +1,19 @@
-#[cfg(feature = "python")]
-use crate::pyobj_ref;
 use anyhow::{Context, Result};
-#[cfg(feature = "python")]
-use pyo3::prelude::*;
 use std::ptr::NonNull;
-use std::sync::Arc;
 
 #[make_platforms]
-use crate::level::pak::objs::DumpInfosVER;
+use crate::{
+    level::pak::objs::DumpInfosVER,
+    types::{u32VER, CrcVER, u8VER, u16VER, u64VER}
+};
 
-use crate::types::{Crc, RefFromData};
+#[cfg(not(feature = "ffi"))]
+use crate::types::GetNative;
+use crate::types::{Crc, RefFromData, OrderedData, OrderedDataStrict, BufType, DumpData};
 use crate::level::pak::objs::InfoCounts;
 use lotrc_proc::{make_platforms, OrderedData};
 
-#[cfg(feature = "python")]
-pub fn init(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
-    let m = PyModule::new(py, "mat")?;
-    m.add_class::<Mat1>()?;
-    m.add_class::<Mat2>()?;
-    m.add_class::<Mat3>()?;
-    m.add_class::<Mat4>()?;
-    m.add_class::<MatBase>()?;
-    m.add_class::<MatExtra>()?;
-    Ok(m)
-}
-
 #[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(feature = "python", pyclass(module = "model.mat", get_all, set_all))]
 pub struct MatBase {
     pub unk_0: u32,
     #[ordered_data(skipPS3)]
@@ -124,13 +111,11 @@ pub struct MatBase {
 }
 
 #[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(feature = "python", pyclass(module = "model.mat", get_all, set_all))]
 pub struct Mat1 {
     pub base: MatBase,
 }
 
 #[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(feature = "python", pyclass(module = "model.mat", get_all, set_all))]
 pub struct Mat2 {
     pub base: MatBase,
     pub unk_90: u32,
@@ -171,7 +156,6 @@ pub struct Mat2 {
 }
 
 #[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(feature = "python", pyclass(module = "model.mat", get_all, set_all))]
 pub struct Mat3 {
     pub base: MatBase,
     pub unk_90: u32,
@@ -210,7 +194,6 @@ pub struct Mat3 {
 }
 
 #[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(feature = "python", pyclass(module = "model.mat", get_all, set_all))]
 pub struct Mat4 {
     pub base: MatBase,
     pub unk_90: u32,
@@ -272,7 +255,6 @@ pub struct Mat4 {
 }
 
 #[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(feature = "python", pyclass(module = "model.mat", get_all, set_all))]
 pub struct MatExtra {
     pub unk_0: u32,
     pub unk_1: u32,
@@ -328,15 +310,6 @@ pub struct MatExtra {
 
 #[make_platforms]
 #[derive(Clone, Debug)]
-pub enum MatVER {
-    Mat1(NonNull<Mat1VER>, Option<NonNull<MatExtraVER>>),
-    Mat2(NonNull<Mat2VER>, Option<NonNull<MatExtraVER>>),
-    Mat3(NonNull<Mat3VER>, Option<NonNull<MatExtraVER>>),
-    Mat4(NonNull<Mat4VER>, Option<NonNull<MatExtraVER>>),
-}
-
-#[make_platforms]
-#[derive(Clone, Debug)]
 pub enum MatRefVER<'a> {
     Mat1(&'a Mat1VER, Option<&'a MatExtraVER>),
     Mat2(&'a Mat2VER, Option<&'a MatExtraVER>),
@@ -345,8 +318,48 @@ pub enum MatRefVER<'a> {
 }
 
 #[make_platforms]
+impl<'a> MatRefVER<'a> {
+    pub fn from_data(src: &'a [u8], offset: usize) -> Result<Self> {
+        let base = MatBaseVER::from_data(&src[offset..]).context("base")?;
+        let extra = if base.mat_extra_offset.get() != 0 {
+            Some(MatExtraVER::from_data(&src[base.mat_extra_offset.get() as usize..]).context("extra")?)
+        } else {
+            None
+        };
+        Ok(match base.kind.get() {
+            0 => Self::Mat1(
+                Mat1VER::from_data(&src[offset..]).context("mat1")?,
+                extra,
+            ),
+            1 => Self::Mat4(
+                Mat4VER::from_data(&src[offset..]).context("mat4")?,
+                extra,
+            ),
+            2 => Self::Mat2(
+                Mat2VER::from_data(&src[offset..]).context("mat2")?,
+                extra,
+            ),
+            3 => Self::Mat3(
+                Mat3VER::from_data(&src[offset..]).context("mat3")?,
+                extra,
+            ),
+            _ => return Err(anyhow::anyhow!("Unknown Mat Type {}", base.kind.get())),
+        })
+    }
+}
+
+#[make_platforms]
+#[derive(Clone, Debug)]
+pub enum MatVER {
+    Mat1(NonNull<Mat1VER>, Option<NonNull<MatExtraVER>>),
+    Mat2(NonNull<Mat2VER>, Option<NonNull<MatExtraVER>>),
+    Mat3(NonNull<Mat3VER>, Option<NonNull<MatExtraVER>>),
+    Mat4(NonNull<Mat4VER>, Option<NonNull<MatExtraVER>>),
+}
+
+#[make_platforms]
 impl MatVER {
-    pub fn from_bytes(src: &Arc<[u8]>, offset: usize) -> Result<Self> {
+    pub fn from_bytes(src: &BufType, offset: usize) -> Result<Self> {
         let base = MatBaseVER::from_data(&src[offset..]).context("base")?;
         let extra = if base.mat_extra_offset.get() != 0 {
             Some(NonNull::from_ref(
@@ -398,11 +411,86 @@ impl MatVER {
 
 #[make_platforms]
 pub trait DumpMatVER {
-    fn dump_infos(&self, infos: &mut DumpInfosVER) -> u32;
+    fn dump_infos(&self, infos: &mut DumpInfosVER) -> Result<u32>;
     fn add_counts(&self, counts: &mut InfoCounts);
 }
 
-#[cfg_attr(feature = "python", pyclass(module = "model.mat", get_all, set_all))]
+#[make_platforms]
+impl DumpMatVER for MatRefVER<'_> {
+    fn dump_infos(&self, infos: &mut DumpInfosVER) -> Result<u32> {
+        match self {
+            Self::Mat1(info, extra) => {
+                let val = infos.mat1s.offset as u32;
+                let mat = infos.mat1s.next();
+                mat.write_from(info)?;
+                mat.base.mat_extra_offset = extra.map(|_| infos.mat_extras.offset as u32).unwrap_or_default().conv();
+                if let Some(extra) = extra {
+                    infos.mat_extras.next().write_from(extra)?;
+                }
+                Ok(val)
+            }
+            Self::Mat2(info, extra) => {
+                let val = infos.mat2s.offset as u32;
+                let mat = infos.mat2s.next();
+                mat.write_from(info)?;
+                mat.base.mat_extra_offset = extra.map(|_| infos.mat_extras.offset as u32).unwrap_or_default().conv();
+                if let Some(extra) = extra {
+                    infos.mat_extras.next().write_from(extra)?;
+                }
+                Ok(val)
+            }
+            Self::Mat3(info, extra) => {
+                let val = infos.mat3s.offset as u32;
+                let mat = infos.mat3s.next();
+                mat.write_from(info)?;
+                mat.base.mat_extra_offset = extra.map(|_| infos.mat_extras.offset as u32).unwrap_or_default().conv();
+                if let Some(extra) = extra {
+                    infos.mat_extras.next().write_from(extra)?;
+                }
+                Ok(val)
+            }
+            Self::Mat4(info, extra) => {
+                let val = infos.mat4s.offset as u32;
+                let mat = infos.mat4s.next();
+                mat.write_from(info)?;
+                mat.base.mat_extra_offset = extra.map(|_| infos.mat_extras.offset as u32).unwrap_or_default().conv();
+                if let Some(extra) = extra {
+                    infos.mat_extras.next().write_from(extra)?;
+                }
+                Ok(val)
+            }
+        }
+    }
+    fn add_counts(&self, counts: &mut InfoCounts) {
+        match self {
+            Self::Mat1(_, extra) => {
+                counts.mat1s += 1;
+                if extra.is_some() {
+                    counts.mat_extras += 1;
+                }
+            }
+            Self::Mat2(_, extra) => {
+                counts.mat2s += 1;
+                if extra.is_some() {
+                    counts.mat_extras += 1;
+                }
+            }
+            Self::Mat3(_, extra) => {
+                counts.mat3s += 1;
+                if extra.is_some() {
+                    counts.mat_extras += 1;
+                }
+            }
+            Self::Mat4(_, extra) => {
+                counts.mat4s += 1;
+                if extra.is_some() {
+                    counts.mat_extras += 1;
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum MatInd {
     Mat1(usize),
@@ -411,10 +499,6 @@ pub enum MatInd {
     Mat4(usize),
 }
 
-#[cfg(feature = "python")]
-pyobj_ref!(MatInd);
-
-#[cfg_attr(feature = "python", pyclass(module = "model.mat", get_all, set_all))]
 #[derive(Debug, Clone)]
 pub enum Mat {
     Normal(Mat1, Option<MatExtra>),
@@ -427,12 +511,12 @@ pub enum Mat {
 impl From<MatRefVER<'_>> for Mat {
     fn from(val: MatRefVER) -> Self {
         match val {
-            MatRefVER::Mat1(mat, extra) => Self::Normal(mat.into(), extra.map(|x| x.into())),
-            MatRefVER::Mat2(mat, extra) => Self::Variation(mat.into(), extra.map(|x| x.into())),
+            MatRefVER::Mat1(mat, extra) => Self::Normal(mat.conv(), extra.map(|x| x.conv())),
+            MatRefVER::Mat2(mat, extra) => Self::Variation(mat.conv(), extra.map(|x| x.conv())),
             MatRefVER::Mat3(mat, extra) => {
-                Self::CharacterVariation(mat.into(), extra.map(|x| x.into()))
+                Self::CharacterVariation(mat.conv(), extra.map(|x| x.conv()))
             }
-            MatRefVER::Mat4(mat, extra) => Self::Terrain(mat.into(), extra.map(|x| x.into())),
+            MatRefVER::Mat4(mat, extra) => Self::Terrain(mat.conv(), extra.map(|x| x.conv())),
         }
     }
 }

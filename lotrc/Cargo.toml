@@ -3,27 +3,25 @@ name = "lotrc"
 version = "0.1.0"
 edition = "2021"
 
-[lib]
-name = "lotrc"
-crate-type = ["cdylib", "lib"]
-
 [features]
-default = ["python"]
-python = ["dep:pyo3"]
+default = []
+ffi = ["dep:safer-ffi"]
 
 [dependencies]
 lotrc_proc = { path = "../lotrc_proc" }
-zerocopy = { version = "0.8.10", features = ["derive"] }
-anyhow = "1.0.86"
-log = "0.4.21"
-indexmap = { version = "2.6.0", features = ["serde"] }
+zerocopy = { workspace = true, features = ["derive", "alloc"] }
+rend = { version = "0.5", features = ["zerocopy-0_8"] }
+anyhow = { workspace = true }
+log = { workspace = true }
+indexmap = { workspace = true, features = ["serde", "rayon"] }
 itertools = "0.13.0"
 flate2 = { version = "1.0.35", features = ["zlib-ng"], default-features = false }
 rayon = "1.10.0"
 parking_lot = "0.12.3"
 lazy_static = "1.5.0"
-pyo3 = { version = "0.27.1", features = ["extension-module", "anyhow", "indexmap", "abi3-py39", "generate-import-lib"], optional = true }
 bcndecode = "0.2.0"
+aligned-buffer = "0.2.0"
+safer-ffi = { workspace = true, featuer = ["proc_macros"], optional = true }
 
 
 

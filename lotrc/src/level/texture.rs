@@ -1,36 +1,16 @@
-#[cfg(feature = "python")]
-use crate::pyobj_ref;
 use anyhow::{anyhow, Context, Result};
 use log::warn;
-#[cfg(not(feature = "python"))]
-use lotrc_proc::getter;
-#[cfg(feature = "python")]
-use pyo3::prelude::*;
 use std::ptr::NonNull;
-use std::sync::Arc;
 use indexmap::IndexMap;
-
-use crate::types::{Crc, hash_string, RefFromData, DumpData, CompressedDataRef};
 use lotrc_proc::{make_platforms, OrderedData};
 
-#[cfg(feature = "python")]
-pub fn init(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
-    let m = PyModule::new(py, "texture")?;
-    m.add_class::<Texture>()?;
-    m.add_class::<TextureInfo>()?;
-    init_pc(&m)?;
-    init_xbox(&m)?;
-    init_ps3(&m)?;
-    Ok(m)
-}
-#[cfg(feature = "python")]
+#[cfg(not(feature = "ffi"))]
+use crate::types::GetNative;
+use crate::types::{Crc, hash_string, RefFromData, CompressedDataRef, OrderedData, OrderedDataStrict, BufType, CompressedDataRefAlt, Map, MapImpl, get_default_ref};
 #[make_platforms]
-pub fn init_ver(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<TextureVER>()
-}
+use crate::types::{CrcVER, u32VER, u16VER, i32VER, u8VER};
 
 #[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(feature = "python", pyclass(module = "texture", get_all, set_all))]
 pub struct TextureInfo {
     pub key: Crc,
     pub gamemodemask: i32,
@@ -116,88 +96,16 @@ pub const fn get_stride_width(format: u32) -> Option<(usize, usize)> {
     }
 }
 
-const fn xg_address2d_tiled_xy(offset: u32, width: u32, texel_pitch: u32) -> (usize, usize) {
-    // https://github.com/NCDyson/RareView/blob/master/RareView/Texture.cs
-    let aligned_width = (width + 31) & !31;
-
-    let log_bpp = (texel_pitch >> 2) + ((texel_pitch >> 1) >> (texel_pitch >> 2));
-    let offset_b = offset << log_bpp;
-    let offset_t = ((offset_b & !4095) >> 3) + ((offset_b & 1792) >> 2) + (offset_b & 63);
-    let offset_m = offset_t >> (7 + log_bpp);
-
-    let macro_x = (offset_m % (aligned_width >> 5)) << 2;
-    let tile_x = (((offset_t >> (5 + log_bpp)) & 2) + (offset_b >> 6)) & 3;
-    let macro_x = (macro_x + tile_x) << 3;
-    let micro_x =
-        ((((offset_t >> 1) & !15) + (offset_t & 15)) & ((texel_pitch << 3) - 1)) >> log_bpp;
-
-    let macro_y = (offset_m / (aligned_width >> 5)) << 2;
-    let tile_y = ((offset_t >> (6 + log_bpp)) & 1) + ((offset_b & 2048) >> 10);
-    let macro_y = (macro_y + tile_y) << 3;
-    let micro_y = (((offset_t & (((texel_pitch << 6) - 1) & !31)) + ((offset_t & 15) << 1))
-        >> (3 + log_bpp))
-        & !1;
-
-    (
-        (macro_x + micro_x) as usize,
-        (macro_y + micro_y + ((offset_t & 16) >> 4)) as usize,
-    )
-}
-
-/*
-1
-for j in range(h*width//512):
-    off = (j & 3) + ((j >> 1) & ~3)
-    x_off = ((off % w) << 5)
-    y_off = ((off // w) << 5) + ((j << 2) & 16)
-    for i in range(512):
-        offset = i + j * 512
-        x = x_off + ((((i >> 4) & 16) + (i >> 3)) & 24) + (i & 7);
-        y = y_off + ((i >> 5) & 8) + ((i >> 3) & 4) + ((i >> 2) & 2) + ((i >> 4) & 1);
-        assert((x,y) == xg_address2d_tiled_xy_1(offset, width))
-
-4
-for j in range(h*width//1024):
-    x_off = ((j % w) << 5)
-    y_off = ((j // w) << 5)
-    for i in range(1024):
-        offset = i + j * 1024
-        x = x_off + ((((i >> 4) & 16) + (i >> 1)) & 24) + ((i >> 1) & 4) + (i & 3);
-        y = y_off + ((i >> 5) & 8) + (((i >> 5) & 16)) + ((i >> 5) & 6) + ((i >> 2) & 1);
-        assert((x,y) == xg_address2d_tiled_xy_4(offset, width))
-
-8
-for j in range(h*width//1024):
-    x_off = ((j % w) << 5)
-    y_off = ((j // w) << 5)
-    for i in range(1024):
-        offset = i + j * 1024
-        x = x_off + ((((i >> 5) & 16) + i) & 24) + ((i >> 3) & 4) + ((i >> 1) & 2) + (i & 1);
-        y = y_off + ((i >> 6) & 8) + (((i >> 4) & 16)) + ((i >> 5) & 6) + ((i >> 1) & 1);
-        assert((x,y) == xg_address2d_tiled_xy_8(offset, width))
-
-16
-for j in range(h*width//1024):
-    x_off = ((j % w) << 5)
-    y_off = ((j // w) << 5)
-    for i in range(1024):
-        offset = i + j * 1024
-        x = x_off + ((((i >> 5) & 16) + (i << 1)) & 24) + ((i >> 3) & 6) + ((i >> 1) & 1);
-        y = y_off + ((i >> 6) & 8) + (((i >> 3) & 16)) + ((i >> 6) & 4) + ((i >> 5) & 2) + (i & 1);
-        assert((x,y) == xg_address2d_tiled_xy(offset, width, 16))
-
-*/
-
 pub fn conv_img_a8(
     data: &[u8],
-    dst: &mut[u8],
     h: usize,
     w: usize,
     y_off: usize,
     x_off: usize,
     ys: usize,
     xs: usize,
-) {
+) -> Vec<u8> {
+    let mut dst = vec![0u8; xs * ys];
     let w = w >> 5;
     for j in 0..((h*w) >> 4) {
         let off = (j & 3) + ((j >> 1) & !3);
@@ -209,22 +117,23 @@ pub fn conv_img_a8(
             if x < x_off || x >= x_off + xs || y < y_off || y >= y_off + ys {
                 continue;
             }
-            let j = (y - y_off) * xs + (x - x_off);
-            dst[j] = data[i]
+            let k = (y - y_off) * xs + (x - x_off);
+            dst[k] = data[i + (j << 9)]
         }
     }
+    dst
 }
 
 pub fn conv_img_argb8(
     data: &[u8],
-    dst: &mut[u8],
     h: usize,
     w: usize,
     y_off: usize,
     x_off: usize,
     ys: usize,
     xs: usize,
-) {
+) -> Vec<u8> {
+    let mut dst = vec![0u8; xs * ys * 4];
     let w = w >> 5;
     for j in 0..((h*w) >> 5) {
         let x = (j % w) << 5;
@@ -235,6 +144,7 @@ pub fn conv_img_argb8(
             if x < x_off || x >= x_off + xs || y < y_off || y >= y_off + ys {
                 continue;
             }
+            let i = (i << 2) + (j << 12);
             let j = ((y - y_off) * xs + (x - x_off)) << 2;
             dst[j] = data[i+3];
             dst[j+1] = data[i+2];
@@ -242,18 +152,19 @@ pub fn conv_img_argb8(
             dst[j+3] = data[i];
         }
     }
+    dst
 }
 
 pub fn conv_img_dxt1(
     data: &[u8],
-    dst: &mut[u8],
     h: usize,
     w: usize,
     y_off: usize,
     x_off: usize,
     ys: usize,
     xs: usize,
-) {
+) -> Vec<u8> {
+    let mut dst = vec![0u8; xs * ys * 8];
     let w = w >> 5;
     for j in 0..((h*w) >> 5) {
         let x = (j % w) << 5;
@@ -264,26 +175,29 @@ pub fn conv_img_dxt1(
             if x < x_off || x >= x_off + xs || y < y_off || y >= y_off + ys {
                 continue;
             }
+            let mut i = (i << 3) + (j << 13);
             let mut j = ((y - y_off) * xs + (x - x_off)) << 3;
             for _ in 0..4 {
-                dst[j] = data[j+1];
-                dst[j+1] = data[j];
+                dst[j] = data[i+1];
+                dst[j+1] = data[i];
                 j += 2;
+                i += 2;
             }
         }
     }
+    dst
 }
 
 pub fn conv_img_dxt5(
     data: &[u8],
-    dst: &mut[u8],
     h: usize,
     w: usize,
     y_off: usize,
     x_off: usize,
     ys: usize,
     xs: usize,
-) {
+) -> Vec<u8> {
+    let mut dst = vec![0u8; xs * ys * 16];
     let w = w >> 5;
     for j in 0..((h*w) >> 5) {
         let x = (j % w) << 5;
@@ -294,14 +208,17 @@ pub fn conv_img_dxt5(
             if x < x_off || x >= x_off + xs || y < y_off || y >= y_off + ys {
                 continue;
             }
+            let mut i = (i << 4) + (j << 14);
             let mut j = ((y - y_off) * xs + (x - x_off)) << 4;
             for _ in 0..8 {
-                dst[j] = data[j+1];
-                dst[j+1] = data[j];
+                dst[j] = data[i+1];
+                dst[j+1] = data[i];
                 j += 2;
+                i += 2;
             }
         }
     }
+    dst
 }
 
 pub fn conv_img_slice(
@@ -312,28 +229,14 @@ pub fn conv_img_slice(
     x_off: usize,
     ys: usize,
     xs: usize,
-    s: usize,
-    d: usize,
+    d: usize
 ) -> Vec<u8> {
-    // https://github.com/NCDyson/RareView/blob/master/RareView/Texture.cs
-    let mut out_data = vec![0u8; xs * ys * d];
-    for i in 0..(h * w) {
-        let (x, y) = xg_address2d_tiled_xy(i as u32, w as u32, d as u32);
-        if x < x_off || x >= x_off + xs || y < y_off || y >= y_off + ys {
-            continue;
-        }
-        let j = (y - y_off) * xs + (x - x_off);
-        out_data[j * d..(j + 1) * d].copy_from_slice(&data[i * d..(i + 1) * d]);
+    match d {
+        16 => conv_img_dxt5(data, h, w, y_off, x_off, ys, xs),
+        8 => conv_img_dxt1(data, h, w, y_off, x_off, ys, xs),
+        4 => conv_img_argb8(data, h, w, y_off, x_off, ys, xs),
+        _ => conv_img_a8(data, h, w, y_off, x_off, ys, xs)
     }
-    match (s, d) {
-        (4, _) => out_data.chunks_mut(2).for_each(|x| x.swap(0, 1)),
-        (_, 4) => out_data.chunks_mut(4).for_each(|x| {
-            x.swap(0, 3);
-            x.swap(1, 2);
-        }),
-        _ => (),
-    }
-    out_data
 }
 
 fn bin_mip(arr: &[u8], w: usize) -> Vec<u8> {
@@ -355,29 +258,75 @@ fn decomp_bc4(arr: &[u8], w: usize, h: usize) -> Vec<u8> {
     .unwrap()
 }
 
-// needs reworking
 #[make_platforms]
-#[cfg_attr(feature = "python", pyclass(module = "texture"))]
-#[derive(Debug, Clone)]
-pub struct TextureVER {
-    _ptr: Arc<[u8]>,
-    info: NonNull<TextureInfoVER>,
-    data0: Arc<[u8]>,
-    data1: Arc<[u8]>,
-    data: Box<[NonNull<[u8]>]>,
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+#[repr(C)]
+pub struct TextureRefVER<'a> {
+    pub info: &'a TextureInfoVER,
+    pub data0: Option<&'a CompressedDataRefAlt<'a>>,
+    pub data1: Option<&'a CompressedDataRefAlt<'a>>
+}
+
+#[make_platforms]
+impl Default for TextureRefVER<'_> {
+    fn default() -> Self {
+        Self {
+            info: get_default_ref(),
+            data0: None,
+            data1: None
+        }
+    }
+}
+
+#[make_platforms]
+impl<'a> TextureRefVER<'a> {
+    pub fn from_data(info: &'a TextureInfoVER, texture_data: &Map<u32, &'a CompressedDataRefAlt<'a>>) -> Result<Self> {
+        Ok(Self {
+            info,
+            data0: texture_data.get(&info.asset_key.get()).copied(),
+            data1: texture_data.get(&hash_string(b"*", Some(info.asset_key.get()))).copied()
+        })
+    }
 }
 
 #[make_platforms]
 pub struct TextureRawVER {
-    src: Arc<[u8]>,
+    _ptr: BufType,
     info: NonNull<TextureInfoVER>,
     data0: CompressedDataRef,
     data1: CompressedDataRef,
 }
 
-#[cfg(feature = "python")]
 #[make_platforms]
-pyobj_ref!(TextureVER);
+impl TextureRawVER {
+    pub fn from_bytes(src: &BufType, texture_data: &IndexMap<u32, CompressedDataRef>, offset: usize) -> Result<Self> {
+        let info = TextureInfoVER::from_data(&src[offset..]).context("info")?;
+        let data0 = texture_data.get(&info.asset_key.get()).cloned().unwrap_or_default();
+        let data1 = texture_data.get(
+            &hash_string(b"*", Some(info.asset_key.get()))
+        ).cloned().unwrap_or_default();
+        Ok(Self {
+            _ptr: src.clone(),
+            info: info.into(),
+            data0,
+            data1
+        })
+    }
+    pub fn info(&self) -> &TextureInfoVER {
+        unsafe { self.info.as_ref() }
+    }
+}
+
+// needs reworking
+#[make_platforms]
+#[derive(Debug, Clone)]
+pub struct TextureVER {
+    _ptr: BufType,
+    info: NonNull<TextureInfoVER>,
+    _data0: BufType,
+    _data1: BufType,
+    data: Box<[NonNull<[u8]>]>,
+}
 
 #[make_platforms]
 unsafe impl Sync for TextureVER {}
@@ -387,28 +336,22 @@ unsafe impl Send for TextureVER {}
 #[make_platforms]
 impl TryFrom<TextureRawVER> for TextureVER {
     type Error = anyhow::Error;
-    fn try_from(TextureRawVER { src, info, data0, data1 }: TextureRawVER) -> Result<Self> {
-        let data0 = data0.get().context("data0")?;
-        let data1 = data1.get().context("data1")?; 
+    fn try_from(TextureRawVER { _ptr, info, data0, data1 }: TextureRawVER) -> Result<Self> {
+        let _data0 = data0.get().context("data0")?.clone();
+        let _data1 = data1.get().context("data1")?.clone(); 
         let info_ref = unsafe { info.as_ref() };
         let data = match info_ref.kind.get() {
-            0 | 7 | 8 => parse_texture_ver(info_ref, &data0, &data1).context("texture data")?,
-            1 | 9 => parse_cube_ver(info_ref, &data0, &data1).context("cube data")?,
+            0 | 7 | 8 => parse_texture_ver(info_ref, &_data0, &_data1).context("texture data")?,
+            1 | 9 => parse_cube_ver(info_ref, &_data0, &_data1).context("cube data")?,
             _ => {
                 warn!(
                     "Unsupported Texture Type {} for texture {:?}",
                     info_ref.kind, info_ref.key
                 );
-                vec![NonNull::from_ref(&data0[..]), NonNull::from_ref(&data1[..])].into()
+                vec![NonNull::from_ref(&_data0[..]), NonNull::from_ref(&_data1[..])].into()
             }
         };
-        Ok(Self {
-            _ptr: src,
-            info,
-            data0,
-            data1,
-            data
-        })
+        Ok(Self { _ptr, info, _data0, _data1, data })
     }
 }
 
@@ -497,40 +440,14 @@ fn parse_cube_ver(info: &TextureInfoVER, data0: &[u8], data1: &[u8]) -> Result<B
 
 #[make_platforms]
 impl TextureVER {
-    pub fn from_bytes(src: &Arc<[u8]>, texture_data: &IndexMap<u32, Arc<[u8]>>, offset: usize) -> Result<Self> {
-        let info = TextureInfoVER::from_data(&src[offset..]).context("info")?;
-        let data0 = texture_data.get(&info.asset_key.get()).cloned().unwrap_or(Arc::new([]));
-        let data1 = texture_data.get(
-            &hash_string(b"*", Some(info.asset_key.get()))
-        ).cloned().unwrap_or(Arc::new([]));
-
-        let mut val = Self {
-            _ptr: src.clone(),
-            info: info.into(),
-            data0,
-            data1,
-            data: Box::new([]),
-        };
-        val.data = vec![
-            NonNull::from_ref(&val.data0[..]),
-            NonNull::from_ref(&val.data1[..]),
-        ]
-        .into();
-
-        Ok(val)
+    pub fn info(&self) -> &TextureInfoVER {
+        unsafe { self.info.as_ref() }
     }
-}
-
-#[make_platforms]
-#[cfg_attr(feature = "python", pymethods)]
-impl TextureVER {
-    #[getter]
     pub fn data(&self) -> Vec<&[u8]> {
         self.data.iter().map(|x| unsafe { x.as_ref() }).collect()
     }
 }
 
-#[cfg_attr(feature = "python", pyclass(module = "texture", get_all, set_all))]
 #[derive(Debug, Clone)]
 pub struct Texture {
     pub info: TextureInfo,
@@ -560,10 +477,10 @@ impl Texture {
     }
 }
 
-impl Texture {
-    #[make_platforms]
-    pub fn from_ver(val: &TextureVER, info: &TextureInfoVER) -> Self {
-        let mut info: TextureInfo = info.into();
+#[make_platforms]
+impl From<&TextureVER> for Texture {
+    fn from(val: &TextureVER) -> Self {
+        let mut info: TextureInfo = val.info().conv();
         let mut data = val
             .data
             .iter()
@@ -596,7 +513,6 @@ impl Texture {
                             0,
                             (height / s).max(1),
                             (width / s).max(1),
-                            s,
                             d,
                         ));
                         return Texture { info, data };
@@ -612,7 +528,6 @@ impl Texture {
                             0,
                             (height / s).max(1),
                             (width / s).max(1),
-                            s,
                             d,
                         ));
                         width /= 2;
@@ -630,7 +545,6 @@ impl Texture {
                                 0,
                                 (height / s).max(1),
                                 (width / s).max(1),
-                                s,
                                 d,
                             )
                         } else {
@@ -642,7 +556,6 @@ impl Texture {
                                 width / s,
                                 (height / s).max(1),
                                 (width / s).max(1),
-                                s,
                                 d,
                             )
                         });
@@ -660,7 +573,6 @@ impl Texture {
                                 width.max(1),
                                 (height / s).max(1),
                                 (width / s).max(1),
-                                s,
                                 d,
                             )
                         } else {
@@ -672,7 +584,6 @@ impl Texture {
                                 0,
                                 (height / s).max(1),
                                 (width / s).max(1),
-                                s,
                                 d,
                             )
                         });
@@ -711,7 +622,6 @@ impl Texture {
                             0,
                             (height / s).max(1),
                             (width / s).max(1),
-                            s,
                             d,
                         )
                     }));
@@ -724,4 +634,10 @@ impl Texture {
         }
         Texture { info, data }
     }
+}
+
+#[make_platforms]
+pub enum TextureParsedVER {
+    Raw(TextureRawVER),
+    Parsed(Texture)
 }

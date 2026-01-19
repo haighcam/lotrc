@@ -1,25 +1,20 @@
-#[cfg(feature = "python")]
-use crate::pyobj_ref;
 use anyhow::{anyhow, Context, Result};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use lotrc_proc::make_platforms;
-#[cfg(not(feature = "python"))]
-use lotrc_proc::staticmethod;
-#[cfg(feature = "python")]
-use pyo3::prelude::*;
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 use std::ptr::NonNull;
+use std::io::Read;
 
 use crate::sub_blocks;
 use crate::{
     level::{
         bin::BinHeader,
-        pak::{PakHeader, PakHeaderPc, objs::InfoCounts},
+        pak::{PakHeader, PakHeaderPc},
     },
-    types::{hash_string, Crc, RefFromData, StringKeys, Strings},
+    types::{hash_string, Crc, RefFromData, StringKeys, Strings, OrderedData, BufType, BUF_ALIGN, AlignedBuf, CompressedDataRefAlt},
 };
 
 #[make_platforms]
@@ -31,186 +26,114 @@ pub mod pak;
 pub mod radiosity;
 pub mod texture;
 
-#[cfg(feature = "python")]
-pub fn init(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
-    let m = PyModule::new(py, "level")?;
-    m.add_function(wrap_pyfunction!(parse_level, &m)?)?;
-    m.add_class::<Level>()?;
-    m.add_submodule(&bin::init(py)?)?;
-    m.add_submodule(&model::init(py)?)?;
-    m.add_submodule(&pak::init(py)?)?;
-    m.add_submodule(&radiosity::init(py)?)?;
-    m.add_submodule(&texture::init(py)?)?;
-    init_pc(&m)?;
-    init_xbox(&m)?;
-    init_ps3(&m)?;
-    Ok(m)
-}
-#[cfg(feature = "python")]
-#[make_platforms]
-pub fn init_ver(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<LevelVER>()
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+#[cfg_attr(feature = "ffi", repr(opaque))]
+pub struct LevelData {
+   pub pak: AlignedBuf,
+   pub bin: AlignedBuf
 }
 
-pub struct CompressedData {
-    _ptr: Arc<[u8]>,
-    offset: usize,
-    size: usize,
-    size_decomp: usize
+impl LevelData {
+    pub fn read<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let path = path.as_ref();
+        let pak_len = std::fs::metadata(path.with_extension("PAK")).context("pak file")?.len() as usize;
+        let bin_len = std::fs::metadata(path.with_extension("BIN")).context("bin file")?.len() as usize;
+
+        let mut pak = AlignedBuf::with_capacity(pak_len);
+        {
+            let mut file = std::fs::File::open(path.with_extension("PAK")).context("pak file")?;
+            let mut off = 0;
+            while off < pak_len {
+                off += file.read(&mut pak[off..]).context("pak read")?;
+            }
+        }
+        let mut bin = AlignedBuf::with_capacity(bin_len);
+        {
+            let mut file = std::fs::File::open(path.with_extension("BIN")).context("bin file")?;
+            let mut off = 0;
+            while off < bin_len {
+                off += file.read(&mut bin[off..]).context("bin read")?;
+            }
+        }
+        Ok(Self { pak, bin })
+    }
 }
 
-#[make_platforms]
-pub enum ModelVER {
-    Raw(model::ModelVER, CompressedData),
-    Parsed(model::Model)
-}
-
-#[make_platforms]
-pub enum TextureVER {
-    Raw {
-        _ptr: Arc<[u8]>,
-        info: NonNull<texture::TextureInfoVER>, 
-        data0: CompressedData, 
-        daat1: CompressedData
-    },
-    Parsed(texture::Texture)
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+#[cfg_attr(feature = "ffi", repr(opaque))]
+#[derive(Default)]
+pub struct LevelCompressedData<'a> {
+    pub pak: pak::PakCompressedData<'a>,
+    pub bin: bin::BinCompressedData<'a>,
 }
 
 #[make_platforms]
-pub enum EffectVER {
-    Raw(sub_blocks::gameobjs::GameObjsVER),
-    Parsed(sub_blocks::gameobjs::GameObjs),
+#[derive(Default)]
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+#[repr(C)]
+pub struct LevelRefVER<'a> {
+    pub pak: pak::PakRefVER<'a>,
+    pub bin: bin::BinRefVER<'a>,
 }
 
 #[make_platforms]
-pub enum FoliagesVER {
-    Raw(Box<[pak::objs::FoliageVER]>),
-    Parsed(Vec<pak::objs::Foliage>)
-}
-
-#[make_platforms]
-pub enum AnimationVER {
-    Raw(pak::animation::AnimationVER),
-    Parsed(pak::animation::Animation)
-}
-
-// store the gamemode + unparsed animation block for raw
-// otherwise just the gamemode + guid
-#[make_platforms]
-pub enum GamemodeVER {
-    Raw(Arc<[u8]>, NonNull<pak::animation::AnimationBlockInfoVER>, CompressedData),
-    Parsed(pak::animation::AnimationBlockInfo),
-}
-
-#[make_platforms]
-pub enum GFXVER {
-    Raw(Arc<[u8]>, usize, usize),
-    Parsed(Vec<u8>)
-}
-
-#[make_platforms]
-pub enum SubBlockVER {
-    Raw(sub_blocks::SubBlockVER),
-    Parsed(sub_blocks::SubBlock)
-}
-
-#[make_platforms]
-pub enum Obj0VER {
-    Raw(Arc<[u8]>, NonNull<[pak::objs::Obj0VER]>),
-    Parsed(pak::objs::Obj0)
-}
-
-#[make_platforms]
-pub enum ObjAVER {
-    Raw(Arc<[u8]>, NonNull<[pak::objs::ObjAVER]>),
-    Parsed(pak::objs::ObjA)
-}
-
-#[make_platforms]
-pub enum RadiosityVER {
-    Raw(radiosity::RadiosityVER),
-    Parsed(radiosity::Radiosity),
-}
-
-#[make_platforms]
-pub enum ValsAVER {
-    Raw(),
-    Parsed()
-}
-
-// raw version has sufficient info to get the parsed version
-// to serialize, convert everything to the parsed version
-//
-// both versions impl the same dump traits to make dumping easier
-
-#[make_platforms]
-pub struct LevelRawVER {
-    block1: Option<Arc<[u8]>>,
-    block2: Option<Arc<[u8]>>,
-    pub obj0s: IndexMap<u32, Obj0VER>,
-    pub objas: IndexMap<u32, ObjAVER>,
-    pub models: IndexMap<u32, ModelVER>,
-    pub textures: IndexMap<u32, TextureVER>,
-    pub effects: IndexMap<u32, EffectVER>,
-    pub foliages: IndexMap<u32, FoliagesVER>,
-    pub animations: IndexMap<u32, AnimationVER>,
-    pub gamemodes: Vec<GamemodeVER>,
-    pub gfxs: IndexMap<u32, GFXVER>,
-    pub sub_blocks1: IndexMap<u32, SubBlockVER>,
-    pub sub_blocks2: IndexMap<u32, SubBlockVER>,
-    pub radiosity: RadiosityVER,
-    pub vals_a: IndexMap<u32, ValsAVER>,
-}
-
-#[make_platforms]
-impl LevelRawVER {
-    pub fn parse_full(pak_data: Arc<[u8]>, bin_data: Arc<[u8]>) -> Result<Self> {
-        // parse pak skeleton
-        // parse bin if needed
-        // parse block1 / block2 / animations if needed
+impl<'a> LevelRefVER<'a> {
+    pub fn from_data<'b: 'a, 'c: 'b>(src: &'c LevelData, data: &'a mut LevelCompressedData<'b>) -> Result<Self> {
+        let bin = bin::BinRefVER::from_data(&src.bin[..], &mut data.bin).context("bin")?;
         Ok(Self {
-            
+            pak: pak::PakRefVER::from_data(&src.pak[..], &mut data.pak, &bin).context("pak")?,
+            bin
         })
     }
 }
 
-
 #[make_platforms]
-#[cfg_attr(feature = "python", pyclass(module = "level", get_all))]
 #[derive(Debug, Clone)]
 pub struct LevelVER {
     pak: PakVER,
     bin: BinVER,
 }
 
-#[cfg(feature = "python")]
-#[make_platforms]
-pyobj_ref!(LevelVER);
-
 #[make_platforms]
 unsafe impl Sync for LevelVER {}
 #[make_platforms]
 unsafe impl Send for LevelVER {}
 
-#[cfg_attr(feature = "python", pyclass(module = "level", get_all))]
 pub enum LevelRef {
     PC(LevelPc),
     XBOX(LevelXbox),
     PS3(LevelPs3),
 }
 
-#[cfg(feature = "python")]
-#[pyfunction]
-pub fn parse_level(path: String) -> Result<LevelRef> {
-    LevelRef::from_data(path)
-}
-
 impl LevelRef {
     pub fn from_data<P: AsRef<Path>>(path: P) -> Result<LevelRef> {
+        use std::io::Read;
         let t = std::time::Instant::now();
         let path = path.as_ref();
-        let pak_data = std::fs::read(path.with_extension("PAK")).context("pak_data")?;
-        let bin_data = std::fs::read(path.with_extension("BIN")).context("bin_data")?;
+        let pak_len = std::fs::metadata(path.with_extension("PAK")).context("pak file")?.len() as usize;
+        let bin_len = std::fs::metadata(path.with_extension("BIN")).context("bin file")?.len() as usize;
+
+        let mut pak_data = aligned_buffer::UniqueAlignedBuffer::<BUF_ALIGN>::with_capacity(pak_len);
+        unsafe { pak_data.set_len(pak_len); }
+        {
+            let mut file = std::fs::File::open(path.with_extension("PAK")).context("pak file")?;
+            let mut off = 0;
+            while off < pak_len {
+                off += file.read(&mut pak_data[off..]).context("pak read")?;
+            }
+        }
+        let mut bin_data = aligned_buffer::UniqueAlignedBuffer::<BUF_ALIGN>::with_capacity(bin_len);
+        unsafe { bin_data.set_len(bin_len); }
+        {
+            let mut file = std::fs::File::open(path.with_extension("BIN")).context("bin file")?;
+            let mut off = 0;
+            while off < bin_len {
+                off += file.read(&mut bin_data[off..]).context("bin read")?;
+            }
+        }
+
+        //let pak_data = std::fs::read(path.with_extension("PAK")).context("pak_data")?;
+        //let bin_data = std::fs::read(path.with_extension("BIN")).context("bin_data")?;
 
         println!("Files read in {}", t.elapsed().as_secs_f32());
 
@@ -234,22 +157,24 @@ impl LevelRef {
 
 #[make_platforms]
 impl LevelVER {
-    pub fn new(pak_data: impl Into<Arc<[u8]>>, bin_data: impl Into<Arc<[u8]>>) -> Result<Self> {
+    pub fn new(pak_data: impl Into<BufType>, bin_data: impl Into<BufType>) -> Result<Self> {
         Ok(Self {
             pak: PakVER::from_bytes(pak_data.into()).context("pak")?,
             bin: BinVER::from_bytes(bin_data.into()).context("bin")?,
         })
     }
     pub fn from_bytes(
-        pak_data: impl Into<Arc<[u8]>>,
-        bin_data: impl Into<Arc<[u8]>>,
+        pak_data: impl Into<BufType>,
+        bin_data: impl Into<BufType>,
     ) -> Result<Self> {
         let t = std::time::Instant::now();
-        let mut bin = BinVER::from_bytes(bin_data.into()).context("pak")?;
+        let bin_data = bin_data.into();
+        let pak_data = pak_data.into();
+        let mut bin = BinVER::from_bytes(bin_data).context("bin")?;
         bin.parse().context("parse bin")?;
         println!("Bin parsed in {}", t.elapsed().as_secs_f32());
         let t = std::time::Instant::now();
-        let mut pak = PakVER::from_bytes(pak_data.into()).context("pak")?;
+        let mut pak = PakVER::from_bytes(pak_data).context("pak")?;
         pak.parse(&bin).context("parse pak")?;
         println!("Pak parsed in {}", t.elapsed().as_secs_f32());
 
@@ -263,7 +188,6 @@ impl LevelVER {
     }
 }
 
-#[cfg_attr(feature = "python", pyclass(module = "level", get_all, set_all))]
 #[derive(Debug, Clone)]
 pub struct Level {
     pub bin_header: BinHeader,
@@ -278,14 +202,14 @@ pub struct Level {
     pub animations: pak::animation::Animations,
     pub foliages: IndexMap<Crc, Vec<pak::objs::Foliage>>,
     pub effects: IndexMap<Crc, sub_blocks::gameobjs::GameObjs>,
-    pub gfx_blocks: IndexMap<Crc, Vec<u8>>,
+    pub gfxs: IndexMap<Crc, Vec<u8>>,
 
     pub string_keys: StringKeys,
     pub sub_blocks1: sub_blocks::SubBlocks,
     pub sub_blocks2: sub_blocks::SubBlocks,
     pub block2_offsets: Vec<u32>,
 
-    pub radiosity: Option<radiosity::Radiosity>,
+    pub radiosity: radiosity::Radiosity,
 
     pub pak_vals_a: Vec<pak::BlockAVal>,
 }
@@ -299,66 +223,46 @@ fn level_parse_ver(level: &LevelVER) -> Result<Level> {
     //types::update_strings(&bin_strings.strings);
     //types::update_strings(&pak_strings.strings);
 
-    let mut foliages: IndexMap<Crc, Vec<_>> =
-        IndexMap::with_capacity(level.pak().header().foliage_info_num.get() as usize);
-    for foliage in objs.foliages() {
-        foliages
-            .entry(foliage.info().key.into())
-            .or_default()
-            .push(foliage.into());
-    }
     Ok(Level {
-        bin_header: level.bin().header().into(),
+        bin_header: level.bin().header().conv(),
         bin_strings: level.bin().strings().into(),
 
-        pak_header: level.pak().header().into(),
+        pak_header: level.pak().header().conv(),
         pak_strings: level.pak().strings().into(),
 
         sub_blocks1: sub_blocks::SubBlocks::from_ver(block1.sub_blocks(), objs.pfield_infos()),
         string_keys: block1.string_keys().into(),
         sub_blocks2: sub_blocks::SubBlocks::from_ver(block2.sub_blocks(), objs.pfield_infos()),
-        block2_offsets: block2.offsets().iter().map(|x| x.into()).collect(),
+        block2_offsets: block2.offsets().iter().map(|x| x.conv()).collect(),
 
-        objas: objs.objas().iter().map(|x| x.into()).collect(),
-        obj0s: objs.obj0s().iter().map(|x| x.into()).collect(),
+        objas: objs.objas().iter().map(|x| x.conv()).collect(),
+        obj0s: objs.obj0s().iter().map(|x| x.conv()).collect(),
 
-        gfx_blocks: objs
-            .gfx_block_infos()
+        gfxs: objs
+            .gfxs()
             .iter()
-            .zip(block1.objs().gfx_blocks())
-            .map(|(k, v)| (k.key.into(), v.to_vec()))
+            .map(|(k, v)| ((*k).into(), unsafe { v.as_ref() }.to_vec()))
             .collect(),
         effects: objs
-            .effect_infos()
+            .effects()
             .iter()
-            .zip(objs.effects())
-            .map(|(k, v)| (k.key.into(), v.into()))
+            .map(|(k, v)| ((*k).into(), v.into()))
             .collect(),
 
         models: objs
             .models()
             .iter()
-            .map(|model| {
-                (
-                    model.info().key.into(),
-                    model::Model::from_ver(model, level.pak().header(), objs),
-                )
-            })
+            .map(|(k, v)| ((*k).into(), v.into()))
             .collect(),
         textures: objs
-            .texture_infos()
+            .textures()
             .iter()
-            .zip(level.bin().textures().unwrap())
-            .map(|(info, texture)| (info.key.into(), texture::Texture::from_ver(texture, info)))
+            .map(|(k, v)| ((*k).into(), v.into()))
             .collect(),
         animations: level.pak().animation_blocks().unwrap().into(),
-        foliages,
-        radiosity: Some(radiosity::Radiosity::from_ver(
-            level.bin().radiosity().unwrap(),
-            block1,
-        )),
-
-        pak_vals_a: level.pak().vals_a().iter().map(|x| x.into()).collect(),
+        foliages: objs.foliages().iter().map(|(k, v)| ((*k).into(), v.iter().map(|x| x.into()).collect())).collect(),
+        radiosity: radiosity::Radiosity::from_ver(objs.radiosity(), block1).context("radiosity")?, 
+        pak_vals_a: level.pak().vals_a().iter().map(|x| x.conv()).collect(),
     })
 }
 
@@ -377,9 +281,7 @@ fn level_dump_ver(_level: &Level, _level_raw: &LevelVER) -> (Vec<u8>, Vec<u8>) {
     (pak_data, bin_data)
 }
 
-#[cfg_attr(feature = "python", pymethods)]
 impl Level {
-    #[staticmethod]
     pub fn parse(level: &LevelRef) -> Result<Self> {
         match level {
             LevelRef::PC(val) => level_parse_pc(val),
@@ -440,10 +342,12 @@ impl Level {
         // pak stuff
         let mut pak_header = self.pak_header.clone();
         let pak_data = vec![0u8; PakHeaderPc::size_of()];
+        /*
         let mut info_counts = InfoCounts::default();
         for model in self.models.values() {
             //model.infos_count(&mut info_counts);
         }
+        */
 
         let pfield_infos = if let Some(sub_blocks::SubBlock::PFields(val)) = self
             .sub_blocks2
@@ -473,11 +377,7 @@ impl Level {
         pak_header.effect_info_num = self.effects.len() as u32;
         pak_header.gfx_block_info_num = self.gfx_blocks.len() as u32;
         */
-        pak_header.radiosity_vals_info_num = self
-            .radiosity
-            .as_ref()
-            .map(|x| x.vals.len() as u32)
-            .unwrap_or(0);
+        pak_header.radiosity_vals_info_num = self.radiosity.vals.len() as u32;
         pak_header.foliage_info_num =
             self.foliages.iter().map(|(_, x)| x.len()).sum::<usize>() as u32;
         pak_header.animation_info_num = self.animations.animations.len() as u32;

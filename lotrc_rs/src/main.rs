@@ -40,12 +40,23 @@ fn main() {
     println!("Reading level: {:?}", path);
 
     let t = std::time::Instant::now();
+    let level_data = lotrc::level::LevelData::read(path).unwrap();
+    println!("level_data parsed in {:?}", t.elapsed());
+
+    let t = std::time::Instant::now();
+    let mut level_compressed_data = lotrc::level::LevelCompressedData::default();
+    let level = lotrc::level::LevelRefPc::from_data(&level_data, &mut level_compressed_data).unwrap();
+    println!("level parsed in {:?}", t.elapsed());
+
+/*
+    let t = std::time::Instant::now();
     let level = lotrc::level::LevelRef::from_data(path).unwrap();
     println!("level_raw parsed in {:?}", t.elapsed());
 
     let t = std::time::Instant::now();
     let _level = lotrc::level::Level::parse(&level);
     println!("level parsed in {:?}", t.elapsed());
+*/
     //let pak_data = std::fs::read(path.with_extension("PAK")).unwrap();
     //let bin_data = std::fs::read(path.with_extension("BIN")).unwrap();
     //let level = lotrc::level::LevelPC::from_bytes(pak_data, bin_data).unwrap();

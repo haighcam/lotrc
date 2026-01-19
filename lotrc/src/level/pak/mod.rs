@@ -1,56 +1,35 @@
-#[cfg(feature = "python")]
-use crate::pyobj_ref;
-use anyhow::{Context, Result};
-#[cfg(not(feature = "python"))]
-use lotrc_proc::getter;
-#[cfg(feature = "python")]
-use pyo3::prelude::*;
+use anyhow::{anyhow, Context, Result};
 use std::ptr::NonNull;
-use std::sync::Arc;
-use indexmap::IndexMap;
+use rayon::prelude::*;
+use std::cell::OnceCell;
 
+#[cfg(not(feature = "ffi"))]
+use crate::types::{GetNative, AsSlice};
 use crate::sub_blocks;
-use crate::types::{self, decompress_block, update_crc, Crc, RefFromData};
+use crate::types::{self, decompress_block, update_crc, Crc, RefFromData, OrderedData, OrderedDataStrict, BufType, AlignedBuf, box_slice, hash_string, slice, decompress_block_into, get_default_ref, CompressedDataRefAlt, DumpData, DumpSlice, CompressedBlock, align_offset};
+use crate::level::pak::objs::InfoCounts;
 #[make_platforms]
 use crate::{
     level::{
-        pak::animation::AnimationsVER,
-        bin::BinVER,
-    }, types::U32VER
+        pak::{
+            objs::{ObjsRefVER, DumpObjsVER, DumpInfosVER},
+            animation::{AnimationsVER, AnimationsRawVER, AnimationsRefVER, AnimationInfoVER, DumpAnimationsVER}
+        },
+        bin::{BinVER, BinRefVER},
+    },
+    sub_blocks::{SubBlocksRefVER, SubBlockRefVER, DumpSubBlocksVER},
+    types::{u32VER, U32VER, I32VER, StringKeysRefVER, StringsRefVER, DumpStringsVER, DumpStringKeysVER}
 };
 use lotrc_proc::{make_platforms, OrderedData};
 
 pub mod animation;
 pub mod objs;
 
-#[cfg(feature = "python")]
-pub fn init(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
-    let m = PyModule::new(py, "pak")?;
-    m.add_class::<PakHeader>()?;
-    m.add_class::<BlockAVal>()?;
-    //m.add_class::<Block1>()?;
-    //m.add_class::<Block2>()?;
-    m.add_submodule(&animation::init(py)?)?;
-    m.add_submodule(&objs::init(py)?)?;
-    init_pc(&m)?;
-    init_xbox(&m)?;
-    init_ps3(&m)?;
-    Ok(m)
-}
-#[cfg(feature = "python")]
-#[make_platforms]
-pub fn init_ver(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<Block1VER>()?;
-    m.add_class::<Block2VER>()?;
-    m.add_class::<PakVER>()
-}
-
 #[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(feature = "python", pyclass(module = "pak", get_all, set_all))]
 pub struct PakHeader {
-    #[ordered_data(PC)]
+    #[ordered_data(Pc)]
     pub block_a_num: u32,
-    #[ordered_data(PC)]
+    #[ordered_data(Pc)]
     pub block_a_offset: u32,
     pub constx13: u32,
     pub version: u32,
@@ -170,8 +149,8 @@ pub struct PakHeader {
     pub block2_offsets_offset: u32,
 }
 
-#[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(feature = "python", pyclass(module = "pak", get_all, set_all))]
+// this is unaligned, likely due to having a packed c repr and being unused
+#[derive(Debug, Default, Clone)]
 pub struct BlockAVal {
     pub unk_0: u32,
     pub gamemodemask: i32,
@@ -181,20 +160,95 @@ pub struct BlockAVal {
     pub unk_5: u32,
     pub unk_6: u32,
 }
+#[make_platforms]
+#[derive(Debug, Default, Clone, zerocopy::Immutable, zerocopy::FromBytes, zerocopy::IntoBytes, zerocopy::KnownLayout, zerocopy::Unaligned)]
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+#[repr(C)]
+pub struct BlockAValVER {
+    pub unk_0: U32VER,
+    pub gamemodemask: I32VER,
+    pub key: U32VER,
+    pub unk_3: U32VER,
+    pub unk_4: U32VER,
+    pub unk_5: U32VER,
+    pub unk_6: U32VER,
+}
+#[make_platforms]
+impl OrderedData<BlockAVal> for BlockAValVER {
+    fn conv(&self) -> BlockAVal {
+        BlockAVal {
+            unk_0: self.unk_0.conv(),
+            gamemodemask: self.gamemodemask.conv(),
+            key: self.key.conv(),
+            unk_3: self.unk_3.conv(),
+            unk_4: self.unk_4.conv(),
+            unk_5: self.unk_5.conv(),
+            unk_6: self.unk_6.conv(),
+        }
+    }
+}
 
 #[make_platforms]
-#[cfg_attr(feature = "python", pyclass(module = "pak"))]
+#[derive(Default)]
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+#[repr(C)]
+pub struct Block1RefVER<'a> {
+    pub objs: ObjsRefVER<'a>,
+    pub sub_blocks: SubBlocksRefVER<'a>,
+    pub string_keys: StringKeysRefVER<'a>
+}
+
+#[make_platforms]
+impl<'a> Block1RefVER<'a> {
+    pub fn from_data(src: &'a [u8], pak_header: &PakHeaderVER, bin: &BinRefVER<'a>) -> Result<Self> {
+        let t = std::time::Instant::now();
+        let sub_blocks = SubBlocksRefVER::from_data(
+            &src[pak_header.sub_blocks1_offset.get() as usize..]
+        )
+        .context("sub_blocks")?;
+        println!("Block1 sub_blocks parsed in {}", t.elapsed().as_secs_f32());
+
+        let level = sub_blocks.blocks
+            .get(&hash_string(b"level", None))
+            .ok_or(anyhow!("level block missing"))
+            .and_then(|x| match x {
+                SubBlockRefVER::Level(val) => Ok(val),
+                _ => Err(anyhow!("level block wrong format"))
+            })?;
+        let field = level.objs.values()
+            .find(|v| v.header.key.get() == hash_string(b"templateLevel", None))
+            .ok_or(anyhow!("templateLevel not found"))?
+            .fields.get(&hash_string(b"name", None))
+            .ok_or(anyhow!("templateLevel missing name field"))?;
+        let name = field
+            .crc()
+            .ok_or(anyhow!("templateObject name field is not a crc"))?.get();
+
+        let t = std::time::Instant::now();
+        let objs = ObjsRefVER::from_data(src, pak_header, bin, name).context("objs")?;
+        println!("Block1 objs parsed in {}", t.elapsed().as_secs_f32());
+
+        let t = std::time::Instant::now();
+        let string_keys =
+            StringKeysRefVER::from_data(&src[pak_header.string_keys_offset.get() as usize..])
+                .context("string_keys")?;
+        println!("Block1 string_keys parsed in {}", t.elapsed().as_secs_f32());
+        Ok(Self {
+            objs,
+            sub_blocks,
+            string_keys,
+        })
+    }
+}
+
+#[make_platforms]
 #[derive(Debug, Clone)]
 pub struct Block1VER {
-    _ptr: Arc<[u8]>,
+    _ptr: BufType,
     objs: objs::ObjsVER,
     sub_blocks: sub_blocks::SubBlocksVER,
     string_keys: types::StringKeysVER,
 }
-
-#[cfg(feature = "python")]
-#[make_platforms]
-pyobj_ref!(Block1VER);
 
 #[make_platforms]
 unsafe impl Sync for Block1VER {}
@@ -203,15 +257,14 @@ unsafe impl Send for Block1VER {}
 
 #[make_platforms]
 impl Block1VER {
-    pub fn from_bytes(src: &Arc<[u8]>, bin: &BinVER, pak_header: &PakHeaderVER) -> Result<Self> {
+    pub fn from_bytes(src: &BufType, bin: &BinVER, pak_header: &PakHeaderVER) -> Result<Self> {
         let t = std::time::Instant::now();
-        let data: Arc<[u8]> = decompress_block(
+        let data = decompress_block(
             &src[pak_header.block1_offset.get() as usize..],
             pak_header.block1_size_comp.get() as usize,
             pak_header.block1_size.get() as usize,
         )
-        .context("compressed_data")?
-        .into();
+        .context("compressed_data")?;
         println!("Block1 data parsed in {}", t.elapsed().as_secs_f32());
 
         let t = std::time::Instant::now();
@@ -220,12 +273,12 @@ impl Block1VER {
             pak_header.sub_blocks1_offset.get() as usize,
         )
         .context("sub_blocks")?;
+        println!("Block1 sub_blocks parsed in {}", t.elapsed().as_secs_f32());
 
         let t = std::time::Instant::now();
-        let objs = objs::ObjsVER::from_bytes(&data, bin, &sub_blocks, pak_header).context("objs")?;
+        let objs = objs::ObjsRawVER::from_bytes(&data, bin, &sub_blocks, pak_header).and_then(|x| objs::ObjsVER::try_from(x)).context("objs")?;
         println!("Block1 objs parsed in {}", t.elapsed().as_secs_f32());
 
-        println!("Block1 sub_blocks parsed in {}", t.elapsed().as_secs_f32());
         let t = std::time::Instant::now();
         let string_keys =
             types::StringKeysVER::from_bytes(&data, pak_header.string_keys_offset.get() as usize)
@@ -241,17 +294,13 @@ impl Block1VER {
 }
 
 #[make_platforms]
-#[cfg_attr(feature = "python", pymethods)]
 impl Block1VER {
-    #[getter]
     pub fn objs(&self) -> &objs::ObjsVER {
         &self.objs
     }
-    #[getter]
     pub fn sub_blocks(&self) -> &sub_blocks::SubBlocksVER {
         &self.sub_blocks
     }
-    #[getter]
     pub fn string_keys(&self) -> &types::StringKeysVER {
         &self.string_keys
     }
@@ -264,17 +313,77 @@ pub struct Block1 {
 }
 
 #[make_platforms]
-#[cfg_attr(feature = "python", pyclass(module = "pak"))]
-#[derive(Debug, Clone)]
-pub struct Block2VER {
-    _ptr: Arc<[u8]>,
-    sub_blocks: sub_blocks::SubBlocksVER,
-    offsets: NonNull<[U32VER]>,
+pub trait DumpBlock1VER {
+    fn objs(&self) -> &impl DumpObjsVER; 
+    fn sub_blocks(&self) -> &impl DumpSubBlocksVER;
+    fn string_keys(&self) -> &impl DumpStringKeysVER;
+    fn dump<'a>(&self, dst: &mut DumpSlice<'a>, offsets: &'a mut [u32VER], counts: &InfoCounts, pak_header: &mut PakHeaderVER) -> Result<DumpInfosVER<'a>> {
+        let infos = self.objs().dump_into(dst, offsets, counts, pak_header).context("objs")?; 
+        pak_header.sub_blocks1_offset = dst.offset.conv();
+        self.sub_blocks().dump_into(dst).context("sub_blocks")?;
+        // TODO: generate string keys based solely on the LangString sub_blocks to make those
+        // easier to deal with
+        pak_header.string_keys_offset = dst.offset.conv();
+        self.string_keys().dump_into(dst).context("string_keys")?;
+        Ok(infos)
+    }
+    fn size(&self, counts: &mut InfoCounts) -> usize {
+        self.objs().add_size(0, counts) + self.sub_blocks().size() + self.string_keys().size()
+    }
 }
 
-#[cfg(feature = "python")]
 #[make_platforms]
-pyobj_ref!(Block2VER);
+impl DumpBlock1VER for Block1RefVER<'_> {
+    fn objs(&self) -> &impl DumpObjsVER {
+        &self.objs
+    }
+    fn sub_blocks(&self) -> &impl DumpSubBlocksVER {
+        &self.sub_blocks
+    }
+    fn string_keys(&self) -> &impl DumpStringKeysVER {
+        &self.string_keys
+    }
+}
+
+#[make_platforms]
+#[derive(Default)]
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+#[repr(C)]
+pub struct Block2RefVER<'a> {
+    pub sub_blocks: SubBlocksRefVER<'a>,
+    pub offsets: slice<'a, u32VER>
+}
+
+#[make_platforms]
+impl<'a> Block2RefVER<'a> {
+    pub fn from_data(src: &'a [u8], pak_header: &PakHeaderVER) -> Result<Self> {
+        let t = std::time::Instant::now();
+        let sub_blocks = SubBlocksRefVER::from_data(
+            &src[pak_header.sub_blocks2_offset.get() as usize..]
+        )
+        .context("sub_blocks")?;
+        println!("Block2 sub_blocks parsed in {}", t.elapsed().as_secs_f32());
+        let t = std::time::Instant::now();
+        let offsets = u32VER::slice_from_data(
+            &src[pak_header.block2_offsets_offset.get() as usize..],
+            pak_header.block2_offsets_num.get() as usize,
+        )
+        .context("offsets")?;
+        println!("Block2 offsets parsed in {}", t.elapsed().as_secs_f32());
+        Ok(Self {
+            sub_blocks,
+            offsets: offsets.into(),
+        })
+    }
+}
+
+#[make_platforms]
+#[derive(Debug, Clone)]
+pub struct Block2VER {
+    _ptr: BufType,
+    sub_blocks: sub_blocks::SubBlocksVER,
+    offsets: NonNull<[u32VER]>,
+}
 
 #[make_platforms]
 unsafe impl Sync for Block2VER {}
@@ -283,15 +392,14 @@ unsafe impl Send for Block2VER {}
 
 #[make_platforms]
 impl Block2VER {
-    pub fn from_bytes(src: &Arc<[u8]>, pak_header: &PakHeaderVER) -> Result<Self> {
+    pub fn from_bytes(src: &BufType, pak_header: &PakHeaderVER) -> Result<Self> {
         let t = std::time::Instant::now();
-        let data: Arc<[u8]> = decompress_block(
+        let data = decompress_block(
             &src[pak_header.block2_offset.get() as usize..],
             pak_header.block2_size_comp.get() as usize,
             pak_header.block2_size.get() as usize,
         )
-        .context("compressed_data")?
-        .into();
+        .context("compressed_data")?;
         println!("Block2 data parsed in {}", t.elapsed().as_secs_f32());
         let t = std::time::Instant::now();
         let sub_blocks = sub_blocks::SubBlocksVER::from_bytes(
@@ -302,7 +410,7 @@ impl Block2VER {
         println!("Block2 sub_blocks parsed in {}", t.elapsed().as_secs_f32());
         let t = std::time::Instant::now();
         let offsets = NonNull::from_ref(
-            U32VER::slice_from_data(
+            u32VER::slice_from_data(
                 &data[pak_header.block2_offsets_offset.get() as usize..],
                 pak_header.block2_offsets_num.get() as usize,
             )
@@ -318,14 +426,11 @@ impl Block2VER {
 }
 
 #[make_platforms]
-#[cfg_attr(feature = "python", pymethods)]
 impl Block2VER {
-    #[getter]
     pub fn sub_blocks(&self) -> &sub_blocks::SubBlocksVER {
         &self.sub_blocks
     }
-    #[getter]
-    pub fn offsets(&self) -> &[U32VER] {
+    pub fn offsets(&self) -> &[u32VER] {
         unsafe { self.offsets.as_ref() }
     }
 }
@@ -336,10 +441,118 @@ pub struct Block2 {
 }
 
 #[make_platforms]
-#[cfg_attr(feature = "python", pyclass(module = "pak"))]
+pub trait DumpBlock2VER {
+    fn sub_blocks(&self) -> &impl DumpSubBlocksVER;
+    fn dump<'a>(&self, dst: &mut DumpSlice<'a>, offset_num: usize) -> Result<&'a mut [u32VER]> {
+        self.sub_blocks().dump_into(dst).context("sub_blocks")?;
+        let offsets = u32VER::mut_slice_from_data(dst, offset_num).context("offsets")?;
+        Ok(offsets)
+    }
+    fn size(&self, offset_num: usize) -> usize {
+        self.sub_blocks().size() + offset_num * std::mem::size_of::<u32VER>()
+    }
+}
+
+#[make_platforms]
+impl DumpBlock2VER for Block2RefVER<'_> {
+    fn sub_blocks(&self) -> &impl DumpSubBlocksVER {
+        &self.sub_blocks
+    }
+}
+
+#[derive(Default)]
+pub struct PakCompressedData<'a> {
+    block1: CompressedDataRefAlt<'a>,
+    block2: CompressedDataRefAlt<'a>,
+    animations: box_slice<CompressedDataRefAlt<'a>>
+}
+
+#[make_platforms]
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+#[repr(C)]
+pub struct PakRefVER<'a> {
+    header: &'a PakHeaderVER,
+    strings: StringsRefVER<'a>,
+    block1: Block1RefVER<'a>,
+    block2: Block2RefVER<'a>,
+    animations: AnimationsRefVER<'a>,
+    vals_a: slice<'a, BlockAValVER>
+}
+
+#[make_platforms]
+impl Default for PakRefVER<'_> {
+    fn default() -> Self {
+        Self {
+            header: get_default_ref(),
+            strings: StringsRefVER::default(),
+            block1: Block1RefVER::default(),
+            block2: Block2RefVER::default(),
+            animations: AnimationsRefVER::default(),
+            vals_a: slice::default()
+        }
+    }
+}
+
+#[make_platforms]
+impl<'a> PakRefVER<'a> {
+    pub fn from_data<'b: 'a, 'c: 'b>(src: &'c [u8], data: &'a mut PakCompressedData<'b>, bin: &BinRefVER<'a>) -> Result<Self> {
+        let t = std::time::Instant::now();
+        let header = PakHeaderVER::from_data(&src[..]).context("header")?;
+        let strings = StringsRefVER::from_data(
+            &src[header.strings_offset.get() as usize..],
+            header.strings_num.get() as usize,
+        )
+        .context("strings")?;
+        update_crc(strings.strings());
+        println!("Pak headers parsed in {}", t.elapsed().as_secs_f32());
+
+        let t = std::time::Instant::now();
+        let vals_a = BlockAValVER::slice_from_data(
+            &src[header.block_a_offset.get() as usize..],
+            header.block_a_num.get() as usize,
+        )
+        .context("vals_a")?;
+        println!("Pak vals_a parsed in {}", t.elapsed().as_secs_f32());
+
+        data.block1 = CompressedDataRefAlt::from_data(&src[header.block1_offset.get() as usize..], header.block1_size_comp.get() as usize, header.block1_size.get() as usize);
+        data.block2 = CompressedDataRefAlt::from_data(&src[header.block2_offset.get() as usize..], header.block2_size_comp.get() as usize, header.block2_size.get() as usize);
+        
+        rayon::iter::once(&mut data.block1)
+            .chain(rayon::iter::once(&mut data.block2))
+            .try_for_each(|data| data.decompress()).context("blocks")?;
+
+        let block1 = Block1RefVER::from_data(&data.block1.get(), header, bin).context("block1")?;
+        let block2 = Block2RefVER::from_data(&data.block2.get(), header).context("block2")?;
+
+        let t = std::time::Instant::now();
+        data.animations = block1.objs.animation_block_infos.iter().map(|info| CompressedDataRefAlt::from_data(
+            &src[info.offset.get() as usize..],
+            info.size_comp.get() as usize,
+            info.size.get() as usize
+        )).collect::<Vec<_>>().into_boxed_slice().into();
+        data.animations.par_iter_mut().try_for_each(|data| data.decompress()).context("animation blocks")?;
+        println!("Pak animation_data parsed in {}", t.elapsed().as_secs_f32());
+
+        //let animations = AnimationsRefVER::from_data(animation_infos, &self.animations[..]).context("animations")?;
+        let t = std::time::Instant::now();
+        let animations = AnimationsRefVER::from_data(block1.objs.animation_infos.as_slice(), &data.animations[..]).context("animations")?;
+        println!("Pak animations parsed in {}", t.elapsed().as_secs_f32());
+        Ok(PakRefVER {
+            header,
+            strings,
+            block1,
+            block2,
+            animations,
+            vals_a: vals_a.into()
+        })
+
+    }
+}
+
+#[make_platforms]
 #[derive(Debug, Clone)]
 pub struct PakVER {
-    data: Arc<[u8]>,
+    data: BufType,
     header: NonNull<PakHeaderVER>,
     strings: types::StringsVER,
     block1: Option<Block1VER>,
@@ -348,10 +561,6 @@ pub struct PakVER {
     vals_a: NonNull<[BlockAValVER]>,
 }
 
-#[cfg(feature = "python")]
-#[make_platforms]
-pyobj_ref!(PakVER);
-
 #[make_platforms]
 unsafe impl Sync for PakVER {}
 #[make_platforms]
@@ -359,7 +568,7 @@ unsafe impl Send for PakVER {}
 
 #[make_platforms]
 impl PakVER {
-    pub fn from_bytes(data: Arc<[u8]>) -> Result<Self> {
+    pub fn from_bytes(data: BufType) -> Result<Self> {
         let t = std::time::Instant::now();
 
         let header = PakHeaderVER::from_data(&data[..]).context("header")?;
@@ -394,7 +603,6 @@ impl PakVER {
 }
 
 #[make_platforms]
-#[cfg_attr(feature = "python", pymethods)]
 impl PakVER {
     pub fn parse_block1(&mut self, bin: &BinVER) -> Result<()> {
         if self.block1.is_none() {
@@ -420,7 +628,8 @@ impl PakVER {
             let t = std::time::Instant::now();
             let block1 = self.block1.as_ref().unwrap();
             self.animation_blocks.replace(
-                AnimationsVER::from_bytes(&self.data, self.header(), &block1._ptr)
+                AnimationsRawVER::from_bytes(&self.data, self.header(), &block1._ptr)
+                    .and_then(|x| AnimationsVER::try_from(x))
                     .context("animation_blocks")?,
             );
             println!(
@@ -434,27 +643,21 @@ impl PakVER {
         self.parse_block2().context("block2")?;
         self.parse_animation_blocks(bin)
     }
-    #[getter]
     pub fn header(&self) -> &PakHeaderVER {
         unsafe { self.header.as_ref() }
     }
-    #[getter]
     pub fn strings(&self) -> &types::StringsVER {
         &self.strings
     }
-    #[getter]
     pub fn block1(&self) -> Option<&Block1VER> {
         self.block1.as_ref()
     }
-    #[getter]
     pub fn block2(&self) -> Option<&Block2VER> {
         self.block2.as_ref()
     }
-    #[getter]
     pub fn animation_blocks(&self) -> Option<&AnimationsVER> {
         self.animation_blocks.as_ref()
     }
-    #[getter]
     pub fn vals_a(&self) -> &[BlockAValVER] {
         unsafe { self.vals_a.as_ref() }
     }
@@ -507,4 +710,101 @@ impl PakVER {
             })
     }
     */
+}
+
+
+#[make_platforms]
+pub trait DumpPakVER {
+    fn vals_a_num(&self) -> usize;
+    fn write_vals_a(&self, vals_a: &mut [BlockAValVER]) -> Result<()>;
+    fn block1(&self) -> &impl DumpBlock1VER;
+    fn block2(&self) -> &impl DumpBlock2VER;
+    fn animations(&self) -> &impl DumpAnimationsVER;
+    fn strings(&self) -> &impl DumpStringsVER;
+    fn dump(&self, dst: &mut DumpSlice, in_header: PakHeaderVER, block1: CompressedBlock, block2: CompressedBlock, animations: Vec<CompressedBlock>) -> Result<()> {
+        let header = PakHeaderVER::mut_from_data(dst).context("header")?;
+        header.write_from(&in_header).context("write header")?;
+
+        for (i, animation) in animations.into_iter().enumerate() {
+            dst.align(4096);
+            animation.compressed.dump_into(dst).with_context(|| format!("animation block {}", i))?;
+        }
+
+        dst.align(4096);
+        block1.compressed.dump_into(dst).context("block1")?;
+        dst.align(4096);
+        block2.compressed.dump_into(dst).context("block2")?;
+
+        dst.align(4096);
+        let start = dst.offset;
+        let strings = self.strings();
+        header.strings_offset = dst.offset.conv();
+        header.strings_num = strings.num_strings().conv();
+        // TODO make sure that strings contains all relevant dumped crc values
+        strings.dump_into(dst).context("strings")?;
+        header.strings_size = (dst.offset - start).conv();
+
+        header.block_a_offset = dst.offset.conv();
+        let vals_a = BlockAValVER::mut_slice_from_data(dst, self.vals_a_num()).context("vals_a")?;
+        header.block_a_num = vals_a.len().conv();
+        self.write_vals_a(vals_a).context("write vals_a")?;
+        dst.align(2048);
+        Ok(())
+    }
+    fn size(&self) -> Result<(usize, PakHeaderVER, CompressedBlock, CompressedBlock, Vec<CompressedBlock>)> {
+        // to get the size we need to dump block1, block2 and all animations
+        // compress them and compute the sizes
+        let mut size = std::mem::size_of::<PakHeaderVER>();
+
+        let mut header = PakHeaderVER::default();
+
+        let block1 = self.block1();
+        let block2 = self.block2();
+        let animations = self.animations();
+        let mut counts = InfoCounts::default();
+
+        animations.info_counts(&mut counts);
+        let mut block1_data = CompressedBlock::with_capacity(block1.size(&mut counts));
+        let mut block2_data = CompressedBlock::with_capacity(block2.size(counts.offsets));
+        let offsets = {
+            let mut dst = block2_data.dump_slice();
+            block2.dump(&mut dst, counts.offsets).context("block2")
+        }?;
+        
+        let mut infos = {
+            let mut dst = block1_data.dump_slice();
+            block1.dump(&mut dst, offsets, &counts, &mut header).context("block1")
+        }?;
+
+        let mut animation_blocks = animations.dump(&mut infos).context("animations")?;
+        
+        animation_blocks.par_iter_mut()
+            .try_for_each(|x| x.compress())
+            .context("compressed data")?;
+        
+        for (block, info) in animation_blocks.iter().zip(infos.animation_blocks.take()) {
+            size = align_offset(size, 4096) + block.compressed.len();
+            info.offset = size.conv();
+            info.size_comp = block.compressed.len().conv(); 
+        }
+        
+        rayon::iter::once(&mut block1_data)
+            .chain(rayon::iter::once(&mut block2_data))
+            .try_for_each(|x| x.compress())
+            .context("compressed blocks")?;
+        size = align_offset(size, 4096) + block1_data.compressed.len();
+        header.block1_offset = size.conv();
+        header.block1_size = block1_data.data.len().conv();
+        header.block1_size_comp = block1_data.compressed.len().conv();
+
+        size = align_offset(size, 4096) + block2_data.compressed.len();
+        header.block2_offset = size.conv();
+        header.block2_size = block2_data.data.len().conv();
+        header.block2_size_comp = block2_data.compressed.len().conv();
+
+        size = align_offset(size, 4096) + self.strings().size() + self.vals_a_num() * std::mem::size_of::<BlockAValVER>();
+        size = align_offset(size, 2048);
+         
+        Ok((size, header, block1_data, block2_data, animation_blocks))
+    }
 }

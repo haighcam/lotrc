@@ -1,77 +1,50 @@
-#[cfg(feature = "python")]
-use crate::pyobj_ref;
+#[cfg(not(feature = "ffi"))]
+use crate::types::GetNative;
 use crate::types::{
-    align_offset, get_str_debug, hash_string, Crc, DumpData, DumpSlice, Matrix4x4, RefFromData,
-    Vector2, Vector3, Vector4, Weight,
+    get_default_ref, align_offset, get_str_debug, hash_string, Crc, DumpData, DumpSlice, Matrix4x4, RefFromData,
+    Vector2, Vector3, Vector4, Weight, OrderedData, OrderedDataStrict, BufType, str_ref, slice, Map, MapImpl
 };
 #[make_platforms]
 use crate::types::{
-    CrcVER, Matrix4x4VER, Vector2VER, Vector3VER, Vector4VER, WeightVER, F32VER, I32VER, U32VER,
+    CrcVER, Matrix4x4VER, Vector2VER, Vector3VER, Vector4VER, WeightVER, f32VER, i32VER, u32VER, u16VER, U32VER, U16VER
 };
 use anyhow::{anyhow, Context, Result};
 use indexmap::IndexMap;
-#[cfg(not(feature = "python"))]
-use lotrc_proc::getter;
 use lotrc_proc::{make_platforms, OrderedData};
-#[cfg(feature = "python")]
-use pyo3::prelude::*;
 use std::ptr::NonNull;
-use std::sync::Arc;
 
-#[cfg(feature = "python")]
-pub fn init(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
-    let m = PyModule::new(py, "gameobjs")?;
-    m.add_class::<List>()?;
-    m.add_class::<BaseType>()?;
-    m.add_class::<Header>()?;
-    m.add_class::<TypeHeader>()?;
-    m.add_class::<TypeField>()?;
-    m.add_class::<ObjHeader>()?;
-    m.add_class::<Obj>()?;
-    m.add_class::<GameObjs>()?;
-    init_pc(&m)?;
-    init_xbox(&m)?;
-    init_ps3(&m)?;
-    Ok(m)
-}
-#[cfg(feature = "python")]
+// probably need to switch the other list types to be unaligned, since they could come after a
+// string and get their alignment messed up
+
+
 #[make_platforms]
-pub fn init_ver(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<TypeVER>()?;
-    m.add_class::<ObjVER>()?;
-    m.add_class::<GameObjsVER>()
-}
-
-#[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(
-    feature = "python",
-    pyclass(module = "sub_blocks.gameobjs", get_all, set_all)
-)]
+#[derive(Debug, Default, Clone, zerocopy::Immutable, zerocopy::FromBytes, zerocopy::IntoBytes, zerocopy::KnownLayout, zerocopy::Unaligned)]
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
 #[repr(C)]
-struct List {
-    num: u16,
-    offset: u16,
+struct ListVER {
+    num: U16VER,
+    offset: U16VER
 }
 
 #[make_platforms]
 #[derive(Debug, Clone)]
-enum BaseTypeVER {
+pub enum BaseTypeVER {
     Crc(NonNull<CrcVER>),
-    GUID(NonNull<U32VER>),
-    Color(NonNull<U32VER>),
+    GUID(NonNull<u32VER>),
+    Color(NonNull<u32VER>),
     Vector2(NonNull<Vector2VER>),
     Vector3(NonNull<Vector3VER>),
     Vector4(NonNull<Vector4VER>),
     Matrix4x4(NonNull<Matrix4x4VER>),
-    Float(NonNull<F32VER>),
-    Int(NonNull<I32VER>),
-    Bool(NonNull<U32VER>),
+    Float(NonNull<f32VER>),
+    Int(NonNull<i32VER>),
+    Bool(NonNull<u32VER>),
     String(NonNull<str>),
     StringList(Box<[NonNull<str>]>),
     ObjectList(NonNull<[U32VER]>),
     NodeList(NonNull<[Vector4VER]>),
-    IntList(NonNull<[I32VER]>),
-    CrcList(NonNull<[CrcVER]>),
+    IntList(NonNull<[i32VER]>),
+    CrcList(NonNull<[U32VER]>),
     WeightList(NonNull<[WeightVER]>),
     MatrixList(NonNull<[Matrix4x4VER]>),
 }
@@ -80,37 +53,183 @@ enum BaseTypeVER {
 #[derive(Debug, Clone)]
 pub enum BaseTypeRefVER<'a> {
     Crc(&'a CrcVER),
-    GUID(&'a U32VER),
-    Color(&'a U32VER),
+    GUID(&'a u32VER),
+    Color(&'a u32VER),
     Vector2(&'a Vector2VER),
     Vector3(&'a Vector3VER),
     Vector4(&'a Vector4VER),
     Matrix4x4(&'a Matrix4x4VER),
-    Float(&'a F32VER),
-    Int(&'a I32VER),
-    Bool(&'a U32VER),
+    Float(&'a f32VER),
+    Int(&'a i32VER),
+    Bool(&'a u32VER),
     String(&'a str),
-    StringList(Box<[&'a str]>),
+    StringList(Box<[str_ref<'a>]>),
     ObjectList(&'a [U32VER]),
     NodeList(&'a [Vector4VER]),
-    IntList(&'a [I32VER]),
-    CrcList(&'a [CrcVER]),
+    IntList(&'a [i32VER]),
+    CrcList(&'a [U32VER]),
     WeightList(&'a [WeightVER]),
     MatrixList(&'a [Matrix4x4VER]),
 }
 
+#[cfg(feature = "ffi")]
+#[make_platforms]
+unsafe impl safer_ffi::layout::ReprC for BaseTypeRefVER<'_> {
+    type CLayout = <safer_ffi::layout::Opaque<Self> as safer_ffi::layout::ReprC>::CLayout;
+    fn is_valid(_it: &'_ Self::CLayout) -> bool {
+        unreachable! {"opaque type"}
+    }
+}
+
+#[make_platforms]
+impl Default for BaseTypeRefVER<'_> {
+    fn default() -> Self {
+        Self::MatrixList(&[] as _)
+    }
+}
+
+#[make_platforms]
+impl<'a> BaseTypeRefVER<'a> {
+    pub fn from_data(src: &'a [u8], kind: u32) -> Result<Self> {
+        Ok(match kind {
+            keys::CRC_KEY => {
+                Self::Crc(CrcVER::from_data(src).context("val")?.into())
+            }
+            keys::GUID_KEY => {
+                Self::GUID(u32VER::from_data(src).context("val")?.into())
+            }
+            keys::COLOR_KEY => {
+                Self::Color(u32VER::from_data(src).context("val")?.into())
+            }
+            keys::VECTOR2_KEY => Self::Vector2(
+                Vector2VER::from_data(src)
+                    .context("val")?
+                    .into(),
+            ),
+            keys::VECTOR3_KEY => Self::Vector3(
+                Vector3VER::from_data(src)
+                    .context("val")?
+                    .into(),
+            ),
+            keys::VECTOR4_KEY => Self::Vector4(
+                Vector4VER::from_data(src)
+                    .context("val")?
+                    .into(),
+            ),
+            keys::MATRIX4X4_KEY => Self::Matrix4x4(
+                Matrix4x4VER::from_data(src)
+                    .context("val")?
+                    .into(),
+            ),
+            keys::FLOAT_KEY => {
+                Self::Float(f32VER::from_data(src).context("val")?.into())
+            }
+            keys::INT_KEY => {
+                Self::Int(i32VER::from_data(src).context("val")?.into())
+            }
+            keys::BOOL_KEY => {
+                Self::Bool(u32VER::from_data(src).context("val")?.into())
+            }
+            keys::STRING_KEY => Self::String({
+                let val = ListVER::from_data(src).context("val")?;
+                let off = val.offset.get() as usize + val.size();
+                core::str::from_utf8(&src[off..off + val.num.get() as usize])?
+                    .into()
+            }),
+            keys::STRINGLIST_KEY => Self::StringList({
+                let val = ListVER::from_data(src).context("val")?;
+                let vals = ListVER::slice_from_data(
+                    &src[val.offset.get() as usize + val.size()..],
+                    val.num.get() as usize,
+                )
+                .context("list info")?;
+                vals.iter()
+                    .enumerate()
+                    .map(|(i, v)| {
+                        Ok({
+                            let off =
+                                (val.offset.get() + v.offset.get()) as usize + val.size() * (i + 2);
+                            let s_data = &src[off..off + v.num.get() as usize];
+                            let s = std::str::from_utf8(s_data)
+                                .with_context(|| format!("string {}, {:?}", i, s_data))?;
+                            str_ref::from(s)
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()?
+                    .into()
+            }),
+            keys::OBJECTLIST_KEY => Self::ObjectList({
+                let val = ListVER::from_data(src).context("val")?;
+                U32VER::slice_from_data(
+                    &src[val.offset.get() as usize + val.size()..],
+                    val.num.get() as usize,
+                )
+                .context("vals")?
+                .into()
+            }),
+            keys::NODELIST_KEY => Self::NodeList({
+                let val = ListVER::from_data(src).context("val")?;
+                Vector4VER::slice_from_data(
+                    &src[val.offset.get() as usize + val.size()..],
+                    val.num.get() as usize,
+                )
+                .context("vals")?
+                .into()
+            }),
+            keys::INTLIST_KEY => Self::IntList({
+                let val = ListVER::from_data(src).context("val")?;
+                i32VER::slice_from_data(
+                    &src[val.offset.get() as usize + val.size()..],
+                    val.num.get() as usize,
+                )
+                .context("vals")?
+                .into()
+            }),
+            keys::CRCLIST_KEY => Self::CrcList({
+                let val = ListVER::from_data(src).context("val")?;
+                U32VER::slice_from_data(
+                    &src[val.offset.get() as usize + val.size()..],
+                    val.num.get() as usize,
+                )
+                .context("vals")?
+                .into()
+            }),
+            keys::WEIGHTLIST_KEY => Self::WeightList({
+                let val = ListVER::from_data(src).context("val")?;
+                WeightVER::slice_from_data(
+                    &src[val.offset.get() as usize + val.size()..],
+                    val.num.get() as usize,
+                )
+                .context("vals")?
+                .into()
+            }),
+            keys::MATRIXLIST_KEY => Self::MatrixList({
+                let val = ListVER::from_data(src).context("val")?;
+                Matrix4x4VER::slice_from_data(
+                    &src[val.offset.get() as usize + val.size()..],
+                    val.num.get() as usize,
+                )
+                .context("vals")?
+                .into()
+            }),
+            _ => return Err(anyhow!("Unkown Type {:?}", kind)),
+        })
+    }
+
+}
+
 #[make_platforms]
 impl BaseTypeVER {
-    pub fn from_bytes(data: &Arc<[u8]>, offset: usize, kind: u32) -> Result<Self> {
+    pub fn from_bytes(data: &BufType, offset: usize, kind: u32) -> Result<Self> {
         Ok(match kind {
             keys::CRC_KEY => {
                 BaseTypeVER::Crc(CrcVER::from_data(&data[offset..]).context("val")?.into())
             }
             keys::GUID_KEY => {
-                BaseTypeVER::GUID(U32VER::from_data(&data[offset..]).context("val")?.into())
+                BaseTypeVER::GUID(u32VER::from_data(&data[offset..]).context("val")?.into())
             }
             keys::COLOR_KEY => {
-                BaseTypeVER::Color(U32VER::from_data(&data[offset..]).context("val")?.into())
+                BaseTypeVER::Color(u32VER::from_data(&data[offset..]).context("val")?.into())
             }
             keys::VECTOR2_KEY => BaseTypeVER::Vector2(
                 Vector2VER::from_data(&data[offset..])
@@ -133,13 +252,13 @@ impl BaseTypeVER {
                     .into(),
             ),
             keys::FLOAT_KEY => {
-                BaseTypeVER::Float(F32VER::from_data(&data[offset..]).context("val")?.into())
+                BaseTypeVER::Float(f32VER::from_data(&data[offset..]).context("val")?.into())
             }
             keys::INT_KEY => {
-                BaseTypeVER::Int(I32VER::from_data(&data[offset..]).context("val")?.into())
+                BaseTypeVER::Int(i32VER::from_data(&data[offset..]).context("val")?.into())
             }
             keys::BOOL_KEY => {
-                BaseTypeVER::Bool(U32VER::from_data(&data[offset..]).context("val")?.into())
+                BaseTypeVER::Bool(u32VER::from_data(&data[offset..]).context("val")?.into())
             }
             keys::STRING_KEY => BaseTypeVER::String({
                 let val = ListVER::from_data(&data[offset..]).context("val")?;
@@ -189,7 +308,7 @@ impl BaseTypeVER {
             }),
             keys::INTLIST_KEY => BaseTypeVER::IntList({
                 let val = ListVER::from_data(&data[offset..]).context("val")?;
-                I32VER::slice_from_data(
+                i32VER::slice_from_data(
                     &data[offset + val.offset.get() as usize + val.size()..],
                     val.num.get() as usize,
                 )
@@ -198,7 +317,7 @@ impl BaseTypeVER {
             }),
             keys::CRCLIST_KEY => BaseTypeVER::CrcList({
                 let val = ListVER::from_data(&data[offset..]).context("val")?;
-                CrcVER::slice_from_data(
+                U32VER::slice_from_data(
                     &data[offset + val.offset.get() as usize + val.size()..],
                     val.num.get() as usize,
                 )
@@ -240,7 +359,7 @@ impl BaseTypeVER {
             BaseTypeVER::Bool(val) => BaseTypeRefVER::Bool(val.as_ref()),
             BaseTypeVER::String(val) => BaseTypeRefVER::String(val.as_ref()),
             BaseTypeVER::StringList(vals) => {
-                BaseTypeRefVER::StringList(vals.iter().map(|x| x.as_ref()).collect())
+                BaseTypeRefVER::StringList(vals.iter().map(|x| x.as_ref().into()).collect())
             }
             BaseTypeVER::ObjectList(vals) => BaseTypeRefVER::ObjectList(vals.as_ref()),
             BaseTypeVER::NodeList(vals) => BaseTypeRefVER::NodeList(vals.as_ref()),
@@ -252,16 +371,16 @@ impl BaseTypeVER {
     }
     pub fn size(kind: u32) -> usize {
         match kind {
-            keys::CRC_KEY => U32VER::size_of(),
-            keys::GUID_KEY => U32VER::size_of(),
-            keys::COLOR_KEY => U32VER::size_of(),
+            keys::CRC_KEY => u32VER::size_of(),
+            keys::GUID_KEY => u32VER::size_of(),
+            keys::COLOR_KEY => u32VER::size_of(),
             keys::VECTOR2_KEY => Vector2VER::size_of(),
             keys::VECTOR3_KEY => Vector3VER::size_of(),
             keys::VECTOR4_KEY => Vector4VER::size_of(),
             keys::MATRIX4X4_KEY => Matrix4x4VER::size_of(),
-            keys::FLOAT_KEY => F32VER::size_of(),
-            keys::INT_KEY => U32VER::size_of(),
-            keys::BOOL_KEY => U32VER::size_of(),
+            keys::FLOAT_KEY => f32VER::size_of(),
+            keys::INT_KEY => u32VER::size_of(),
+            keys::BOOL_KEY => u32VER::size_of(),
             keys::STRING_KEY => ListVER::size_of(),
             keys::STRINGLIST_KEY => ListVER::size_of(),
             keys::OBJECTLIST_KEY => ListVER::size_of(),
@@ -275,18 +394,6 @@ impl BaseTypeVER {
     }
 }
 
-#[cfg(feature = "python")]
-#[make_platforms]
-impl<'a, 'py> IntoPyObject<'py> for BaseTypeRefVER<'a> {
-    type Target = <BaseType as IntoPyObject<'py>>::Target;
-    type Output = <BaseType as IntoPyObject<'py>>::Output;
-    type Error = <BaseType as IntoPyObject<'py>>::Error;
-    #[inline(always)]
-    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        BaseType::from(self).into_pyobject(py)
-    }
-}
-
 #[make_platforms]
 impl BaseTypeRefVER<'_> {
     pub fn crc(&self) -> Option<&CrcVER> {
@@ -295,13 +402,13 @@ impl BaseTypeRefVER<'_> {
             _ => None,
         }
     }
-    pub fn guid(&self) -> Option<&U32VER> {
+    pub fn guid(&self) -> Option<&u32VER> {
         match self {
             Self::GUID(val) => Some(val),
             _ => None,
         }
     }
-    pub fn color(&self) -> Option<&U32VER> {
+    pub fn color(&self) -> Option<&u32VER> {
         match self {
             Self::Color(val) => Some(val),
             _ => None,
@@ -331,19 +438,19 @@ impl BaseTypeRefVER<'_> {
             _ => None,
         }
     }
-    pub fn float(&self) -> Option<&F32VER> {
+    pub fn float(&self) -> Option<&f32VER> {
         match self {
             Self::Float(val) => Some(val),
             _ => None,
         }
     }
-    pub fn int(&self) -> Option<&I32VER> {
+    pub fn int(&self) -> Option<&i32VER> {
         match self {
             Self::Int(val) => Some(val),
             _ => None,
         }
     }
-    pub fn bool(&self) -> Option<&U32VER> {
+    pub fn bool(&self) -> Option<&u32VER> {
         match self {
             Self::Bool(val) => Some(val),
             _ => None,
@@ -355,9 +462,9 @@ impl BaseTypeRefVER<'_> {
             _ => None,
         }
     }
-    pub fn string_list(&self) -> Option<Vec<&str>> {
+    pub fn string_list(&self) -> Option<&[str_ref<'_>]> {
         match &self {
-            Self::StringList(val) => Some(val.iter().map(|x| unsafe { &*x.clone() }).collect()),
+            Self::StringList(val) => Some(&val[..]),
             _ => None,
         }
     }
@@ -373,13 +480,13 @@ impl BaseTypeRefVER<'_> {
             _ => None,
         }
     }
-    pub fn int_list(&self) -> Option<&[I32VER]> {
+    pub fn int_list(&self) -> Option<&[i32VER]> {
         match self {
             Self::IntList(val) => Some(val),
             _ => None,
         }
     }
-    pub fn crc_list(&self) -> Option<&[CrcVER]> {
+    pub fn crc_list(&self) -> Option<&[U32VER]> {
         match self {
             Self::CrcList(val) => Some(val),
             _ => None,
@@ -426,10 +533,6 @@ pub mod keys {
     pub const MATRIXLIST_KEY: u32 = hash_string("MatrixList".as_bytes(), None);
 }
 
-#[cfg_attr(
-    feature = "python",
-    pyclass(module = "sub_blocks.gameobjs", get_all, set_all)
-)]
 #[derive(Debug, Clone)]
 pub enum BaseType {
     Crc(Crc),
@@ -456,13 +559,13 @@ pub enum BaseType {
 impl From<BaseTypeRefVER<'_>> for BaseType {
     fn from(val: BaseTypeRefVER) -> Self {
         match val {
-            BaseTypeRefVER::Crc(val) => Self::Crc(val.into()),
+            BaseTypeRefVER::Crc(val) => Self::Crc(val.conv()),
             BaseTypeRefVER::GUID(val) => Self::GUID(val.get()),
             BaseTypeRefVER::Color(val) => Self::Color(val.get()),
-            BaseTypeRefVER::Vector2(val) => Self::Vector2(val.get()),
-            BaseTypeRefVER::Vector3(val) => Self::Vector3(val.get()),
-            BaseTypeRefVER::Vector4(val) => Self::Vector4(val.get()),
-            BaseTypeRefVER::Matrix4x4(val) => Self::Matrix4x4(val.get()),
+            BaseTypeRefVER::Vector2(val) => Self::Vector2(val.conv()),
+            BaseTypeRefVER::Vector3(val) => Self::Vector3(val.conv()),
+            BaseTypeRefVER::Vector4(val) => Self::Vector4(val.conv()),
+            BaseTypeRefVER::Matrix4x4(val) => Self::Matrix4x4(val.conv()),
             BaseTypeRefVER::Float(val) => Self::Float(val.get()),
             BaseTypeRefVER::Int(val) => Self::Int(val.get()),
             BaseTypeRefVER::Bool(val) => Self::Bool(val.get()),
@@ -474,15 +577,15 @@ impl From<BaseTypeRefVER<'_>> for BaseType {
                 Self::ObjectList(vals.iter().map(|x| x.get()).collect())
             }
             BaseTypeRefVER::NodeList(vals) => {
-                Self::NodeList(vals.iter().map(|x| x.get()).collect())
+                Self::NodeList(vals.iter().map(|x| x.conv()).collect())
             }
             BaseTypeRefVER::IntList(vals) => Self::IntList(vals.iter().map(|x| x.get()).collect()),
-            BaseTypeRefVER::CrcList(vals) => Self::CrcList(vals.iter().map(|x| x.into()).collect()),
+            BaseTypeRefVER::CrcList(vals) => Self::CrcList(vals.iter().map(|x| x.conv()).collect()),
             BaseTypeRefVER::WeightList(vals) => {
-                Self::WeightList(vals.iter().map(|x| x.get()).collect())
+                Self::WeightList(vals.iter().map(|x| x.conv()).collect())
             }
             BaseTypeRefVER::MatrixList(vals) => {
-                Self::MatrixList(vals.iter().map(|x| x.get()).collect())
+                Self::MatrixList(vals.iter().map(|x| x.conv()).collect())
             }
         }
     }
@@ -491,21 +594,21 @@ impl From<BaseTypeRefVER<'_>> for BaseType {
 #[make_platforms]
 pub enum BaseTypeDumpVER<'a> {
     Crc(&'a mut CrcVER),
-    GUID(&'a mut U32VER),
-    Color(&'a mut U32VER),
+    GUID(&'a mut u32VER),
+    Color(&'a mut u32VER),
     Vector2(&'a mut Vector2VER),
     Vector3(&'a mut Vector3VER),
     Vector4(&'a mut Vector4VER),
     Matrix4x4(&'a mut Matrix4x4VER),
-    Float(&'a mut F32VER),
-    Int(&'a mut I32VER),
-    Bool(&'a mut U32VER),
+    Float(&'a mut f32VER),
+    Int(&'a mut i32VER),
+    Bool(&'a mut u32VER),
     String(&'a mut [u8]),
     StringList(Vec<&'a mut [u8]>),
     ObjectList(&'a mut [U32VER]),
     NodeList(&'a mut [Vector4VER]),
-    IntList(&'a mut [I32VER]),
-    CrcList(&'a mut [CrcVER]),
+    IntList(&'a mut [i32VER]),
+    CrcList(&'a mut [U32VER]),
     WeightList(&'a mut [WeightVER]),
     MatrixList(&'a mut [Matrix4x4VER]),
 }
@@ -550,8 +653,8 @@ pub trait DumpBaseTypeVER {
             }
             keys::STRING_KEY => {
                 let val = ListVER::mut_from_data(obj_dst).context("list")?;
-                val.offset = (val_dst.offset - obj_dst.offset).into();
-                val.num = self.list_len().into();
+                val.offset = (val_dst.offset - obj_dst.offset).conv();
+                val.num = self.list_len().conv();
                 let vals = u8::mut_slice_from_data(val_dst, self.list_len()).context("vals")?;
                 if vals.len() != 0 {
                     val_dst.split(1);
@@ -560,16 +663,16 @@ pub trait DumpBaseTypeVER {
             }
             keys::STRINGLIST_KEY => {
                 let val = ListVER::mut_from_data(obj_dst).context("list")?;
-                val.offset = (val_dst.offset - obj_dst.offset).into();
-                val.num = self.list_len().into();
+                val.offset = (val_dst.offset - obj_dst.offset).conv();
+                val.num = self.list_len().conv();
                 let mut offset = val_dst.offset;
                 let vals =
                     ListVER::mut_slice_from_data(val_dst, self.list_len()).context("sub lists")?;
                 let mut valss = Vec::with_capacity(vals.len());
                 for (i, (len, val)) in self.string_lens().unwrap().zip(vals).enumerate() {
                     offset += ListVER::size_of();
-                    val.offset = (val_dst.offset - offset).into();
-                    val.num = len.into();
+                    val.offset = (val_dst.offset - offset).conv();
+                    val.num = len.conv();
                     let s = u8::mut_slice_from_data(val_dst, len)
                         .with_context(|| format!("val {}", i))?;
                     if s.len() != 0 {
@@ -581,49 +684,49 @@ pub trait DumpBaseTypeVER {
             }
             keys::OBJECTLIST_KEY => {
                 let val = ListVER::mut_from_data(obj_dst).context("list")?;
-                val.offset = (val_dst.offset - obj_dst.offset).into();
-                val.num = self.list_len().into();
+                val.offset = (val_dst.offset - obj_dst.offset).conv();
+                val.num = self.list_len().conv();
                 BaseTypeDumpVER::ObjectList(
                     RefFromData::mut_slice_from_data(val_dst, self.list_len()).context("vals")?,
                 )
             }
             keys::NODELIST_KEY => {
                 let val = ListVER::mut_from_data(obj_dst).context("list")?;
-                val.offset = (val_dst.offset - obj_dst.offset).into();
-                val.num = self.list_len().into();
+                val.offset = (val_dst.offset - obj_dst.offset).conv();
+                val.num = self.list_len().conv();
                 BaseTypeDumpVER::NodeList(
                     RefFromData::mut_slice_from_data(val_dst, self.list_len()).context("vals")?,
                 )
             }
             keys::INTLIST_KEY => {
                 let val = ListVER::mut_from_data(obj_dst).context("list")?;
-                val.offset = (val_dst.offset - obj_dst.offset).into();
-                val.num = self.list_len().into();
-                let vals = I32VER::mut_slice_from_data(val_dst, self.list_len()).context("vals")?;
+                val.offset = (val_dst.offset - obj_dst.offset).conv();
+                val.num = self.list_len().conv();
+                let vals = i32VER::mut_slice_from_data(val_dst, self.list_len()).context("vals")?;
                 // should this be here or at the start of somthing else?
                 val_dst.align(16);
                 BaseTypeDumpVER::IntList(vals)
             }
             keys::CRCLIST_KEY => {
                 let val = ListVER::mut_from_data(obj_dst).context("list")?;
-                val.offset = (val_dst.offset - obj_dst.offset).into();
-                val.num = self.list_len().into();
+                val.offset = (val_dst.offset - obj_dst.offset).conv();
+                val.num = self.list_len().conv();
                 BaseTypeDumpVER::CrcList(
                     RefFromData::mut_slice_from_data(val_dst, self.list_len()).context("vals")?,
                 )
             }
             keys::WEIGHTLIST_KEY => {
                 let val = ListVER::mut_from_data(obj_dst).context("list")?;
-                val.offset = (val_dst.offset - obj_dst.offset).into();
-                val.num = self.list_len().into();
+                val.offset = (val_dst.offset - obj_dst.offset).conv();
+                val.num = self.list_len().conv();
                 BaseTypeDumpVER::WeightList(
                     RefFromData::mut_slice_from_data(val_dst, self.list_len()).context("vals")?,
                 )
             }
             keys::MATRIXLIST_KEY => {
                 let val = ListVER::mut_from_data(obj_dst).context("list")?;
-                val.offset = (val_dst.offset - obj_dst.offset).into();
-                val.num = self.list_len().into();
+                val.offset = (val_dst.offset - obj_dst.offset).conv();
+                val.num = self.list_len().conv();
                 BaseTypeDumpVER::MatrixList(
                     RefFromData::mut_slice_from_data(val_dst, self.list_len()).context("vals")?,
                 )
@@ -750,9 +853,9 @@ impl DumpBaseTypeVER for &BaseType {
                 }
                 s
             }
-            BaseType::ObjectList(vals) => vals.len() * U32VER::size_of(),
+            BaseType::ObjectList(vals) => vals.len() * u32VER::size_of(),
             BaseType::NodeList(vals) => vals.len() * Vector4VER::size_of(),
-            BaseType::IntList(vals) => vals.len() * I32VER::size_of(),
+            BaseType::IntList(vals) => vals.len() * i32VER::size_of(),
             BaseType::CrcList(vals) => vals.len() * CrcVER::size_of(),
             BaseType::WeightList(vals) => vals.len() * WeightVER::size_of(),
             BaseType::MatrixList(vals) => vals.len() * Matrix4x4VER::size_of(),
@@ -761,16 +864,16 @@ impl DumpBaseTypeVER for &BaseType {
     }
     fn write_into(&self, other: BaseTypeDumpVER) -> Result<()> {
         match (self, other) {
-            (BaseType::Crc(val), BaseTypeDumpVER::Crc(other)) => *other = val.into(),
-            (BaseType::GUID(val), BaseTypeDumpVER::GUID(other)) => *other = val.into(),
-            (BaseType::Color(val), BaseTypeDumpVER::Color(other)) => *other = val.into(),
-            (BaseType::Vector2(val), BaseTypeDumpVER::Vector2(other)) => *other = val.into(),
-            (BaseType::Vector3(val), BaseTypeDumpVER::Vector3(other)) => *other = val.into(),
-            (BaseType::Vector4(val), BaseTypeDumpVER::Vector4(other)) => *other = val.into(),
-            (BaseType::Matrix4x4(val), BaseTypeDumpVER::Matrix4x4(other)) => *other = val.into(),
-            (BaseType::Float(val), BaseTypeDumpVER::Float(other)) => *other = val.into(),
-            (BaseType::Int(val), BaseTypeDumpVER::Int(other)) => *other = val.into(),
-            (BaseType::Bool(val), BaseTypeDumpVER::Bool(other)) => *other = val.into(),
+            (BaseType::Crc(val), BaseTypeDumpVER::Crc(other)) => *other = val.conv(),
+            (BaseType::GUID(val), BaseTypeDumpVER::GUID(other)) => *other = val.conv(),
+            (BaseType::Color(val), BaseTypeDumpVER::Color(other)) => *other = val.conv(),
+            (BaseType::Vector2(val), BaseTypeDumpVER::Vector2(other)) => *other = val.conv(),
+            (BaseType::Vector3(val), BaseTypeDumpVER::Vector3(other)) => *other = val.conv(),
+            (BaseType::Vector4(val), BaseTypeDumpVER::Vector4(other)) => *other = val.conv(),
+            (BaseType::Matrix4x4(val), BaseTypeDumpVER::Matrix4x4(other)) => *other = val.conv(),
+            (BaseType::Float(val), BaseTypeDumpVER::Float(other)) => *other = val.conv(),
+            (BaseType::Int(val), BaseTypeDumpVER::Int(other)) => *other = val.conv(),
+            (BaseType::Bool(val), BaseTypeDumpVER::Bool(other)) => *other = val.conv(),
             (BaseType::String(val), BaseTypeDumpVER::String(other)) => {
                 other.write_from(val.as_bytes())?
             }
@@ -781,32 +884,32 @@ impl DumpBaseTypeVER for &BaseType {
             }
             (BaseType::ObjectList(val), BaseTypeDumpVER::ObjectList(other)) => {
                 for (val, other) in val.iter().zip(other) {
-                    *other = val.into()
+                    *other = val.conv()
                 }
             }
             (BaseType::NodeList(val), BaseTypeDumpVER::NodeList(other)) => {
                 for (val, other) in val.iter().zip(other) {
-                    *other = val.into()
+                    *other = val.conv()
                 }
             }
             (BaseType::IntList(val), BaseTypeDumpVER::IntList(other)) => {
                 for (val, other) in val.iter().zip(other) {
-                    *other = val.into()
+                    *other = val.conv()
                 }
             }
             (BaseType::CrcList(val), BaseTypeDumpVER::CrcList(other)) => {
                 for (val, other) in val.iter().zip(other) {
-                    *other = val.into()
+                    *other = val.conv()
                 }
             }
             (BaseType::WeightList(val), BaseTypeDumpVER::WeightList(other)) => {
                 for (val, other) in val.iter().zip(other) {
-                    *other = val.into()
+                    *other = val.conv()
                 }
             }
             (BaseType::MatrixList(val), BaseTypeDumpVER::MatrixList(other)) => {
                 for (val, other) in val.iter().zip(other) {
-                    *other = val.into()
+                    *other = val.conv()
                 }
             }
             _ => return Err(anyhow!("missmatched BaseTypeRef and BaseTypeDump")),
@@ -816,12 +919,7 @@ impl DumpBaseTypeVER for &BaseType {
 }
 
 #[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(
-    feature = "python",
-    pyclass(module = "sub_blocks.gameobjs", get_all, set_all)
-)]
-#[repr(C)]
-pub struct Header {
+pub struct GameObjsHeader {
     pub const_: u32,
     pub types_num: u32,
     pub types_offset: u32,
@@ -833,11 +931,6 @@ pub struct Header {
 }
 
 #[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(
-    feature = "python",
-    pyclass(module = "sub_blocks.gameobjs", get_all, set_all)
-)]
-#[repr(C)]
 pub struct TypeHeader {
     pub key: Crc,
     pub size: u32,
@@ -845,11 +938,6 @@ pub struct TypeHeader {
 }
 
 #[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(
-    feature = "python",
-    pyclass(module = "sub_blocks.gameobjs", get_all, set_all)
-)]
-#[repr(C)]
 pub struct TypeField {
     pub key: Crc,
     pub kind: Crc,
@@ -888,18 +976,42 @@ impl TypeFieldDump for TypeField {
 }
 
 #[make_platforms]
-#[cfg_attr(feature = "python", pyclass(module = "sub_blocks.gameobjs"))]
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+#[repr(C)]
+#[derive(Debug, Clone)]
+pub struct TypeRefVER<'a> {
+    pub header: &'a TypeHeaderVER,
+    pub fields: slice<'a, TypeFieldVER>,
+}
+
+#[make_platforms]
+impl Default for TypeRefVER<'_> {
+    fn default() -> Self {
+        Self {
+            header: get_default_ref(),
+            fields: slice::default()
+        }
+    }
+}
+
+#[make_platforms]
+impl<'a> TypeRefVER<'a> {
+    pub fn from_data(src: &'a [u8]) -> Result<Self> {
+        let header = TypeHeaderVER::from_data(src).context("header")?;
+        let fields = TypeFieldVER::slice_from_data(&src[header.size()..], header.size.get() as usize)
+            .context("fields")?.into();
+        Ok(Self { header, fields })
+    }
+}
+
+#[make_platforms]
 #[derive(Debug, Clone)]
 pub struct TypeVER {
-    _ptr: Arc<[u8]>,
+    _ptr: BufType,
     header: NonNull<TypeHeaderVER>,
     fields: NonNull<[TypeFieldVER]>,
     size: usize,
 }
-
-#[cfg(feature = "python")]
-#[make_platforms]
-pyobj_ref!(TypeVER);
 
 #[make_platforms]
 unsafe impl Sync for TypeVER {}
@@ -908,7 +1020,7 @@ unsafe impl Send for TypeVER {}
 
 #[make_platforms]
 impl TypeVER {
-    pub fn from_bytes(src: &Arc<[u8]>, mut offset: usize) -> Result<Self> {
+    pub fn from_bytes(src: &BufType, mut offset: usize) -> Result<Self> {
         let start = offset;
         let header = TypeHeaderVER::from_data(&src[offset..]).context("header")?;
         offset += header.size();
@@ -925,17 +1037,13 @@ impl TypeVER {
 }
 
 #[make_platforms]
-#[cfg_attr(feature = "python", pymethods)]
 impl TypeVER {
-    #[getter]
     pub fn header(&self) -> &TypeHeaderVER {
         unsafe { self.header.as_ref() }
     }
-    #[getter]
     pub fn fields(&self) -> &[TypeFieldVER] {
         unsafe { self.fields.as_ref() }
     }
-    #[getter]
     pub fn size(&self) -> usize {
         self.size
     }
@@ -958,6 +1066,25 @@ pub trait DumpTypeVER {
     }
     fn size(&self) -> usize {
         TypeHeaderVER::size_of() + self.fields_len() * TypeFieldVER::size_of()
+    }
+}
+
+#[make_platforms]
+impl DumpTypeVER for TypeRefVER<'_> {
+    fn key(&self) -> u32 {
+        self.header.key.into()
+    }
+    fn fields_len(&self) -> usize {
+        self.fields.len()
+    }
+    fn fields(&self) -> impl Iterator<Item = &impl TypeFieldDump> {
+        self.fields.iter()
+    }
+    fn write_header(&self, header: &mut TypeHeaderVER) -> Result<()> {
+        header.write_from(self.header)
+    }
+    fn write_fields(&self, fields: &mut [TypeFieldVER]) -> Result<()> {
+        fields.write_from(&self.fields[..])
     }
 }
 
@@ -992,25 +1119,20 @@ impl DumpTypeVER for (&Crc, &Vec<TypeField>) {
         self.1.iter()
     }
     fn write_header(&self, header: &mut TypeHeaderVER) -> Result<()> {
-        header.key = self.0.into();
-        header.size = self.1.len().into();
-        header.fields = 0u32.into();
+        header.key = self.0.conv();
+        header.size = self.1.len().conv();
+        header.fields = 0u32.conv();
         Ok(())
     }
     fn write_fields(&self, fields: &mut [TypeFieldVER]) -> Result<()> {
         for (src, dst) in self.1.iter().zip(fields) {
-            *dst = src.into()
+            *dst = src.conv()
         }
         Ok(())
     }
 }
 
 #[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(
-    feature = "python",
-    pyclass(module = "sub_blocks.gameobjs", get_all, set_all)
-)]
-#[repr(C)]
 pub struct ObjHeader {
     pub layer: u32,
     pub key: Crc,
@@ -1020,18 +1142,71 @@ pub struct ObjHeader {
 }
 
 #[make_platforms]
-#[cfg_attr(feature = "python", pyclass(mapping, module = "sub_blocks.gameobjs"))]
-#[derive(Debug, Clone)]
-pub struct ObjVER {
-    _ptr: Arc<[u8]>,
-    header: NonNull<ObjHeaderVER>,
-    fields: IndexMap<CrcVER, BaseTypeVER>,
-    size: usize,
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+#[repr(C)]
+pub struct ObjRefVER<'a> {
+    pub header: &'a ObjHeaderVER,
+    pub fields: Map<u32, BaseTypeRefVER<'a>>,
 }
 
-#[cfg(feature = "python")]
 #[make_platforms]
-pyobj_ref!(ObjVER);
+impl Default for ObjRefVER<'_> {
+    fn default() -> Self {
+        Self {
+            header: get_default_ref(),
+            fields: MapImpl::default().into()
+        }
+    }
+}
+
+#[make_platforms]
+impl<'a> ObjRefVER<'a> {
+    pub fn from_data(src: &'a [u8], types: &MapImpl<u32, TypeRefVER<'_>>) -> Result<Self> {
+        let mut offset = 0;
+        let header = ObjHeaderVER::from_data(&src[offset..]).context("header")?;
+        offset += header.size();
+        let ts = types
+            .get(&header.key.get())
+            .ok_or(anyhow!("Missing Key {:?}", header.key.get()))?
+            .fields;
+        let mut fields = MapImpl::with_capacity(ts.len());
+        for t in ts.iter() {
+            fields.insert(
+                t.key.into(),
+                BaseTypeRefVER::from_data(&src[offset + t.offset.get() as usize..], t.kind.get())
+                    .with_context(|| {
+                        format!(
+                            "{}field {}",
+                            if let Some(BaseTypeRefVER::GUID(o)) =
+                                fields.get(&hash_string(b"guid", None))
+                            {
+                                format!("guid {}, ", o.get())
+                            } else {
+                                String::new()
+                            },
+                            get_str_debug(&t.key.get())
+                        )
+                    })?,
+            );
+        }
+        Ok(Self {
+            header: header.into(),
+            fields: fields.into(),
+        })
+    }
+    pub fn size(&self) -> usize {
+        self.header.size() + self.header.size.get() as usize
+    }
+}
+
+#[make_platforms]
+#[derive(Debug, Clone)]
+pub struct ObjVER {
+    _ptr: BufType,
+    header: NonNull<ObjHeaderVER>,
+    fields: IndexMap<u32, BaseTypeVER>,
+    size: usize,
+}
 
 #[make_platforms]
 unsafe impl Sync for ObjVER {}
@@ -1039,17 +1214,16 @@ unsafe impl Sync for ObjVER {}
 unsafe impl Send for ObjVER {}
 
 #[make_platforms]
-#[cfg_attr(feature = "python", pymethods)]
 impl ObjVER {
-    #[getter]
     pub fn header(&self) -> &ObjHeaderVER {
         unsafe { self.header.as_ref() }
     }
-    #[cfg(feature = "python")]
-    fn __getitem__(&self, index: CrcVER) -> Option<BaseTypeRefVER<'_>> {
-        self.get(&index)
+    pub fn get(&self, index: &u32) -> Option<BaseTypeRefVER<'_>> {
+        self.fields.get(index).map(|x| unsafe { x.as_ref() })
     }
-    #[getter]
+    pub fn fields(&self) -> &IndexMap<u32, BaseTypeVER> {
+        &self.fields
+    }
     pub fn size(&self) -> usize {
         self.size
     }
@@ -1058,14 +1232,14 @@ impl ObjVER {
 #[make_platforms]
 impl ObjVER {
     pub fn from_bytes(
-        src: &Arc<[u8]>,
+        src: &BufType,
         mut offset: usize,
-        types: &IndexMap<CrcVER, TypeVER>,
+        types: &IndexMap<u32, TypeVER>,
     ) -> Result<Self> {
         let header = ObjHeaderVER::from_data(&src[offset..]).context("header")?;
         offset += header.size();
         let ts = types
-            .get(&header.key)
+            .get(&header.key.get())
             .ok_or(anyhow!("Missing Key {:?}", header.key.get()))?
             .fields();
         let mut fields = IndexMap::with_capacity(ts.len());
@@ -1077,7 +1251,7 @@ impl ObjVER {
                         format!(
                             "{}field {}",
                             if let Some(BaseTypeVER::GUID(o)) =
-                                fields.get(&CrcVER::new(hash_string(b"guid", None)))
+                                fields.get(&hash_string(b"guid", None))
                             {
                                 format!("guid {}, ", unsafe { o.as_ref() })
                             } else {
@@ -1095,15 +1269,8 @@ impl ObjVER {
             size: header.size() + header.size.get() as usize,
         })
     }
-    pub fn get(&self, index: &CrcVER) -> Option<BaseTypeRefVER<'_>> {
-        self.fields.get(index).map(|x| unsafe { x.as_ref() })
-    }
 }
 
-#[cfg_attr(
-    feature = "python",
-    pyclass(module = "sub_blocks.gameobjs", get_all, set_all)
-)]
 #[derive(Debug, Clone)]
 pub struct Obj {
     pub layer: u32,
@@ -1116,11 +1283,11 @@ impl From<&ObjVER> for Obj {
     fn from(val: &ObjVER) -> Self {
         Self {
             layer: val.header().layer.get(),
-            key: val.header().key.into(),
+            key: val.header().key.conv(),
             fields: val
                 .fields
                 .iter()
-                .map(|(k, v)| (k.into(), unsafe { v.as_ref() }.into()))
+                .map(|(k, v)| ((*k).into(), unsafe { v.as_ref() }.into()))
                 .collect(),
         }
     }
@@ -1150,9 +1317,9 @@ pub trait DumpObjVER {
         }
         val_dst.align(16);
         *dst = val_dst;
-        header.layer = self.layer().into();
-        header.key = self.key().into();
-        header.size = val_offset.into();
+        header.layer = self.layer().conv();
+        header.key = self.key().conv();
+        header.size = val_offset.conv();
         Ok(())
     }
 
@@ -1178,6 +1345,19 @@ pub trait DumpObjVER {
 }
 
 #[make_platforms]
+impl DumpObjVER for ObjRefVER<'_> {
+    fn key(&self) -> u32 {
+        self.header.key.into()
+    }
+    fn layer(&self) -> u32 {
+        self.header.layer.into()
+    }
+    fn field(&self, index: &u32) -> Option<impl DumpBaseTypeVER> {
+        self.fields.get(index).cloned()
+    }
+}
+
+#[make_platforms]
 impl DumpObjVER for ObjVER {
     fn key(&self) -> u32 {
         self.header().key.into()
@@ -1186,7 +1366,7 @@ impl DumpObjVER for ObjVER {
         self.header().layer.into()
     }
     fn field(&self, index: &u32) -> Option<impl DumpBaseTypeVER> {
-        self.get(&CrcVER::new(*index))
+        self.get(index)
     }
 }
 
@@ -1199,24 +1379,76 @@ impl DumpObjVER for Obj {
         self.layer
     }
     fn field(&self, index: &u32) -> Option<impl DumpBaseTypeVER> {
-        self.fields.get(&Crc::from(index))
+        self.fields.get(&Crc::from(*index))
     }
 }
 
 #[make_platforms]
-#[cfg_attr(feature = "python", pyclass(module = "sub_blocks.gameobjs"))]
-#[derive(Debug, Clone)]
-pub struct GameObjsVER {
-    _ptr: Arc<[u8]>,
-    gamemodemask: i32,
-    header: NonNull<HeaderVER>,
-    types: IndexMap<CrcVER, TypeVER>,
-    objs: IndexMap<CrcVER, ObjVER>,
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+#[repr(C)]
+pub struct GameObjsRefVER<'a> {
+    pub gamemodemask: i32,
+    pub header: &'a GameObjsHeaderVER,
+    pub types: Map<u32, TypeRefVER<'a>>,
+    pub objs: Map<u32, ObjRefVER<'a>>
 }
 
-#[cfg(feature = "python")]
 #[make_platforms]
-pyobj_ref!(GameObjsVER);
+impl Default for GameObjsRefVER<'_> {
+    fn default() -> Self {
+        Self {
+            gamemodemask: 0,
+            header: get_default_ref(),
+            types: MapImpl::default().into(),
+            objs: MapImpl::default().into()
+        }
+    }
+}
+
+#[make_platforms]
+impl<'a> GameObjsRefVER<'a> {
+    pub fn from_data(src: &'a [u8], gamemodemask: i32) -> Result<Self> {
+        let header = GameObjsHeaderVER::from_data(src).context("header")?;
+        if header.const_.get() != 1296123652 {
+            log::error!("Invalid gameobj block");
+        }
+        let mut offset = header.types_offset.get() as usize;
+        let mut types = MapImpl::with_capacity(header.types_num.get() as usize);
+        for i in 0..header.types_num.get() {
+            let t = TypeRefVER::from_data(&src[offset..]).with_context(|| format!("ty {}", i))?;
+            offset += t.size();
+            types.insert(t.header.key.get(), t);
+        }
+
+        offset = header.obj_offset.get() as usize;
+        let mut objs = MapImpl::with_capacity(header.obj_num.get() as usize);
+        for i in 0..header.obj_num.get() {
+            let o =
+                ObjRefVER::from_data(&src[offset..], &types).with_context(|| format!("obj {}", i))?;
+            offset += o.size();
+            if let BaseTypeRefVER::GUID(guid) = o
+                .fields
+                .get(&hash_string(b"guid", None))
+                .ok_or(anyhow!("obj missing guid"))?
+            {
+                objs.insert(guid.get(), o);
+            } else {
+                return Err(anyhow!("obj incorrect guid type"));
+            }
+        }
+        Ok(Self { gamemodemask, header, objs: objs.into(), types: types.into() })
+    }
+}
+
+#[make_platforms]
+#[derive(Debug, Clone)]
+pub struct GameObjsVER {
+    _ptr: BufType,
+    gamemodemask: i32,
+    header: NonNull<GameObjsHeaderVER>,
+    types: IndexMap<u32, TypeVER>,
+    objs: IndexMap<u32, ObjVER>,
+}
 
 #[make_platforms]
 unsafe impl Sync for GameObjsVER {}
@@ -1226,13 +1458,13 @@ unsafe impl Send for GameObjsVER {}
 #[make_platforms]
 impl GameObjsVER {
     pub fn from_bytes(
-        src: &Arc<[u8]>,
+        src: &BufType,
         mut offset: usize,
         _size: usize,
         gamemodemask: i32,
     ) -> Result<Self> {
         let start = offset;
-        let header = HeaderVER::from_data(&src[offset..]).context("header")?;
+        let header = GameObjsHeaderVER::from_data(&src[offset..]).context("header")?;
         if header.const_.get() != 1296123652 {
             log::error!("Invalid gameobj block");
         }
@@ -1241,7 +1473,7 @@ impl GameObjsVER {
         for i in 0..header.types_num.get() {
             let t = TypeVER::from_bytes(src, offset).with_context(|| format!("ty {}", i))?;
             offset += t.size();
-            types.insert(t.header().key.clone(), t);
+            types.insert(t.header().key.get(), t);
         }
 
         offset = start + header.obj_offset.get() as usize;
@@ -1252,10 +1484,10 @@ impl GameObjsVER {
             offset += o.size();
             if let BaseTypeVER::GUID(guid) = o
                 .fields
-                .get(&CrcVER::new(hash_string(b"guid", None)))
+                .get(&hash_string(b"guid", None))
                 .ok_or(anyhow!("obj missing guid"))?
             {
-                objs.insert(unsafe { guid.as_ref() }.clone(), o);
+                objs.insert(unsafe { guid.as_ref() }.get(), o);
             } else {
                 return Err(anyhow!("obj incorrect guid type"));
             }
@@ -1271,26 +1503,18 @@ impl GameObjsVER {
     }
 }
 #[make_platforms]
-#[cfg_attr(feature = "python", pymethods)]
 impl GameObjsVER {
-    #[getter]
-    pub fn header(&self) -> &HeaderVER {
+    pub fn header(&self) -> &GameObjsHeaderVER {
         unsafe { self.header.as_ref() }
     }
-    #[getter]
-    pub fn types(&self) -> &IndexMap<CrcVER, TypeVER> {
+    pub fn types(&self) -> &IndexMap<u32, TypeVER> {
         &self.types
     }
-    #[getter]
-    pub fn objs(&self) -> &IndexMap<CrcVER, ObjVER> {
+    pub fn objs(&self) -> &IndexMap<u32, ObjVER> {
         &self.objs
     }
 }
 
-#[cfg_attr(
-    feature = "python",
-    pyclass(module = "sub_blocks.gameobjs", get_all, set_all)
-)]
 #[derive(Debug, Clone)]
 pub struct GameObjs {
     pub gamemodemask: i32,
@@ -1303,11 +1527,11 @@ impl From<&GameObjsVER> for GameObjs {
     fn from(val: &GameObjsVER) -> Self {
         Self {
             gamemodemask: val.gamemodemask,
-            objs: val.objs.iter().map(|(k, v)| (k.into(), v.into())).collect(),
+            objs: val.objs.iter().map(|(k, v)| ((*k).into(), v.into())).collect(),
             types: val
                 .types
                 .iter()
-                .map(|(k, v)| (k.into(), v.fields().iter().map(|x| x.get()).collect()))
+                .map(|(k, v)| ((*k).into(), v.fields().iter().map(|x| x.conv()).collect()))
                 .collect(),
         }
     }
@@ -1322,7 +1546,7 @@ pub trait DumpGameObjsVER {
     fn objs(&self) -> impl Iterator<Item = &impl DumpObjVER>;
     fn objs_num(&self) -> usize;
     fn size(&self) -> usize {
-        let size = HeaderVER::size_of()
+        let size = GameObjsHeaderVER::size_of()
             + self.types_num() * TypeHeaderVER::size_of()
             + self.types().map(|x| x.fields_len()).sum::<usize>() * TypeFieldVER::size_of();
         align_offset(size, 16)
@@ -1333,19 +1557,19 @@ pub trait DumpGameObjsVER {
     }
     fn dump_into<'a>(&self, dst: &mut DumpSlice) -> Result<()> {
         let start = dst.offset;
-        let header = HeaderVER::mut_from_data(dst).context("header")?;
-        header.const_ = 1296123652u32.into();
+        let header = GameObjsHeaderVER::mut_from_data(dst).context("header")?;
+        header.const_ = 1296123652u32.conv();
 
-        header.types_offset = (dst.offset - start).into();
-        header.types_num = self.types_num().into();
+        header.types_offset = (dst.offset - start).conv();
+        header.types_num = self.types_num().conv();
         for ty in self.types() {
             ty.dump_into(dst)
                 .with_context(|| format!("type {}", ty.key()))?;
         }
         dst.align(16);
 
-        header.obj_offset = (dst.offset - start).into();
-        header.obj_num = self.objs_num().into();
+        header.obj_offset = (dst.offset - start).conv();
+        header.obj_num = self.objs_num().conv();
         for (i, obj) in self.objs().enumerate() {
             let key = obj.key();
             let ty = self.get_type(key).ok_or(anyhow!("obj {} ty {}", i, key))?;
@@ -1354,6 +1578,28 @@ pub trait DumpGameObjsVER {
         }
 
         Ok(())
+    }
+}
+
+#[make_platforms]
+impl DumpGameObjsVER for GameObjsRefVER<'_> {
+    fn gamemodemask(&self) -> i32 {
+        self.gamemodemask
+    }
+    fn types(&self) -> impl Iterator<Item = impl DumpTypeVER> {
+        self.types.values().cloned()
+    }
+    fn types_num(&self) -> usize {
+        self.types.len()
+    }
+    fn get_type(&self, key: u32) -> Option<impl DumpTypeVER> {
+        self.types.get(&key).cloned()
+    }
+    fn objs(&self) -> impl Iterator<Item = &impl DumpObjVER> {
+        self.objs.values()
+    }
+    fn objs_num(&self) -> usize {
+        self.objs.len()
     }
 }
 
@@ -1369,7 +1615,7 @@ impl DumpGameObjsVER for GameObjsVER {
         self.types.len()
     }
     fn get_type(&self, key: u32) -> Option<impl DumpTypeVER> {
-        self.types.get(&CrcVER::new(key))
+        self.types.get(&key)
     }
     fn objs(&self) -> impl Iterator<Item = &impl DumpObjVER> {
         self.objs.values()

@@ -1,345 +1,263 @@
-use proc_macro2::TokenStream;
+use proc_macro2::{TokenStream, Group, TokenTree, Span};
 use quote::{format_ident, quote, quote_spanned, ToTokens};
-use std::collections::HashSet;
-use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
 use syn::{
-    parse_macro_input, spanned::Spanned, Data, DeriveInput, Fields, Ident, Index, ItemEnum,
-    ItemImpl, ItemStruct, Token,
+    parse_macro_input, spanned::Spanned, Data, DeriveInput, Fields, Ident, Index, 
+    Token
 };
 use syn::{Attribute, Visibility};
+use indexmap::IndexMap;
 
-mod platforms;
+fn make_platform(ver: &str, item: TokenStream) -> TokenStream {
+    TokenStream::from_iter(item.into_iter().map(|x| match x {
+        TokenTree::Ident(ident) => {
+            let mut s = ident.to_string();
+            if s.ends_with("VER") {
+                s.replace_range(s.len() - 3..s.len(), ver);
+                TokenTree::Ident(Ident::new(&s, ident.span()))
+            } else if s.ends_with("_ver") {
+                s.replace_range(s.len() - 3..s.len(), &ver.to_lowercase());
+                TokenTree::Ident(Ident::new(&s, ident.span()))
+            } else if s == "IS_PC" {
+                TokenTree::Ident(Ident::new(&format!("{}", ver == "Pc"), ident.span()))
+            } else if s == "IS_XBOX" {
+                TokenTree::Ident(Ident::new(&format!("{}", ver == "Xbox"), ident.span()))
+            } else if s == "IS_PS3" {
+                TokenTree::Ident(Ident::new(&format!("{}", ver == "Ps3"), ident.span()))
+            } else {
+                TokenTree::Ident(ident)
+            }
+        }
+        TokenTree::Group(group) => TokenTree::Group(Group::new(
+            group.delimiter(),
+            make_platform(ver, group.stream()),
+        )),
+        tree => tree,
+    }))
+}
 
 #[proc_macro_attribute]
 pub fn make_platforms(
-    attr: proc_macro::TokenStream,
-    item: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    platforms::attr_impl(attr, item)
-}
-
-#[proc_macro_attribute]
-pub fn staticmethod(
     _attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    item
-}
-#[proc_macro_attribute]
-pub fn getter(
-    _attr: proc_macro::TokenStream,
-    item: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    item
-}
+    let item = TokenStream::from(item);
 
-fn pymethods(attrs: &HashSet<String>) -> Vec<TokenStream> {
-    let mut fns = vec![
+    let s = item.to_string();
+    if s.contains("VER") || s.contains("_ver") {
+        let pc = make_platform("Pc", item.clone());
+        let xbox = make_platform("Xbox", item.clone());
+        let ps3 = make_platform("Ps3", item);
         quote! {
-            pub fn __str__(&self) -> String {
-                format!("{:?}", self)
-            }
-        },
-        quote! {
-            #[pyo3(name = "to_json")]
-            pub fn _to_json(&self) -> Result<String> {
-                <Self as crate::types::PyMethods>::to_json(self)
-            }
-        },
-        quote! {
-            #[staticmethod]
-            #[pyo3(name = "from_json")]
-            pub fn _from_json(s: &str) -> Result<Self> {
-                <Self as crate::types::PyMethods>::from_json(s)
-            }
-        },
-    ];
-    if !attrs.contains("no_bytes") {
-        fns.push(quote! {
-            #[pyo3(name = "dump_bytes")]
-            pub fn _dump_bytes(&self, args: <Self as crate::types::AsData>::OutArgs) -> Vec<u8> {
-                <Self as crate::types::AsData>::dump_bytes::<crate::types::PC>(self, args)
-            }
-        });
-        fns.push(quote! {
-            #[staticmethod]
-            #[pyo3(name = "from_bytes")]
-            pub fn _from_bytes(val: &[u8], args: <Self as crate::types::AsData>::InArgs) -> Result<Self> {
-                <Self as crate::types::AsData>::from_bytes::<crate::types::PC>(val, args)
-            }
-        });
-        fns.push(quote! {
-            #[pyo3(name = "size_bytes")]
-            pub fn _size(&self) -> usize {
-                <Self as crate::types::AsData>::size::<crate::types::PC>(self)
-            }
-        });
-    }
-    if !attrs.contains("no_new") {
-        fns.push(quote! {
-            #[new]
-            pub fn _default() -> Self {
-                Self::default()
-            }
-        });
-    }
-    fns
-}
-
-struct Args {
-    vars: HashSet<String>,
-}
-
-impl Parse for Args {
-    fn parse(input: ParseStream) -> Result<Self> {
-        let vars = Punctuated::<Ident, Token![,]>::parse_terminated(input)?;
-        let vars = vars.into_iter().map(|x| x.to_string()).collect();
-        Ok(Args { vars })
-    }
-}
-
-#[proc_macro_attribute]
-pub fn basicpymethods(
-    args: proc_macro::TokenStream,
-    item: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    let mut args = parse_macro_input!(args as Args);
-    if let Ok(mut items) = syn::parse::<ItemImpl>(item.clone()) {
-        items.items.extend(
-            pymethods(&args.vars)
-                .into_iter()
-                .map(|x| syn::parse(x.into()).unwrap()),
-        );
-        items.into_token_stream().into()
-    } else if let Ok(input) = syn::parse::<ItemEnum>(item.clone()) {
-        let name = input.ident.clone();
-        args.vars.insert("no_new".to_string());
-        let fns = TokenStream::from_iter(pymethods(&args.vars));
-        quote! {
-            #input
-
-            #[pymethods]
-            impl #name {
-                #fns
-            }
-        }
-        .into()
-    } else if let Ok(input) = syn::parse::<ItemStruct>(item.clone()) {
-        let name = input.ident.clone();
-        let fns = TokenStream::from_iter(pymethods(&args.vars));
-        quote! {
-            #input
-
-            #[pymethods]
-            impl #name {
-                #fns
-            }
+            #pc
+            #xbox
+            #ps3
         }
         .into()
     } else {
-        item
+        item.into()
     }
 }
 
-#[proc_macro_derive(PyMethods)]
-pub fn derive_pymethods(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    let name = input.ident;
+enum VersionStruct {
+    Named(IndexMap<Ident, (Visibility, TokenStream, Vec<Attribute>, Span)>),
+    Unamed(Vec<(Visibility, TokenStream, Span)>),
+    Unit
+}
 
-    quote! {
-        impl <'a> crate::types::PyMethods<'a> for #name {
-            fn from_json(s: &'a str) -> Result<Self> {
-                Ok(serde_json::from_str(s)?)
-            }
-            fn to_json(&self) -> Result<String> {
-                Ok(serde_json::to_string_pretty(&self)?)
-            }
+fn make_ver(ver: &str, val: TokenStream) -> TokenStream {
+    let mut vals = val.into_iter();
+    let mut new_vals = vec![];
+    let mut prev = None;
+    while let Some(val) = vals.next() {
+        if let Some(val) = prev.replace(val) {
+            new_vals.push(val);
         }
     }
-    .into()
+    if let Some(val) = prev {
+        if let TokenTree::Ident(val) = val {
+            new_vals.push(TokenTree::Ident(format_ident!("{}{}", val, ver)));
+        } else {
+            new_vals.push(val);
+        }
+    }
+    TokenStream::from_iter(new_vals.into_iter())
+}
+
+fn process_attrs(attrs: &Vec<Attribute>, ver: &str) -> (bool, Option<Ident>) {
+    let mut skip = false;
+    let mut name = None;
+    let skip_name = format_ident!("skip_{}", ver.to_lowercase());
+    let name_name = format_ident!("name_{}", ver.to_lowercase());
+    for a in attrs.iter() {
+        if a.path().is_ident("ordered_data") {
+            skip = a.parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)
+                .unwrap()
+                .into_iter()
+                .find(|i| i==&skip_name)
+                .is_some();
+        } else if a.path().is_ident(&name_name) {
+            name = a.parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)
+                .unwrap()
+                .into_iter()
+                .next();
+        }
+    }
+    (skip, name)
+}
+
+impl VersionStruct {
+    fn from_def(data: &Data) -> Self {
+        match data {
+            Data::Struct(ref data) => match data.fields {
+                Fields::Named(ref fields) => Self::Named(
+                    fields.named.iter().map(|f| (f.ident.as_ref().unwrap().clone(), (f.vis.clone(), f.ty.to_token_stream(), f.attrs.clone(), f.span()))).collect()
+                ),
+                Fields::Unnamed(ref fields) => Self::Unamed(
+                    fields.unnamed.iter().map(|f| (f.vis.clone(), f.ty.to_token_stream(), f.span())).collect()
+                ),
+                Fields::Unit => Self::Unit,
+            },
+            Data::Enum(_) | Data::Union(_) => unimplemented!(),
+        }
+    }
+    fn get_ver(&self, ver: &str) -> Self {
+        match self {
+            Self::Unit => Self::Unit,
+            //Self::Unamed(fields) => Self::Unamed(fields.iter().map(|(vis, ty, span)| (vis.clone(), make_platform(ver, ty.clone()), span.clone())).collect()),
+            Self::Unamed(fields) => Self::Unamed(fields.iter().map(|(vis, ty, span)| (vis.clone(), make_ver(ver, ty.clone()), span.clone())).collect()),
+            Self::Named(fields) => Self::Named(fields.iter().filter_map(|(k, v)| {
+                let (skip, name) = process_attrs(&v.2, ver);
+                let (mut vis, mut ty, mut attrs, mut span) = v.clone();
+                let mut base_name = k.clone();
+                if skip {
+                    None
+                } else {
+                    if let Some(name) = name {
+                        base_name = name;
+                        (vis, ty, attrs, span) = fields.get(&base_name).unwrap().clone();
+                    }
+                    //Some((base_name, (vis, make_platform(ver, ty), attrs, span)))
+                    Some((base_name, (vis, make_ver(ver, ty), attrs, span)))
+                }
+            }).collect())
+        }
+    }
+    fn get_def_impl(&self, name: &Ident) -> TokenStream {
+        match self {
+            Self::Unit => quote!{ struct #name; },
+            Self::Unamed(fields) => {
+                let recurse = fields.iter().map(|(vis, ty, span)| quote_spanned! {
+                    span.clone() => #vis #ty
+                });
+                quote! {
+                    struct #name(#(#recurse),*);
+                }
+            },
+            Self::Named(fields) => {
+                let recurse = fields.iter().map(|(name, (vis, ty, _, span))| quote_spanned! {
+                    span.clone() => #vis #name: #ty
+                });
+                quote! {
+                    struct #name {
+                        #(#recurse),*
+                    }
+                }
+            }
+        }.into()
+    }
+    fn get_conv_impl(&self, name: &str) -> TokenStream {
+        let name = format_ident!("{}", name);
+        match self {
+            Self::Unit => quote! {},
+            Self::Unamed(fields) => {
+                let recurse = fields.iter().enumerate().map(|(i, f)| {
+                    let index = Index::from(i);
+                    let span = f.2;
+                    quote_spanned! {
+                        span => OrderedData::conv(&#name.#index)
+                    }
+                });
+                quote! {
+                    (#(#recurse),*)
+                }
+            },
+            Self::Named(fields) => {
+                let recurse = fields.iter().map(|(fname, f)| {
+                     let span = f.3;
+                     quote_spanned! {
+                        span => #fname: OrderedData::conv(&#name.#fname)
+                     }
+                });
+                quote! {
+                    { 
+                        #(#recurse),*,
+                        ..Default::default()
+                    }
+                }
+            }
+        }.into()
+    }
+}
+
+fn get_ver_impl(name: &Ident, vis: &Visibility, info: &VersionStruct, ver: &str) -> (Ident, TokenStream) {
+    let alt_name = format_ident!("{}{}", name, ver);
+    let alt_info = info.get_ver(ver);
+    let def_impl = alt_info.get_def_impl(&alt_name);
+    let conv_impl = alt_info.get_conv_impl("self");
+    let from_impl = alt_info.get_conv_impl("val");
+
+    let expanded = quote! {
+        #[repr(C)]
+        #[derive(Default, Debug, Clone, zerocopy::KnownLayout, zerocopy::FromBytes, zerocopy::IntoBytes, zerocopy::Immutable)]
+        #[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+        #vis #def_impl
+        impl From<#alt_name> for #name {
+            fn from(val: #alt_name) -> Self {
+                Self #from_impl
+            }
+        }
+        impl From<#name> for #alt_name {
+            fn from(val: #name) -> Self {
+                Self #from_impl
+            }
+        }
+        impl OrderedData<#name> for #alt_name {
+            fn conv(&self) -> #name {
+                #name #conv_impl
+            }
+        }
+        impl OrderedData<#alt_name> for #name {
+            fn conv(&self) -> #alt_name {
+                #alt_name #conv_impl
+            }
+        }
+    }.into();
+    (alt_name, expanded)
 }
 
 #[proc_macro_derive(OrderedData, attributes(ordered_data, name_pc, name_xbox, name_ps3))]
 pub fn derive_ordered_data_fn(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-
     let name = &input.ident;
-    let pc = format_ident!("PC");
-    let xbox = format_ident!("XBOX");
-    let ps3 = format_ident!("PS3");
-    let name_pc = format_ident!("{}Pc", name);
-    let name_xbox = format_ident!("{}Xbox", name);
-    let name_ps3 = format_ident!("{}Ps3", name);
-
     let vis = &input.vis;
+    let info = VersionStruct::from_def(&input.data);
+    let (name_pc, impl_pc) = get_ver_impl(name, vis, &info, "Pc");
+    let (name_xbox, impl_xbox) = get_ver_impl(name, vis, &info, "Xbox");
+    let (name_ps3, impl_ps3) = get_ver_impl(name, vis, &info, "Ps3");
 
-    let alt_class_pc = alt_class_def(&input.data, &name_pc, &pc, &vis);
-    let alt_class_xbox = alt_class_def(&input.data, &name_xbox, &xbox, &vis);
-    let alt_class_ps3 = alt_class_def(&input.data, &name_ps3, &ps3, &vis);
-    let conv_pc: TokenStream = conv_def(&input.data, &pc);
-    let conv_back_pc = conv_back_def(&input.data, &pc);
-    let conv_xbox: TokenStream = conv_def(&input.data, &xbox);
-    let conv_back_xbox = conv_back_def(&input.data, &xbox);
-    let conv_ps3: TokenStream = conv_def(&input.data, &ps3);
-    let conv_back_ps3 = conv_back_def(&input.data, &ps3);
-
-    let get_pc = get_def(&input, &pc);
-    let get_xbox = get_def(&input, &pc);
-    let get_ps3 = get_def(&input, &ps3);
-
-    let expanded = quote! {
-        #[repr(C)]
-        #[derive(Default, Debug, Clone, zerocopy::KnownLayout, zerocopy::FromBytes, zerocopy::IntoBytes, zerocopy::Unaligned, zerocopy::Immutable)]
-        #vis #alt_class_pc
-        impl #name_pc {
-            #vis #get_pc
+    quote! {
+        #impl_pc
+        #impl_xbox
+        #impl_ps3
+        impl OrderedDataStrict for #name {
+            type Pc = #name_pc;
+            type Xbox = #name_xbox;
+            type Ps3 = #name_ps3;
         }
-        impl From<#name_pc> for #name {
-            fn from(value: #name_pc) -> Self {
-                #conv_back_pc
-            }
-        }
-        impl From<#name> for #name_pc {
-            fn from(value: #name) -> Self {
-                #conv_pc
-            }
-        }
-        impl From<&#name_pc> for #name {
-            fn from(value: &#name_pc) -> Self {
-                #conv_back_pc
-            }
-        }
-        impl From<&#name> for #name_pc {
-            fn from(value: &#name) -> Self {
-                #conv_pc
-            }
-        }
-        #[cfg(feature = "python")]
-        impl <'py> pyo3::IntoPyObject<'py> for #name_pc {
-            type Target = <#name as pyo3::IntoPyObject<'py>>::Target;
-            type Output = <#name as pyo3::IntoPyObject<'py>>::Output;
-            type Error = <#name as pyo3::IntoPyObject<'py>>::Error;
-            #[inline(always)]
-            fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-                #name::from(self).into_pyobject(py)
-            }
-        }
-        #[cfg(feature = "python")]
-        impl <'a, 'py> pyo3::IntoPyObject<'py> for &'a #name_pc {
-            type Target = <#name as pyo3::IntoPyObject<'py>>::Target;
-            type Output = <#name as pyo3::IntoPyObject<'py>>::Output;
-            type Error = <#name as pyo3::IntoPyObject<'py>>::Error;
-            #[inline(always)]
-            fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-                <#name>::from(self).into_pyobject(py)
-            }
-        }
-
-        #[repr(C)]
-        #[derive(Default, Debug, Clone, zerocopy::KnownLayout, zerocopy::FromBytes, zerocopy::IntoBytes, zerocopy::Unaligned, zerocopy::Immutable)]
-        #vis #alt_class_xbox
-        impl #name_xbox {
-            #vis #get_xbox
-        }
-        impl From<#name_xbox> for #name {
-            fn from(value: #name_xbox) -> Self {
-                #conv_back_xbox
-            }
-        }
-        impl From<#name> for #name_xbox {
-            fn from(value: #name) -> Self {
-                #conv_xbox
-            }
-        }
-        impl From<&#name_xbox> for #name {
-            fn from(value: &#name_xbox) -> Self {
-                #conv_back_xbox
-            }
-        }
-        impl From<&#name> for #name_xbox {
-            fn from(value: &#name) -> Self {
-                #conv_xbox
-            }
-        }
-        #[cfg(feature = "python")]
-        impl <'py> pyo3::IntoPyObject<'py> for #name_xbox {
-            type Target = <#name as pyo3::IntoPyObject<'py>>::Target;
-            type Output = <#name as pyo3::IntoPyObject<'py>>::Output;
-            type Error = <#name as pyo3::IntoPyObject<'py>>::Error;
-            #[inline(always)]
-            fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-                #name::from(self).into_pyobject(py)
-            }
-        }
-        #[cfg(feature = "python")]
-        impl <'a, 'py> pyo3::IntoPyObject<'py> for &'a #name_xbox {
-            type Target = <#name as pyo3::IntoPyObject<'py>>::Target;
-            type Output = <#name as pyo3::IntoPyObject<'py>>::Output;
-            type Error = <#name as pyo3::IntoPyObject<'py>>::Error;
-            #[inline(always)]
-            fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-                #name::from(self).into_pyobject(py)
-            }
-        }
-
-        #[repr(C)]
-        #[derive(Default, Debug, Clone, zerocopy::KnownLayout, zerocopy::FromBytes, zerocopy::IntoBytes, zerocopy::Unaligned, zerocopy::Immutable)]
-        #vis #alt_class_ps3
-        impl #name_ps3 {
-            #vis #get_ps3
-        }
-        impl From<#name_ps3> for #name {
-            fn from(value: #name_ps3) -> Self {
-                #conv_back_ps3
-            }
-        }
-        impl From<#name> for #name_ps3 {
-            fn from(value: #name) -> Self {
-                #conv_ps3
-            }
-        }
-        impl From<&#name_ps3> for #name {
-            fn from(value: &#name_ps3) -> Self {
-                #conv_back_ps3
-            }
-        }
-        impl From<&#name> for #name_ps3 {
-            fn from(value: &#name) -> Self {
-                #conv_ps3
-            }
-        }
-        #[cfg(feature = "python")]
-        impl <'py> pyo3::IntoPyObject<'py> for #name_ps3 {
-            type Target = <#name as pyo3::IntoPyObject<'py>>::Target;
-            type Output = <#name as pyo3::IntoPyObject<'py>>::Output;
-            type Error = <#name as pyo3::IntoPyObject<'py>>::Error;
-            #[inline(always)]
-            fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-                #name::from(self).into_pyobject(py)
-            }
-        }
-        #[cfg(feature = "python")]
-        impl <'a, 'py> pyo3::IntoPyObject<'py> for &'a #name_ps3 {
-            type Target = <#name as pyo3::IntoPyObject<'py>>::Target;
-            type Output = <#name as pyo3::IntoPyObject<'py>>::Output;
-            type Error = <#name as pyo3::IntoPyObject<'py>>::Error;
-            #[inline(always)]
-            fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-                #name::from(self).into_pyobject(py)
-            }
-        }
-
-        impl crate::types::OrderedDataStrict for #name {
-            type PC = #name_pc;
-            type XBOX = #name_xbox;
-            type PS3 = #name_ps3;
-        }
-    };
-
-    proc_macro::TokenStream::from(expanded)
+    }.into()
 }
-
+/*
 fn filter_attrs(attrs: &Vec<Attribute>, ver: &Ident, name: Ident) -> (Ident, bool, Ident) {
     let mut val_ver = ver.clone();
     let mut skip = false;
@@ -351,17 +269,17 @@ fn filter_attrs(attrs: &Vec<Attribute>, ver: &Ident, name: Ident) -> (Ident, boo
                 .unwrap()
         })
     {
-        if val == "PC" || val == "XBOX" || val == "PS3" {
+        if val == "Pc" || val == "Xbox" || val == "Ps3" {
             val_ver = val;
-        } else if val == "skipPC" && ver == "PC" {
+        } else if val == "skipPC" && ver == "Pc" {
             skip = true;
-        } else if val == "skipXBOX" && ver == "XBOX" {
+        } else if val == "skipXBOX" && ver == "Xbox" {
             skip = true;
-        } else if val == "skipPS3" && ver == "PS3" {
+        } else if val == "skipPS3" && ver == "Ps3" {
             skip = true;
         }
     }
-    let alt_name = if ver == "PC" {
+    let alt_name = if ver == "Pc" {
         attrs
             .iter()
             .filter(|a| a.path().is_ident("name_pc"))
@@ -370,7 +288,7 @@ fn filter_attrs(attrs: &Vec<Attribute>, ver: &Ident, name: Ident) -> (Ident, boo
                     .unwrap()
             })
             .next()
-    } else if ver == "XBOX" {
+    } else if ver == "Xbox" {
         attrs
             .iter()
             .filter(|a| a.path().is_ident("name_xbox"))
@@ -379,7 +297,7 @@ fn filter_attrs(attrs: &Vec<Attribute>, ver: &Ident, name: Ident) -> (Ident, boo
                     .unwrap()
             })
             .next()
-    } else if ver == "PS3" {
+    } else if ver == "Ps3" {
         attrs
             .iter()
             .filter(|a| a.path().is_ident("name_ps3"))
@@ -405,14 +323,14 @@ fn conv_def(data: &Data, ver: &Ident) -> TokenStream {
                     let (_, skip, alt_name) = filter_attrs(&f.attrs, ver, name.clone().unwrap());
                     if !skip {
                         Some(quote_spanned! {
-                            f.span() => #alt_name: Into::into(&value.#alt_name)
+                            f.span() => #alt_name: OrderedData::conv(&value.#alt_name)
                         })
                     } else {
                         None
                     }
                 });
                 quote! {
-                    Self {
+                    {
                         #(#recurse),*,
                         ..Default::default()
                     }
@@ -422,74 +340,20 @@ fn conv_def(data: &Data, ver: &Ident) -> TokenStream {
                 let recurse = fields.unnamed.iter().enumerate().map(|(i, f)| {
                     let index = Index::from(i);
                     quote_spanned! {
-                        f.span() => Into::into(&value.#index)
+                        f.span() => OrderedData::conv(&value.#index)
                     }
                 });
                 quote! {
-                    Self (
+                    (
                         #(#recurse),*
                     )
                 }
             }
             Fields::Unit => {
-                quote! {
-                    Self
-                }
+                quote! {}
             }
         },
         Data::Enum(_) | Data::Union(_) => unimplemented!(),
-    }
-}
-
-fn get_def(input: &DeriveInput, ver: &Ident) -> TokenStream {
-    let classname = &input.ident;
-    let body = match input.data {
-        Data::Struct(ref data) => match data.fields {
-            Fields::Named(ref fields) => {
-                let recurse = fields.named.iter().filter_map(|f| {
-                    let name = &f.ident;
-                    let (_, skip, alt_name) = filter_attrs(&f.attrs, ver, name.clone().unwrap());
-                    if !skip {
-                        Some(quote_spanned! {
-                            //f.span() => #alt_name: crate::types::OrderedDataRef::into(&value.#alt_name, ())
-                            f.span() => #alt_name: Into::into(&self.#alt_name)
-                        })
-                    } else {
-                        None
-                    }
-                });
-                quote! {
-                    #classname {
-                        #(#recurse),*,
-                        ..Default::default()
-                    }
-                }
-            }
-            Fields::Unnamed(ref fields) => {
-                let recurse = fields.unnamed.iter().enumerate().map(|(i, f)| {
-                    let index = Index::from(i);
-                    quote_spanned! {
-                        f.span() => Into::into(&self.#index)
-                    }
-                });
-                quote! {
-                    #classname (
-                        #(#recurse),*
-                    )
-                }
-            }
-            Fields::Unit => {
-                quote! {
-                   #classname
-                }
-            }
-        },
-        Data::Enum(_) | Data::Union(_) => unimplemented!(),
-    };
-    quote! {
-        fn get(&self) -> #classname {
-           #body
-        }
     }
 }
 
@@ -502,15 +366,14 @@ fn conv_back_def(data: &Data, ver: &Ident) -> TokenStream {
                     let (_, skip, alt_name) = filter_attrs(&f.attrs, ver, name.clone().unwrap());
                     if !skip {
                         Some(quote_spanned! {
-                            //f.span() => #alt_name: crate::types::OrderedDataRef::into(&value.#alt_name, ())
-                            f.span() => #alt_name: Into::into(&value.#alt_name)
+                            f.span() => #alt_name: OrderedData::conv(&value.#alt_name)
                         })
                     } else {
                         None
                     }
                 });
                 quote! {
-                    Self {
+                    {
                         #(#recurse),*,
                         ..Default::default()
                     }
@@ -520,19 +383,17 @@ fn conv_back_def(data: &Data, ver: &Ident) -> TokenStream {
                 let recurse = fields.unnamed.iter().enumerate().map(|(i, f)| {
                     let index = Index::from(i);
                     quote_spanned! {
-                        f.span() => Into::into(&value.#index)
+                        f.span() => OrderedData::conv(&value.#index)
                     }
                 });
                 quote! {
-                    Self (
+                    (
                         #(#recurse),*
                     )
                 }
             }
             Fields::Unit => {
-                quote! {
-                    Self
-                }
+                quote! {}
             }
         },
         Data::Enum(_) | Data::Union(_) => unimplemented!(),
@@ -550,7 +411,7 @@ fn alt_class_def(data: &Data, classname: &Ident, ver: &Ident, vis: &Visibility) 
                         filter_attrs(&f.attrs, ver, name.clone().unwrap());
                     if !skip {
                         Some(quote_spanned! {
-                            f.span() => #vis #alt_name: <#ty as crate::types::OrderedDataStrict>::#val
+                            f.span() => #vis #alt_name: <#ty as OrderedDataStrict>::#val
                         })
                     } else {
                         None
@@ -566,7 +427,7 @@ fn alt_class_def(data: &Data, classname: &Ident, ver: &Ident, vis: &Visibility) 
                 let recurse = fields.unnamed.iter().map(|f| {
                     let ty = &f.ty;
                     quote_spanned! {
-                        f.span() => #vis <#ty as crate::types::OrderedDataStrict>::#ver
+                        f.span() => #vis <#ty as OrderedDataStrict>::#ver
                     }
                 });
                 quote! {
@@ -584,3 +445,4 @@ fn alt_class_def(data: &Data, classname: &Ident, ver: &Ident, vis: &Visibility) 
         Data::Enum(_) | Data::Union(_) => unimplemented!(),
     }
 }
+*/

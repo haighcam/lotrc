@@ -1,47 +1,23 @@
-#[cfg(feature = "python")]
-use crate::pyobj_ref;
 use anyhow::{anyhow, Context, Result};
 use indexmap::IndexMap;
 use log::warn;
-#[cfg(not(feature = "python"))]
-use lotrc_proc::getter;
-#[cfg(feature = "python")]
-use pyo3::prelude::*;
 use std::ptr::NonNull;
-use std::sync::Arc;
 
-use crate::types::{hash_string, Color, RefFromData};
+#[cfg(not(feature = "ffi"))]
+use crate::types::GetNative;
+use crate::types::{hash_string, Color, RefFromData, OrderedData, OrderedDataStrict, CompressedDataRef, BufType, CompressedDataRefAlt, slice, box_slice, Map, MapImpl, DumpSlice, DumpData, align_offset};
 #[make_platforms]
 use crate::{
     level::{
-        model::ModelVER,
         pak::{Block1VER, PakHeaderVER},
         bin::BinVER,
     },
-    types::{ColorVER, CrcVER, I32VER, U32VER},
+    types::{ColorVER, i32VER, u32VER},
     sub_blocks::gameobjs::GameObjsVER,
 };
 use lotrc_proc::{make_platforms, OrderedData};
 
-#[cfg(feature = "python")]
-pub fn init(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
-    let m = PyModule::new(py, "radiosity")?;
-    m.add_class::<Radiosity>()?;
-    m.add_class::<RadiosityValsInfo>()?;
-    init_pc(&m)?;
-    init_xbox(&m)?;
-    init_ps3(&m)?;
-    Ok(m)
-}
-#[cfg(feature = "python")]
-#[make_platforms]
-pub fn init_ver(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<RadiosityVER>()?;
-    m.add_class::<RadiosityValsVER>()
-}
-
 #[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(feature = "python", pyclass(module = "pak.objs", get_all, set_all))]
 // points to list of ints in block1
 pub struct RadiosityValsInfo {
     pub guid: u32,
@@ -50,7 +26,6 @@ pub struct RadiosityValsInfo {
 }
 
 #[make_platforms]
-#[cfg_attr(feature = "python", pyclass(module = "pak.objs"))]
 #[derive(Debug, Clone)]
 // list of ints pointing to the radiosity data
 // has a value for each mesh in the model
@@ -58,14 +33,10 @@ pub struct RadiosityValsInfo {
 // (value if offset to consecutive values in radiosity, one for each vertex of the mesh)
 // a value of -1 means no radiosity for that mesh
 pub struct RadiosityValsVER {
-    _ptr: Arc<[u8]>,
+    _ptr: BufType,
     info: NonNull<RadiosityValsInfoVER>,
-    vals: NonNull<[I32VER]>,
+    vals: NonNull<[i32VER]>,
 }
-
-#[cfg(feature = "python")]
-#[make_platforms]
-pyobj_ref!(RadiosityValsVER);
 
 #[make_platforms]
 unsafe impl Sync for RadiosityValsVER {}
@@ -74,10 +45,10 @@ unsafe impl Send for RadiosityValsVER {}
 
 #[make_platforms]
 impl RadiosityValsVER {
-    pub fn from_bytes(src: &Arc<[u8]>, offset: usize) -> Result<Self> {
+    pub fn from_bytes(src: &BufType, offset: usize) -> Result<Self> {
         let info = RadiosityValsInfoVER::from_data(&src[offset..]).context("info")?;
         let vals =
-            I32VER::slice_from_data(&src[info.offset.get() as usize..], info.num.get() as usize)
+            i32VER::slice_from_data(&src[info.offset.get() as usize..], info.num.get() as usize)
                 .context("vals")?;
         Ok(Self {
             _ptr: src.clone(),
@@ -88,33 +59,144 @@ impl RadiosityValsVER {
 }
 
 #[make_platforms]
-#[cfg_attr(feature = "python", pymethods)]
 impl RadiosityValsVER {
-    #[getter]
     pub fn info(&self) -> &RadiosityValsInfoVER {
         unsafe { self.info.as_ref() }
     }
-    #[getter]
-    pub fn vals(&self) -> &[I32VER] {
+    pub fn vals(&self) -> &[i32VER] {
         unsafe { self.vals.as_ref() }
     }
 }
 
 #[make_platforms]
-#[cfg_attr(feature = "python", pyclass(module = "bin"))]
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+#[repr(C)]
+pub struct RadiosityValsRefVER<'a> {
+    pub info: &'a RadiosityValsInfoVER,
+    pub offs: slice<'a, i32VER>,
+}
+
+#[make_platforms]
+impl<'a> RadiosityValsRefVER<'a> {
+    pub fn from_data(src: &'a [u8], info: &'a RadiosityValsInfoVER) -> Result<Self> {
+        let offs = i32VER::slice_from_data(&src[info.offset.get() as usize..], info.num.get() as usize).context("offs")?;
+        Ok(Self { info, offs: offs.into() })
+    }
+}
+
+#[make_platforms]
+pub trait DumpRadiosityValsVER {
+    fn off_num(&self) -> usize;
+    fn write_offs(&self, offs: &mut [i32VER]) -> Result<()>;
+    fn dump_into(&self, dst: &mut DumpSlice, info: &mut RadiosityValsInfoVER) -> Result<()> {
+        info.offset = dst.offset.conv(); 
+        let offs = i32VER::mut_slice_from_data(dst, self.off_num()).context("offs")?;
+        info.num = offs.len().conv();
+        self.write_offs(offs).context("write offs")?;
+        dst.align(16);
+        Ok(())
+    }
+    fn add_size(&self, offset: usize) -> usize {
+        align_offset(offset + self.off_num() * std::mem::size_of::<i32VER>(), 16)
+    }
+}
+
+#[make_platforms]
+impl DumpRadiosityValsVER for RadiosityValsRefVER<'_> {
+    fn off_num(&self) -> usize {
+        self.offs.len()
+    }
+    fn write_offs(&self, offs: &mut [i32VER]) -> Result<()> {
+        offs.write_from(&self.offs[..])
+    }
+}
+
+#[make_platforms]
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+#[repr(C)]
+pub struct RadiosityRefVER<'a> {
+    pub data: Option<&'a CompressedDataRefAlt<'a>>,
+    pub vals: Map<u32, RadiosityValsRefVER<'a>>,
+    pub usage: u32,
+}
+
+#[make_platforms]
+impl Default for RadiosityRefVER<'_> {
+    fn default() -> Self {
+        Self {
+            data: None,
+            vals: MapImpl::default().into(),
+            usage: 0
+        }
+    }
+}
+
+#[make_platforms]
+impl<'a> RadiosityRefVER<'a> {
+    pub fn from_data(src: &'a [u8], infos: &'a [RadiosityValsInfoVER], data: Option<&'a CompressedDataRefAlt<'a>>, usage: u32) -> Result<Self> {
+        let vals = infos.into_iter().map(|info| Ok((info.guid.get(), RadiosityValsRefVER::from_data(src, info).with_context(|| format!("radiosity {}", info.guid.get()))?))).collect::<Result<MapImpl<_, _>>>()?;
+        Ok(Self {
+            data,
+            vals: vals.into(),
+            usage
+        })
+    }
+}
+
+#[make_platforms]
+#[derive(Clone, Debug)]
+pub struct RadiosityRawVER {
+    _ptr: BufType,
+    data: CompressedDataRef,
+    infos: NonNull<[RadiosityValsInfoVER]>,
+    offs: Box<[NonNull<[i32VER]>]>,
+    usage: u32
+}
+
+#[make_platforms]
+impl RadiosityRawVER {
+    pub fn from_bytes(src: &BufType, bin: &BinVER, level: &GameObjsVER, pak_header: &PakHeaderVER) -> Result<Self> {
+        let infos = RadiosityValsInfoVER::slice_from_data(
+            &src[pak_header.radiosity_vals_info_offset.get() as usize..],
+            pak_header.radiosity_vals_info_num.get() as usize
+        ).context("infos")?;
+        let offs = infos.iter().map(|info| Ok(NonNull::from_ref(i32VER::slice_from_data(&src[info.offset.get() as usize..], info.num.get() as usize)?))).collect::<Result<Vec<_>>>().context("offs")?;
+        let field = level
+            .objs()
+            .iter()
+            .find(|(_, v)| v.header().key.get() == hash_string(b"templateLevel", None))
+            .ok_or(anyhow!("templateLevel not found"))?
+            .1
+            .get(&hash_string(b"name", None))
+            .ok_or(anyhow!("templateLevel missing name field"))?;
+        let name = field
+            .crc()
+            .ok_or(anyhow!("templateObject name field is not a crc"))?;
+        let radiosity_name = hash_string(b"_radiosity", Some(name.get()));
+        let model_data = bin.model_data();
+        let ind = model_data.get_index_of(&radiosity_name);
+        let data = ind.map(|x| model_data.get_index(x).unwrap().1.clone()).unwrap_or_default(); 
+        let usage =  ind.map(|x| bin.model_handles()[x].kind.get()).unwrap_or_default();
+        Ok(Self {
+            _ptr: src.clone(),
+            data,
+            infos: infos.into(),
+            offs: offs.into(),
+            usage
+        })
+    }
+}
+
+#[make_platforms]
 #[derive(Clone, Debug)]
 pub struct RadiosityVER {
-    _ptr: Arc<[u8]>,
-    data: Arc<[u8]>,
+    _ptr: BufType,
+    _data: BufType,
     infos: NonNull<[RadiosityValsInfoVER]>,
-    offs: Box<[NonNull<[I32VER]>]>,
+    offs: Box<[NonNull<[i32VER]>]>,
     vals: NonNull<[ColorVER]>,
     usage: u32,
 }
-
-#[cfg(feature = "python")]
-#[make_platforms]
-pyobj_ref!(RadiosityVER);
 
 #[make_platforms]
 unsafe impl Sync for RadiosityVER {}
@@ -122,70 +204,42 @@ unsafe impl Sync for RadiosityVER {}
 unsafe impl Send for RadiosityVER {}
 
 #[make_platforms]
-impl RadiosityVER {
-    pub fn from_bytes(src: &Arc<[u8]>, bin: &BinVER, level: &GameObjsVER, pak_header: &PakHeaderVER) -> Result<Self> {
-        let infos = RadiosityValsInfoVER::slice_from_data(
-            &src[pak_header.radiosity_vals_info_offset.get() as usize..],
-            pak_header.radiosity_vals_info_num.get() as usize
-        ).context("infos")?;
-        let offs = infos.iter().map(|info| Ok(NonNull::from_ref(I32VER::slice_from_data(&src[info.offset.get() as usize..], info.num.get() as usize)?))).collect::<Result<Vec<_>>>().context("offs")?;
-        let field = level
-            .objs()
-            .iter()
-            .find(|(_, v)| v.header().key == CrcVER::from(hash_string(b"templateLevel", None)))
-            .ok_or(anyhow!("templateLevel not found"))?
-            .1
-            .get(&CrcVER::from(hash_string(b"name", None)))
-            .ok_or(anyhow!("templateLevel missing name field"))?;
-        let name = field
-            .crc()
-            .ok_or(anyhow!("templateObject name field is not a crc"))?;
-        let radiosity_name = hash_string(b"_radiosity", Some(name.get()));
-        let model_data = bin.model_data().unwrap();
-        let ind = model_data.get_index_of(&radiosity_name);
-        let data = ind.map(|x| model_data.get_index(x).unwrap().1.clone()).unwrap_or_default();
-        let usage =  ind.map(|x| bin.model_handles()[x].kind.get()).unwrap_or_default();
-        if data.len() % 4 != 0 {
+impl TryFrom<RadiosityRawVER> for RadiosityVER {
+    type Error = anyhow::Error;
+    fn try_from(RadiosityRawVER { _ptr, data, infos, offs, usage }: RadiosityRawVER) -> Result<Self> {
+        let _data = data.get()?.clone();
+        if _data.len() % 4 != 0 {
             warn!("Radiosity length is incorrect?")
         }
-        let vals = NonNull::from_ref(ColorVER::slice_from_data(&data[..], data.len() / 4).context("vals")?);
-        Ok(Self {
-            _ptr: src.clone(),
-            data,
-            infos: infos.into(),
-            offs: offs.into(),
-            vals,
-            usage
-        })
+        let vals = NonNull::from_ref(if _data.len() == 0 {
+            &[] as _
+        } else {
+            ColorVER::slice_from_data(&_data[..], _data.len() / 4).context("vals")?
+        });
+        Ok(Self { _ptr, _data, infos, offs, vals, usage })
     }
 }
 
 #[make_platforms]
-#[cfg_attr(feature = "python", pymethods)]
 impl RadiosityVER {
-    #[getter]
     pub fn vals(&self) -> &[ColorVER] {
         unsafe { self.vals.as_ref() }
     }
-    #[getter]
     pub fn usage(&self) -> &u32 {
         &self.usage
     }
-    #[getter]
     pub fn infos(&self) -> &[RadiosityValsInfoVER] {
         unsafe { self.infos.as_ref() }
     }
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "python", pyclass(module = "bin", get_all, set_all))]
 pub enum RadiosityVal {
     Radiosity(Vec<Color>),
     NoRadiosity(u32),
 }
 
 #[derive(Debug, Default, Clone)]
-#[cfg_attr(feature = "python", pyclass(module = "bin", get_all, set_all))]
 pub struct Radiosity {
     pub vals: IndexMap<u32, Vec<RadiosityVal>>,
     pub usage: u32,
@@ -193,38 +247,31 @@ pub struct Radiosity {
 
 impl Radiosity {
     #[make_platforms]
-    pub fn from_ver(val: &RadiosityVER, block1: &Block1VER) -> Self {
-        let objs = block1.objs();
+    pub fn from_ver(val: &RadiosityVER, block1: &Block1VER) -> Result<Self> {
         let gameobjs = block1
             .sub_blocks()
-            .get(&CrcVER::new(hash_string(b"level", None)))
-            .unwrap()
-            .level()
-            .unwrap();
-        let model_inds: IndexMap<_, _> = objs
-            .models()
-            .iter()
-            .map(|model| (model.info().key, model))
-            .collect();
+            .get(&hash_string(b"level", None))
+            .ok_or(anyhow!("level block missing"))
+            .and_then(|x| x.level().ok_or(anyhow!("level block wrong format")))?;
+        let models = block1.objs().models();
         let mut off: usize = 0;
-        Radiosity {
+        Ok(Radiosity {
             vals: val.offs.iter().zip(val.infos())
                 .map(|(vals, info)| {
-                    let obj = gameobjs.objs().get(&info.guid).unwrap();
-                    let model = Context::<_, anyhow::Error>::with_context(
-                        {
-                            let field = obj
-                                .get(&CrcVER::new(hash_string(b"mesh", None)))
-                                .ok_or(anyhow!("missing mesh field"))?;
-                            let mesh = field.crc().ok_or(anyhow!("mesh field not crc"))?;
-                            Result::Ok(
-                                *model_inds
-                                    .get(mesh)
-                                    .ok_or_else(|| anyhow!("model {} missing", mesh))?,
-                            )
-                        },
-                        || format!("obj {}", info.guid.get()),
-                    )?;
+                    let obj = gameobjs.objs().get(&info.guid.get()).unwrap();
+                    let model = obj
+                        .get(&hash_string(b"mesh", None))
+                        .ok_or(anyhow!("missing mesh field"))
+                        .and_then(|field| {
+                            field.crc()
+                            .map(|x| x.get())
+                            .ok_or(anyhow!("mesh field not crc"))
+                        })
+                        .and_then(|mesh| {
+                            models.get(&mesh)
+                            .ok_or_else(|| anyhow!("model {} missing", mesh))
+                        })
+                        .with_context(|| format!("obj {}", info.guid.get()))?;
                     Ok((
                         info.guid.get(),
                         model.data().infos().iter()
@@ -238,7 +285,7 @@ impl Radiosity {
                                     RadiosityVal::Radiosity(
                                         val.vals()[offset..offset + size.get() as usize]
                                             .iter()
-                                            .map(|x| x.into())
+                                            .map(|x| x.conv())
                                             .collect(),
                                     )
                                 }
@@ -246,9 +293,43 @@ impl Radiosity {
                             .collect(),
                     ))
                 })
-                .collect::<Result<_>>()
-                .unwrap(),
+                .collect::<Result<_>>()?,
             usage: val.usage,
-        }
+        })
     }
+}
+
+#[make_platforms]
+pub trait DumpRadiosityVER {
+    fn vals_num(&self) -> usize;
+    fn vals(&self) -> impl Iterator<Item=(u32, &impl DumpRadiosityValsVER)>;
+    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut [RadiosityValsInfoVER]) -> Result<()> {
+        for ((guid, vals), info) in self.vals().zip(infos) {
+            vals.dump_into(dst, info).with_context(|| format!("vals {}", guid))?;
+            info.guid = guid.conv();
+        }
+        Ok(())
+    }
+    fn add_size(&self, mut offset: usize) -> usize {
+        for (_, vals) in self.vals() {
+            offset = vals.add_size(offset);
+        }
+        offset
+    }
+}
+
+#[make_platforms]
+impl DumpRadiosityVER for RadiosityRefVER<'_> {
+    fn vals_num(&self) -> usize {
+        self.vals.len()
+    }
+    fn vals(&self) -> impl Iterator<Item=(u32, &impl DumpRadiosityValsVER)> {
+        self.vals.iter().map(|(k,v)| (*k, v))
+    }
+}
+
+#[make_platforms]
+pub enum RadiosityPatchVER {
+    Raw(RadiosityRawVER),
+    Parsed(Radiosity)
 }

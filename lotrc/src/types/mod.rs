@@ -1,89 +1,79 @@
 use anyhow::{anyhow, Context, Result};
-#[cfg(not(feature = "python"))]
-use lotrc_proc::getter;
 use lotrc_proc::{make_platforms, OrderedData};
 use parking_lot::{MappedMutexGuard, Mutex, MutexGuard};
-#[cfg(feature = "python")]
-use pyo3::prelude::*;
 use std::collections::HashMap;
 use std::io::Read;
 use std::ptr::NonNull;
 use std::sync::Arc;
-use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 mod wrappers;
 pub use wrappers::*;
 
-#[cfg(feature = "python")]
-pub fn init(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
-    let m = PyModule::new(py, "types")?;
-    m.add_function(wrap_pyfunction!(hash_string, &m)?)?;
-    m.add_class::<Matrix4x4>()?;
-    m.add_class::<StringKeys>()?;
-    m.add_class::<StringKeysHeader>()?;
-    m.add_class::<StringKeysVal>()?;
-    m.add_class::<Strings>()?;
-    m.add_class::<Vector2>()?;
-    m.add_class::<Vector3>()?;
-    m.add_class::<Vector4>()?;
-    m.add_class::<Weight>()?;
-    init_pc(&m)?;
-    init_xbox(&m)?;
-    init_ps3(&m)?;
-    Ok(m)
-}
-#[cfg(feature = "python")]
-#[make_platforms]
-pub fn init_ver(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<StringsVER>()?;
-    m.add_class::<StringKeysVER>()
+//pub const BUF_ALIGN: usize = 2048;
+pub const BUF_ALIGN: usize = 4;
+pub type BufType = aligned_buffer::SharedAlignedBuffer<BUF_ALIGN>;
+
+//#[repr(transparent)]
+//#[derive(Default, Clone)]
+//pub struct BufType(aligned_buffer::SharedAlignedBuffer<BUF_ALIGN>);
+
+#[derive(Copy, Clone, Default, zerocopy::FromBytes, zerocopy::IntoBytes, zerocopy::Immutable, zerocopy::KnownLayout)]
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+//#[repr(C, align(4))]
+#[repr(C)]
+#[repr(align(4))]
+struct AlignmentHelper {
+    a: u8,
+    b: u8,
+    c: u8,
+    d: u8
 }
 
-pub trait OrderedDataStrict
-where
-    Self: Sized + Clone + Default,
-    for<'a> Self: From<&'a Self::PC> + From<&'a Self::XBOX> + From<&'a Self::PS3>,
-    Self::PC: Immutable
-        + KnownLayout
-        + FromBytes
-        + IntoBytes
-        + Unaligned
-        + Clone
-        + std::fmt::Debug
-        + Default,
-    Self::XBOX: Immutable
-        + KnownLayout
-        + FromBytes
-        + IntoBytes
-        + Unaligned
-        + Clone
-        + std::fmt::Debug
-        + Default,
-    Self::PS3: Immutable
-        + KnownLayout
-        + FromBytes
-        + IntoBytes
-        + Unaligned
-        + Clone
-        + std::fmt::Debug
-        + Default,
-{
-    type PC;
-    type XBOX;
-    type PS3;
-    const SIZE_PC: usize = std::mem::size_of::<Self::PC>();
-    const SIZE_XBOX: usize = std::mem::size_of::<Self::XBOX>();
-    const SIZE_PS3: usize = std::mem::size_of::<Self::PS3>();
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+#[repr(C)]
+#[derive(Default)]
+pub struct AlignedBuf {
+    data: box_slice<AlignmentHelper>,
+    size: usize
+}
+
+impl std::ops::Deref for AlignedBuf {
+    type Target = [u8];
+    fn deref(&self) -> &Self::Target {
+        &self.data.as_bytes()[..self.size]
+    }
+}
+impl std::ops::DerefMut for AlignedBuf {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.data.as_mut_bytes()[..self.size]
+    }
+}
+
+impl AlignedBuf {
+    pub fn with_capacity(size: usize) -> Self {
+        let inner_size = (size + std::mem::size_of::<AlignmentHelper>() - 1) / std::mem::size_of::<AlignmentHelper>();
+        let data = Box::<[AlignmentHelper]>::new_zeroed_slice(inner_size);
+        let data = unsafe { data.assume_init() };
+        Self { data: data.into(), size }
+    }
+    #[inline(always)]
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn len(&self) -> usize {
+        self.size
+    }
 }
 
 #[derive(Default)]
 pub struct ParseSlice {
-    pub src: Arc<[u8]>,
+    pub src: BufType,
     pub offset: usize,
 }
 
-impl From<Arc<[u8]>> for ParseSlice {
-    fn from(src: Arc<[u8]>) -> Self {
+impl From<BufType> for ParseSlice {
+    fn from(src: BufType) -> Self {
         Self { src, offset: 0 }
     }
 }
@@ -208,7 +198,7 @@ impl<T> RefFromData for T where T: Sized + KnownLayout + Immutable + FromBytes +
 
 pub type Color = u32;
 #[make_platforms]
-pub type ColorVER = U32VER;
+pub type ColorVER = u32VER;
 
 #[derive(Default, Debug, Clone, Eq, Hash, PartialEq)]
 #[repr(transparent)]
@@ -227,34 +217,6 @@ impl From<u32> for Crc {
         Self { val: value }
     }
 }
-impl From<&u32> for Crc {
-    fn from(value: &u32) -> Self {
-        Self { val: *value }
-    }
-}
-
-#[cfg(feature = "python")]
-impl<'py> FromPyObject<'_, 'py> for Crc {
-    type Error = PyErr;
-    #[inline(always)]
-    fn extract(obj: Borrowed<'_, 'py, PyAny>) -> PyResult<Self> {
-        Ok(Self {
-            val: u32::extract(obj)?,
-        })
-    }
-}
-
-#[cfg(feature = "python")]
-impl<'py> IntoPyObject<'py> for Crc {
-    type Target = <u32 as IntoPyObject<'py>>::Target;
-    type Output = <u32 as IntoPyObject<'py>>::Output;
-    type Error = <u32 as IntoPyObject<'py>>::Error;
-    #[inline(always)]
-    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        self.val.into_pyobject(py)
-    }
-}
-
 impl From<Crc> for u32 {
     fn from(value: Crc) -> Self {
         value.val
@@ -262,46 +224,131 @@ impl From<Crc> for u32 {
 }
 
 #[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(feature = "python", pyclass(module = "types", get_all, set_all))]
+#[repr(C)]
 pub struct Vector2 {
     pub x: f32,
     pub y: f32,
 }
+impl TryFrom<&[f32]> for Vector2 {
+    type Error = anyhow::Error;
+    fn try_from(val: &[f32]) -> Result<Self> {
+        if val.len() != 2 {
+            Err(anyhow!("need 2 values"))
+        } else {
+            Ok(Self { x: val[0], y: val[1] })
+        }
+    }
+}
+impl From<Vector2> for Vec<f32> {
+    fn from(val: Vector2) -> Self {
+        vec![val.x, val.y]
+    }
+}
 
 #[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(feature = "python", pyclass(module = "types", get_all, set_all))]
+#[repr(C)]
 pub struct Vector3 {
     pub x: f32,
     pub y: f32,
     pub z: f32,
 }
+impl TryFrom<&[f32]> for Vector3 {
+    type Error = anyhow::Error;
+    fn try_from(val: &[f32]) -> Result<Self> {
+        if val.len() != 3 {
+            Err(anyhow!("need 3 values"))
+        } else {
+            Ok(Self { x: val[0], y: val[1], z: val[2] })
+        }
+    }
+}
+impl From<Vector3> for Vec<f32> {
+    fn from(val: Vector3) -> Self {
+        vec![val.x, val.y, val.z]
+    }
+}
 
 #[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(feature = "python", pyclass(module = "types", get_all, set_all))]
+#[repr(C)]
 pub struct Vector4 {
     pub x: f32,
     pub y: f32,
     pub z: f32,
     pub w: f32,
 }
+impl TryFrom<&[f32]> for Vector4 {
+    type Error = anyhow::Error;
+    fn try_from(val: &[f32]) -> Result<Self> {
+        if val.len() != 4 {
+            Err(anyhow!("need 4 values"))
+        } else {
+            Ok(Self { x: val[0], y: val[1], z: val[2], w: val[3] })
+        }
+    }
+}
+impl From<Vector4> for Vec<f32> {
+    fn from(val: Vector4) -> Self {
+        vec![val.x, val.y, val.z, val.w]
+    }
+}
 
 #[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(feature = "python", pyclass(module = "types", get_all, set_all))]
 pub struct Matrix4x4 {
     pub x: Vector4,
     pub y: Vector4,
     pub z: Vector4,
     pub w: Vector4,
 }
+impl TryFrom<&[f32]> for Matrix4x4 {
+    type Error = anyhow::Error;
+    fn try_from(val: &[f32]) -> Result<Self> {
+        if val.len() != 16 {
+            Err(anyhow!("need 16 values"))
+        } else {
+            Ok(Self {
+                x: Vector4 { x: val[0], y: val[1], z: val[2], w: val[3] },
+                y: Vector4 { x: val[4], y: val[5], z: val[6], w: val[7] },
+                z: Vector4 { x: val[8], y: val[9], z: val[10], w: val[11] },
+                w: Vector4 { x: val[12], y: val[13], z: val[14], w: val[15] },
+            })
+        }
+    }
+}
+impl From<Matrix4x4> for Vec<f32> {
+    fn from(val: Matrix4x4) -> Self {
+        vec![
+            val.x.x, val.x.y, val.x.z, val.x.w,
+            val.y.x, val.y.y, val.y.z, val.y.w,
+            val.z.x, val.z.y, val.z.z, val.z.w,
+            val.w.x, val.w.y, val.w.z, val.w.w
+        ]
+    }
+}
 
 #[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(feature = "python", pyclass(module = "types", get_all, set_all))]
 pub struct Weight {
     pub x: u32,
     pub a: u8,
     pub b: u8,
     pub c: u8,
     pub d: u8,
+}
+impl TryFrom<&[u32]> for Weight {
+    type Error = anyhow::Error;
+    fn try_from(val: &[u32]) -> Result<Self> {
+        if val.len() != 5 {
+            Err(anyhow!("need 16 values"))
+        } else if val[1] > 255 || val[2] > 255 || val[3] > 255 || val[4] > 255 {
+            Err(anyhow!("values 1-5 must be < 255"))
+        } else {
+            Ok(Weight { x: val[0], a: val[1] as u8, b: val[2] as u8, c: val[3] as u8, d: val[4] as u8 })
+        }
+    }
+}
+impl From<Weight> for Vec<u32> {
+    fn from(val: Weight) -> Self {
+        vec![val.x, val.a as u32, val.b as u32, val.c as u32, val.d as u32]
+    }
 }
 
 lazy_static::lazy_static! {
@@ -339,16 +386,34 @@ pub fn get_str_debug(val: &u32) -> String {
         .unwrap_or_else(|| format!("unknown string {}", val))
 }
 
-pub fn decompress_block(data: &[u8], size_comp: usize, size: usize) -> Result<Box<[u8]>> {
-    //pub pak_datdda: Box<[u8]>,
-    Ok(match size_comp {
-        0 => (&data[..size]).into(),
+pub fn decompress_block(data: &[u8], size_comp: usize, size: usize) -> Result<BufType> {
+    let mut res = aligned_buffer::UniqueAlignedBuffer::<BUF_ALIGN>::with_capacity(size);
+    unsafe { res.set_len(size) }
+    match size_comp {
+        0 => res.copy_from_slice(&data[..size]),
         _ => {
-            let mut out = Vec::with_capacity(size);
-            flate2::read::ZlibDecoder::new(&data[..size_comp]).read_to_end(&mut out)?;
-            out.into()
+            let mut off = 0;
+            let mut reader = flate2::read::ZlibDecoder::new(&data[..size_comp]);
+            while off < size {
+                off += reader.read(&mut res[off..])?;
+            }
         }
-    })
+    }
+    Ok(res.into())
+}
+
+pub fn decompress_block_into(src: &[u8], dst: &mut [u8], size_comp: usize) -> Result<()> {
+    match size_comp {
+        0 => dst.copy_from_slice(&src[..dst.len()]),
+        _ => {
+            let mut off = 0;
+            let mut reader = flate2::read::ZlibDecoder::new(src);
+            while off < dst.len() {
+                off += reader.read(&mut dst[off..])?;
+            }
+        }
+    }
+    Ok(())
 }
 
 #[macro_export]
@@ -356,20 +421,6 @@ macro_rules! wrap_args {
     () => { () };
     ( $a:expr ) => { $a };
     ( $($a:expr),* ) => { ($($a),*) };
-}
-#[macro_export]
-macro_rules! pyobj_ref {
-    ($name:ident) => {
-        impl<'a, 'py> IntoPyObject<'py> for &'a $name {
-            type Target = <$name as IntoPyObject<'py>>::Target;
-            type Output = <$name as IntoPyObject<'py>>::Output;
-            type Error = <$name as IntoPyObject<'py>>::Error;
-            #[inline(always)]
-            fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-                (*self).clone().into_pyobject(py)
-            }
-        }
-    };
 }
 
 const HASHING_ARRAY: [u32; 256] = [
@@ -426,7 +477,6 @@ const LOWERCASE_BYTES: [usize; 256] = [
     0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9, 0xfa, 0xfb, 0xfc, 0xfd, 0xfe, 0xff,
 ];
 
-#[cfg_attr(feature = "python", pyfunction)]
 pub const fn hash_string(string: &[u8], mask: Option<u32>) -> u32 {
     let mut h = !match mask {
         Some(val) => val,
@@ -444,16 +494,43 @@ pub const fn hash_string(string: &[u8], mask: Option<u32>) -> u32 {
 }
 
 #[make_platforms]
-#[cfg_attr(feature = "python", pyclass(module = "types"))]
-#[derive(Debug, Clone)]
-pub struct StringsVER {
-    _ptr: Arc<[u8]>,
-    strings: Box<[NonNull<str>]>,
+#[derive(Default)]
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+#[repr(transparent)]
+pub struct StringsRefVER<'a> {
+    pub strings: box_slice<str_ref<'a>>
 }
 
-#[cfg(feature = "python")]
 #[make_platforms]
-pyobj_ref!(StringsVER);
+impl<'a> StringsRefVER<'a> {
+    pub fn from_data(src: &'a [u8], num: usize) -> Result<Self> {
+        let mut offset = 0;
+        let mut strings = Vec::with_capacity(num);
+        for i in 0..num {
+            let k = U32VER::from_data(&src[offset..]).context("size")?;
+            offset += 4;
+            strings.push(
+                std::str::from_utf8(&src[offset..offset + k.get() as usize])
+                    .with_context(|| format!("string {} of size {}", i, k.get()))?
+                    .into(),
+            );
+            offset += k.get() as usize;
+        }
+        Ok(Self {
+            strings: strings.into_boxed_slice().into(),
+        })
+    }
+    pub fn strings(&self) -> impl IntoIterator<Item=&str> {
+        self.strings.iter().map(|x| x.as_ref())
+    }
+}
+
+#[make_platforms]
+#[derive(Debug, Clone)]
+pub struct StringsVER {
+    _ptr: BufType,
+    strings: Box<[NonNull<str>]>,
+}
 
 #[make_platforms]
 unsafe impl Sync for StringsVER {}
@@ -462,7 +539,7 @@ unsafe impl Send for StringsVER {}
 
 #[make_platforms]
 impl StringsVER {
-    pub fn from_bytes(src: &Arc<[u8]>, mut offset: usize, num: usize) -> Result<Self> {
+    pub fn from_bytes(src: &BufType, mut offset: usize, num: usize) -> Result<Self> {
         let mut strings = Vec::with_capacity(num);
         for i in 0..num {
             let k = U32VER::from_data(&src[offset..]).context("size")?;
@@ -481,19 +558,15 @@ impl StringsVER {
 }
 
 #[make_platforms]
-#[cfg_attr(feature = "python", pymethods)]
 impl StringsVER {
-    #[getter]
     pub fn len(&self) -> usize {
         self.strings.len()
     }
-    #[getter]
     pub fn strings(&self) -> Vec<&str> {
         self.strings.iter().map(|x| unsafe { x.as_ref() }).collect()
     }
 }
 
-#[cfg_attr(feature = "python", pyclass(module = "types", get_all, set_all))]
 #[derive(Debug, Clone)]
 #[repr(transparent)]
 pub struct Strings {
@@ -512,10 +585,11 @@ impl From<&StringsVER> for Strings {
 #[make_platforms]
 pub trait DumpStringsVER {
     fn strings(&self) -> impl Iterator<Item = &str>;
+    fn num_strings(&self) -> usize;
     fn dump_into<'a>(&self, dst: &mut DumpSlice) -> Result<()> {
         for val in self.strings() {
-            let k = U32VER::mut_from_data(dst)?;
-            *k = val.len().into();
+            let k = u32VER::mut_from_data(dst)?;
+            *k = val.len().conv();
             val.as_bytes().dump_into(dst)?;
         }
         Ok(())
@@ -526,21 +600,35 @@ pub trait DumpStringsVER {
 }
 
 #[make_platforms]
+impl DumpStringsVER for StringsRefVER<'_> {
+    fn num_strings(&self) -> usize {
+        self.strings.len()
+    }
+    fn strings(&self) -> impl Iterator<Item = &str> {
+        self.strings.iter().map(|x| x.as_ref())
+    }
+}
+
+#[make_platforms]
 impl DumpStringsVER for StringsVER {
+    fn num_strings(&self) -> usize {
+        self.strings.len()
+    }
     fn strings(&self) -> impl Iterator<Item = &str> {
         self.strings.iter().map(|x| unsafe { x.as_ref() })
     }
 }
 #[make_platforms]
 impl DumpStringsVER for Strings {
+    fn num_strings(&self) -> usize {
+        self.strings.len()
+    }
     fn strings(&self) -> impl Iterator<Item = &str> {
         self.strings.iter().map(|x| x.as_ref())
     }
 }
 
 #[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(feature = "python", pyclass(module = "types", get_all, set_all))]
-#[repr(C)]
 pub struct StringKeysHeader {
     pub num_a: u16,
     pub num_b: u16,
@@ -551,26 +639,61 @@ pub struct StringKeysHeader {
 }
 
 #[derive(Debug, Default, Clone, OrderedData)]
-#[cfg_attr(feature = "python", pyclass(module = "types", get_all, set_all))]
-#[repr(C)]
 pub struct StringKeysVal {
     pub key: Crc,
     pub offset: u32,
 }
 
 #[make_platforms]
-#[cfg_attr(feature = "python", pyclass(module = "types"))]
 #[derive(Debug, Clone)]
-pub struct StringKeysVER {
-    _ptr: Arc<[u8]>,
-    header: NonNull<StringKeysHeaderVER>,
-    vals: NonNull<[StringKeysValVER]>,
-    pad: NonNull<[U32VER]>,
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+#[repr(C)]
+pub struct StringKeysRefVER<'a> {
+    pub header: &'a StringKeysHeaderVER,
+    pub vals: slice<'a, StringKeysValVER>,
+    pub pad: slice<'a, u32VER>,
 }
 
-#[cfg(feature = "python")]
 #[make_platforms]
-pyobj_ref!(StringKeysVER);
+impl Default for StringKeysRefVER<'_> {
+    fn default() -> Self {
+        Self {
+            header: get_default_ref(),
+            vals: slice::default(),
+            pad: slice::default()
+        }
+    }
+}
+
+const INIT_SIZE: usize = 1024;
+static INIT_BYTES: [u8; INIT_SIZE] = [0u8; INIT_SIZE];
+pub fn get_default_ref<'a, T: Sized + RefFromData>() -> &'a T {
+    &unsafe { (&INIT_BYTES[..]).align_to::<T>() }.1[0]
+}
+
+#[make_platforms]
+impl<'a> StringKeysRefVER<'a> {
+    pub fn from_data(src: &'a [u8]) -> Result<Self> {
+        let mut offset = 0;
+        let header = StringKeysHeaderVER::from_data(&src[offset..]).context("header")?;
+        assert!(header.num_a.get() == header.num_b.get(), "Seems to be true");
+        offset += header.size();
+        let vals = StringKeysValVER::slice_from_data(&src[offset..], header.num_a.get() as usize)
+            .context("vals")?;
+        offset += vals.size();
+        let pad = u32VER::slice_from_data(&src[offset..], vals.len()).context("pad")?;
+        Ok(Self { header, vals: vals.into(), pad: pad.into() })
+    }
+}
+
+#[make_platforms]
+#[derive(Debug, Clone)]
+pub struct StringKeysVER {
+    _ptr: BufType,
+    header: NonNull<StringKeysHeaderVER>,
+    vals: NonNull<[StringKeysValVER]>,
+    pad: NonNull<[u32VER]>,
+}
 
 #[make_platforms]
 unsafe impl Sync for StringKeysVER {}
@@ -579,14 +702,14 @@ unsafe impl Send for StringKeysVER {}
 
 #[make_platforms]
 impl StringKeysVER {
-    pub fn from_bytes(src: &Arc<[u8]>, mut offset: usize) -> Result<Self> {
+    pub fn from_bytes(src: &BufType, mut offset: usize) -> Result<Self> {
         let header = StringKeysHeaderVER::from_data(&src[offset..]).context("header")?;
         assert!(header.num_a.get() == header.num_b.get(), "Seems to be true");
         offset += header.size();
         let vals = StringKeysValVER::slice_from_data(&src[offset..], header.num_a.get() as usize)
             .context("vals")?;
         offset += vals.size();
-        let pad = U32VER::slice_from_data(&src[offset..], vals.len()).context("pad")?;
+        let pad = u32VER::slice_from_data(&src[offset..], vals.len()).context("pad")?;
         Ok(Self {
             _ptr: src.clone(),
             header: header.into(),
@@ -597,24 +720,20 @@ impl StringKeysVER {
 }
 
 #[make_platforms]
-#[cfg_attr(feature = "python", pymethods)]
 impl StringKeysVER {
-    #[getter]
     pub fn header(&self) -> &StringKeysHeaderVER {
         unsafe { self.header.as_ref() }
     }
-    #[getter]
     pub fn vals(&self) -> &[StringKeysValVER] {
         unsafe { self.vals.as_ref() }
     }
-    #[getter]
-    pub fn pad(&self) -> &[U32VER] {
+    pub fn pad(&self) -> &[u32VER] {
         unsafe { self.pad.as_ref() }
     }
 }
 
-#[cfg_attr(feature = "python", pyclass(module = "types", get_all, set_all))]
 #[derive(Debug, Clone)]
+#[repr(transparent)]
 pub struct StringKeys {
     pub vals: Vec<Crc>,
 }
@@ -623,41 +742,55 @@ pub struct StringKeys {
 impl From<&StringKeysVER> for StringKeys {
     fn from(val: &StringKeysVER) -> Self {
         Self {
-            vals: val.vals().iter().map(|x| x.key.into()).collect(),
+            vals: val.vals().iter().map(|x| x.key.conv()).collect(),
         }
     }
 }
 
 #[make_platforms]
 pub trait DumpStringKeysVER {
-    fn keys(&self) -> impl Iterator<Item = impl Into<CrcVER>>;
+    fn write_keys<'a>(&self, keys: impl Iterator<Item = &'a mut CrcVER>);
     fn num(&self) -> usize;
     fn size(&self) -> usize {
         StringKeysHeaderVER::size_of()
-            + self.num() * (U32VER::size_of() + StringKeysValVER::size_of())
+            + self.num() * (u32VER::size_of() + StringKeysValVER::size_of())
     }
     fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
         let num = self.num();
         let header = StringKeysHeaderVER::mut_from_data(dst).context("header")?;
         let vals = StringKeysValVER::mut_slice_from_data(dst, num).context("vals")?;
         let mut off = dst.offset;
-        U32VER::mut_slice_from_data(dst, num).context("pad")?;
+        u32VER::mut_slice_from_data(dst, num).context("pad")?;
 
-        header.num_a = num.into();
-        header.num_b = num.into();
-        for (key, val) in self.keys().zip(vals) {
-            val.key = key.into();
-            val.offset = off.into();
-            off += size_of::<U32VER>();
+        header.num_a = num.conv();
+        header.num_b = num.conv();
+        self.write_keys(vals.iter_mut().map(|x| &mut x.key));
+        for val in vals {
+            val.offset = off.conv();
+            off += size_of::<u32VER>();
         }
         Ok(())
     }
 }
 
 #[make_platforms]
+impl DumpStringKeysVER for StringKeysRefVER<'_> {
+    fn write_keys<'a>(&self, keys: impl Iterator<Item = &'a mut CrcVER>) {
+        for (key, val) in keys.zip(&self.vals[..]) {
+            *key = val.key;
+        }
+    }
+    fn num(&self) -> usize {
+        self.vals.len()
+    }
+}
+
+#[make_platforms]
 impl DumpStringKeysVER for StringKeysVER {
-    fn keys(&self) -> impl Iterator<Item = impl Into<CrcVER>> {
-        self.vals().iter().map(|x| x.key)
+    fn write_keys<'a>(&self, keys: impl Iterator<Item = &'a mut CrcVER>) {
+        for (key, val) in keys.zip(self.vals()) {
+            *key = val.key;
+        }
     }
     fn num(&self) -> usize {
         self.vals.len()
@@ -666,38 +799,120 @@ impl DumpStringKeysVER for StringKeysVER {
 
 #[make_platforms]
 impl DumpStringKeysVER for StringKeys {
-    fn keys(&self) -> impl Iterator<Item = impl Into<CrcVER>> {
-        self.vals.iter()
+    fn write_keys<'a>(&self, keys: impl Iterator<Item = &'a mut CrcVER>) {
+        for (key, val) in keys.zip(&self.vals) {
+            *key = val.conv();
+        }
     }
     fn num(&self) -> usize {
         self.vals.len()
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct CompressedDataRef {
-    _ptr: Arc<[u8]>,
+pub struct CompressedBlock {
+    pub data: AlignedBuf,
+    pub compressed: Vec<u8> 
+}
+
+impl CompressedBlock {
+    pub fn with_capacity(size: usize) -> Self {
+        Self {
+            data: AlignedBuf::with_capacity(size),
+            compressed: vec![]
+        }
+    }
+    pub fn dump_slice(&self) -> DumpSlice<'_> {
+        (&mut self.data[..]).into()
+    }
+    pub fn compress(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+struct CompressedDataImpl {
+    _ptr: BufType,
     data: NonNull<[u8]>,
-    size: usize
+    size: usize,
+    size_comp: usize,
+    data_decomp: std::sync::OnceLock<BufType>
+}
+
+unsafe impl Sync for CompressedDataImpl {}
+unsafe impl Send for CompressedDataImpl {}
+
+#[derive(Clone, Debug)]
+pub struct CompressedDataRef(Arc<CompressedDataImpl>);
+
+impl Default for CompressedDataRef {
+    fn default() -> Self {
+        Self(Arc::new(CompressedDataImpl {
+            _ptr: BufType::new(), 
+            data: NonNull::from_ref(&[]),
+            size: 0,
+            size_comp: 0,
+            data_decomp: std::sync::OnceLock::new()
+        }))
+    }
 }
 
 impl CompressedDataRef {
-    pub fn get(&self) -> Result<Arc<[u8]>> {
-        let data_comp = unsafe { self.data.as_ref() };
-        Ok(match self.size {
-            0 => data_comp.into(),
-            x => {
-                let mut out = Vec::with_capacity(x);
-                flate2::read::ZlibDecoder::new(data_comp).read_to_end(&mut out)?;
-                out.into()
-            }
+    pub fn from_bytes(src: &BufType, offset: usize, size: usize, size_comp: usize) -> Self {
+        let data = if size_comp == 0 {
+            &src[offset..offset+size]
+        } else {
+            &src[offset..offset+size_comp]
+        };
+        Self(Arc::new(CompressedDataImpl{
+            _ptr: src.clone(),
+            data: data.into(),
+            size,
+            size_comp,
+            data_decomp: std::sync::OnceLock::new()
+        }))
+    }
+    pub fn decomp(&self) -> Result<()> {
+        let data_comp = unsafe { self.0.data.as_ref() };
+        self.0.data_decomp.set(decompress_block(data_comp, self.0.size_comp,  self.0.size)?).ok();
+        Ok(())
+    }
+    pub fn get(&self) -> Result<&BufType> {
+        let val = self.0.data_decomp.get();
+        Ok(if val.is_none() {
+            self.decomp()?;
+            self.0.data_decomp.get().unwrap()
+        } else {
+            val.unwrap()
         })
     }
-    pub fn empty() -> Self {
-        Self {
-            _ptr: Arc::new([]),
-            data: NonNull::from_ref(&[]),
-            size: 0
+}
+
+#[derive(Default)]
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+#[repr(C)]
+pub struct CompressedDataRefAlt<'a> {
+    data: slice<'a, u8>,
+    data_decomp: AlignedBuf
+}
+
+impl<'a> CompressedDataRefAlt<'a> {
+    pub fn from_data(src: &'a [u8], size_comp: usize, size: usize) -> Self {
+        let mut data_decomp = AlignedBuf::with_capacity(size);
+        let data = if size_comp == 0 {
+            data_decomp.copy_from_slice(&src[..size]);
+            &[] as _
+        } else {
+            &src[..size_comp]
+        };
+        Self { data: data.into(), data_decomp }
+    }
+    pub fn decompress(&mut self) -> Result<()> {
+        if self.data.len() != 0 {
+            decompress_block_into(&self.data[..], &mut self.data_decomp[..], self.data.len())?;
         }
+        Ok(())
+    }
+    pub fn get(&self) -> &[u8] {
+        &*self.data_decomp
     }
 }

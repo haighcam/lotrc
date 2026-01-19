@@ -4,8 +4,18 @@ members = [
     "lotrc",
     "lotrc_rs",
     "lotrc_proc",
+    "ffi", "ffi_alt",
 ]
 
 [profile.release]
 #strip = true
 lto = true
+
+[workspace.dependencies]
+lotrc_proc = { path = "lotrc_proc" }
+lotrc = { path = "lotrc" }
+log = "0.4.21"
+indexmap = "2.6.0"
+zerocopy = "0.8.10"
+anyhow = "1.0.86"
+safer-ffi = "0.1.13"

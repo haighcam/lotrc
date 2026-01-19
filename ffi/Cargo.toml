@@ -1,0 +1,15 @@
+[package]
+name = "ffi"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "lotrc_ffi"
+crate-type = ["cdylib"]
+
+[dependencies]
+lotrc = { workspace = true }
+zerocopy = { workspace = true }
+anyhow = { workspace = true }
+stdint = "1"
+

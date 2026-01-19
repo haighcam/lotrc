@@ -1,0 +1,17 @@
+[package]
+name = "ffi_alt"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = []
+headers = ["safer-ffi/headers"]
+
+[[bin]]
+name = "gen_ffi"
+required-features = ["headers"]
+
+[dependencies]
+safer-ffi = { workspace = true, features = ["proc_macros"] }
+lotrc = { workspace = true, features = ["ffi"] }
+anyhow = { workspace = true }

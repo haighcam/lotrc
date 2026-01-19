@@ -1166,9 +1166,9 @@ pub trait DumpObjsVER {
     fn obj0_num(&self) -> usize;
     fn effect_num(&self) -> usize;
     fn folage_num(&self) -> usize;
-    // TODO proper pfield dumping
     fn pfield_num(&self) -> usize;
     fn gfx_num(&self) -> usize;
+    fn radiosity_val_num(&self) -> usize;
     fn write_objas(&self, objas: &mut [ObjAVER]) -> Result<()>;
     fn write_obj0s(&self, obj0s: &mut [Obj0VER]) -> Result<()>;
     fn effects(&self) -> impl Iterator<Item=(u32, &impl DumpGameObjsVER)>;
@@ -1389,9 +1389,6 @@ pub trait DumpObjsVER {
         radiosity.dump_into(dst, radiosity_vals_infos).context("radiosity")?;
         dst.align(16);
 
-
-        // populate offsets
-
         Ok(dump_infos)
     }
 
@@ -1475,28 +1472,14 @@ impl DumpObjsVER for ObjsRefVER<'_> {
     fn pfield_num(&self) -> usize {
         self.pfield_infos.len()
     }
-    fn gfx_num(&self) -> usize {
-        self.gfxs.len()
-    }
-    fn write_objas(&self, objas: &mut [ObjAVER]) -> Result<()> {
-        objas.write_from(&self.objas[..])
-    }
-    fn write_obj0s(&self, obj0s: &mut [Obj0VER]) -> Result<()> {
-        obj0s.write_from(&self.obj0s[..])
-    }
-    fn effects(&self) -> impl Iterator<Item=(u32, &impl DumpGameObjsVER)> {
-        self.effects.iter().map(|(k,v)| (*k, v))
-    }
-    fn models(&self) -> impl Iterator<Item=(u32, &impl DumpModelVER)> {
-        self.models.iter().map(|(k,v)| (*k, v))
-    }
-    fn foliages(&self) -> impl Iterator<Item=&impl DumpFoliageVER> {
-        self.foliages.iter().flat_map(|(_, x)| x.iter())
-    }
-    fn gfxs(&self) -> impl Iterator<Item=(u32, &[u8])> {
-        self.gfxs.iter().map(|(k,v)| (*k, &v[..]))
-    }
-    fn radiosity(&self) -> &impl DumpRadiosityVER {
-        &self.radiosity
-    }
+    fn gfx_num(&self) -> usize;
+    fn radiosity_val_num(&self) -> usize;
+    fn write_objas(&self, objas: &mut [ObjAVER]) -> Result<()>;
+    fn write_obj0s(&self, obj0s: &mut [Obj0VER]) -> Result<()>;
+    fn effects(&self) -> impl Iterator<Item=(u32, &impl DumpGameObjsVER)>;
+    fn models(&self) -> impl Iterator<Item=(u32, &impl DumpModelVER)>;
+    fn foliages(&self) -> impl Iterator<Item=&impl DumpFoliageVER>;
+    fn gfxs(&self) -> impl Iterator<Item=(u32, &[u8])>;
+    fn radiosity(&self) -> &impl DumpRadiosityVER;
+
 }

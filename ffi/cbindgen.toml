@@ -1,0 +1,8 @@
+[parse]
+parse_deps = true
+include = ["lotrc"]
+
+[parse.expand]
+crates = ["lotrc", "ffi"]
+
+
