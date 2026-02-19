@@ -325,7 +325,7 @@ pub const fn hash_string(string: &[u8], mask: Option<u32>) -> u32 {
 lazy_static::lazy_static! {
     pub static ref STRING_LOOKUP: Mutex<HashMap<u32, String>> = {
         const CONQUEST_STRINGS: &str = include_str!("../res/conquest_strings.txt");
-        Mutex::new(CONQUEST_STRINGS.split('\n').map(|x| (hash_string(x.as_bytes(), None), String::from(x))).collect())
+        Mutex::new(CONQUEST_STRINGS.replace("\r\n", "\n").split('\n').map(|x| (hash_string(x.as_bytes(), None), String::from(x))).collect())
     };
 
     pub static ref ANIMATION_EVENTS: HashMap<Crc, Vec<u32>> = {
