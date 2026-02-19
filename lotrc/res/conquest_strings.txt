@@ -8381,3 +8381,13 @@ UnreadyProjectile_RightHand
 orientZToMovementDirection
 mistStaff
 BBox
+camera_defintion
+camera_effect
+AreaLobber
+ArcLobber
+PathNode
+spawn_class
+spawn_node
+spawn_region
+drop_item
+PathLink
