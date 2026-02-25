@@ -9,12 +9,16 @@ use crate::types::{hash_string, Color, RefFromData, OrderedData, OrderedDataStri
 #[make_platforms]
 use crate::{
     level::{
-        pak::{Block1VER, PakHeaderVER},
+        pak::{
+            objs::DumpInfosVER,
+            Block1VER, PakHeaderVER
+        },
         bin::BinVER,
     },
     types::{ColorVER, i32VER, u32VER},
     sub_blocks::gameobjs::GameObjsVER,
 };
+use crate::level::pak::objs::InfoCounts;
 use lotrc_proc::{make_platforms, OrderedData};
 
 #[derive(Debug, Default, Clone, OrderedData)]
@@ -301,30 +305,39 @@ impl Radiosity {
 
 #[make_platforms]
 pub trait DumpRadiosityVER {
-    fn vals_num(&self) -> usize;
+    type Data;
     fn vals(&self) -> impl Iterator<Item=(u32, &impl DumpRadiosityValsVER)>;
-    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut [RadiosityValsInfoVER]) -> Result<()> {
-        for ((guid, vals), info) in self.vals().zip(infos) {
+    fn dump_into<D>(&self, dst: &mut DumpSlice, infos: &mut DumpInfosVER<D>) -> Result<()> {
+        for (guid, vals) in self.vals() {
+            *infos.offsets.next() = (infos.radiosity_vals.offset + std::mem::offset_of!(RadiosityValsInfoVER, offset)).conv();
+            let info = infos.radiosity_vals.next();
             vals.dump_into(dst, info).with_context(|| format!("vals {}", guid))?;
             info.guid = guid.conv();
         }
         Ok(())
     }
-    fn add_size(&self, mut offset: usize) -> usize {
+    fn add_size(&self, mut offset: usize, counts: &mut InfoCounts) -> usize {
         for (_, vals) in self.vals() {
+            counts.radiosity_vals += 1;
             offset = vals.add_size(offset);
         }
         offset
     }
+    fn data(&self) -> Option<Self::Data>;
+    fn usage(&self) -> u32VER;
 }
 
 #[make_platforms]
-impl DumpRadiosityVER for RadiosityRefVER<'_> {
-    fn vals_num(&self) -> usize {
-        self.vals.len()
-    }
+impl<'a> DumpRadiosityVER for RadiosityRefVER<'a> {
+    type Data = &'a CompressedDataRefAlt<'a>;
     fn vals(&self) -> impl Iterator<Item=(u32, &impl DumpRadiosityValsVER)> {
         self.vals.iter().map(|(k,v)| (*k, v))
+    }
+    fn data(&self) -> Option<Self::Data> {
+        self.data
+    }
+    fn usage(&self) -> u32VER {
+        self.usage.conv()
     }
 }
 

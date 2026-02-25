@@ -13,57 +13,126 @@
 extern "C" {
 #endif
 
-/** \brief
- *  The layout of `lotrc::sub_blocks::gameobjs::BaseTypeRefPc<'_>` is opaque/subject to changes.
- */
-typedef struct Opaque_BaseTypeRefPc___ Opaque_BaseTypeRefPc____t;
-
-
-#include <stdbool.h>
-
 /** <No documentation available> */
-bool
-lotrc_basetype_get_bool_pc (
-    Opaque_BaseTypeRefPc____t const * basetype);
-
-/** \brief
- *  The layout of `lotrc::sub_blocks::gameobjs::BaseTypeRefPs3<'_>` is opaque/subject to changes.
- */
-typedef struct Opaque_BaseTypeRefPs3___ Opaque_BaseTypeRefPs3____t;
-
-/** <No documentation available> */
-bool
-lotrc_basetype_get_bool_ps3 (
-    Opaque_BaseTypeRefPs3____t const * basetype);
-
-/** \brief
- *  The layout of `lotrc::sub_blocks::gameobjs::BaseTypeRefXbox<'_>` is opaque/subject to changes.
- */
-typedef struct Opaque_BaseTypeRefXbox___ Opaque_BaseTypeRefXbox____t;
-
-/** <No documentation available> */
-bool
-lotrc_basetype_get_bool_xbox (
-    Opaque_BaseTypeRefXbox____t const * basetype);
+typedef struct MapImpl_u32_AnimationRefPc___ MapImpl_u32_AnimationRefPc____t;
 
 
 #include <stddef.h>
 #include <stdint.h>
 
 /** <No documentation available> */
-uint32_t
-lotrc_basetype_get_color_pc (
-    Opaque_BaseTypeRefPc____t const * basetype);
+typedef struct AnimationInfoPc {
+    /** <No documentation available> */
+    uint32_t key;
 
-/** <No documentation available> */
-uint32_t
-lotrc_basetype_get_color_ps3 (
-    Opaque_BaseTypeRefPs3____t const * basetype);
+    /** <No documentation available> */
+    int32_t gamemodemask;
 
-/** <No documentation available> */
-uint32_t
-lotrc_basetype_get_color_xbox (
-    Opaque_BaseTypeRefXbox____t const * basetype);
+    /** <No documentation available> */
+    uint32_t offset;
+
+    /** <No documentation available> */
+    uint32_t size;
+
+    /** <No documentation available> */
+    uint32_t kind;
+
+    /** <No documentation available> */
+    float unk_5;
+
+    /** <No documentation available> */
+    uint32_t vals_num;
+
+    /** <No documentation available> */
+    uint32_t vals2_num;
+
+    /** <No documentation available> */
+    uint32_t unk_8;
+
+    /** <No documentation available> */
+    uint32_t vala;
+
+    /** <No documentation available> */
+    uint32_t unk_10;
+
+    /** <No documentation available> */
+    uint32_t unk_11;
+
+    /** <No documentation available> */
+    uint32_t data_offset;
+
+    /** <No documentation available> */
+    float unk_13;
+
+    /** <No documentation available> */
+    float unk_14;
+
+    /** <No documentation available> */
+    float t_scale;
+
+    /** <No documentation available> */
+    uint32_t block_starts_offset;
+
+    /** <No documentation available> */
+    uint32_t block_starts_num;
+
+    /** <No documentation available> */
+    uint32_t block_starts2_offset;
+
+    /** <No documentation available> */
+    uint32_t block_starts2_num;
+
+    /** <No documentation available> */
+    uint32_t obj_c3_offset;
+
+    /** <No documentation available> */
+    uint32_t obj_c3_num;
+
+    /** <No documentation available> */
+    uint32_t obj_c4_offset;
+
+    /** <No documentation available> */
+    uint32_t obj_c4_num;
+
+    /** <No documentation available> */
+    uint32_t block_offset;
+
+    /** <No documentation available> */
+    uint32_t block_size;
+
+    /** <No documentation available> */
+    uint32_t obj3_num;
+
+    /** <No documentation available> */
+    uint32_t obj3_offset;
+
+    /** <No documentation available> */
+    uint32_t bones_num1;
+
+    /** <No documentation available> */
+    uint32_t unk_29;
+
+    /** <No documentation available> */
+    uint32_t obj1_num;
+
+    /** <No documentation available> */
+    uint32_t bones_offset;
+
+    /** <No documentation available> */
+    uint32_t unk_32;
+
+    /** <No documentation available> */
+    uint32_t obj1_offset;
+
+    /** <No documentation available> */
+    uint32_t obj2_offset;
+
+    /** <No documentation available> */
+    uint32_t obj2_num;
+
+    /** <No documentation available> */
+    uint32_t obj5_offset;
+} AnimationInfoPc_t;
 
 /** \brief
  *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
@@ -95,6 +164,1652 @@ typedef struct slice_ref_uint32 {
      */
     size_t len;
 } slice_ref_uint32_t;
+
+/** <No documentation available> */
+typedef struct Obj3Pc {
+    /** <No documentation available> */
+    float t;
+
+    /** <No documentation available> */
+    uint32_t event;
+
+    /** <No documentation available> */
+    uint32_t dat_2;
+
+    /** <No documentation available> */
+    uint32_t dat_3;
+
+    /** <No documentation available> */
+    uint32_t dat_4;
+
+    /** <No documentation available> */
+    uint32_t dat_5;
+
+    /** <No documentation available> */
+    uint32_t dat_6;
+
+    /** <No documentation available> */
+    uint32_t dat_7;
+
+    /** <No documentation available> */
+    uint32_t dat_8;
+
+    /** <No documentation available> */
+    uint32_t dat_9;
+
+    /** <No documentation available> */
+    uint32_t dat_10;
+} Obj3Pc_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_Obj3Pc {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    Obj3Pc_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_Obj3Pc_t;
+
+/** <No documentation available> */
+typedef struct Obj5HeaderPc {
+    /** <No documentation available> */
+    uint32_t obj_a_num;
+
+    /** <No documentation available> */
+    uint32_t obj_a_offset;
+
+    /** <No documentation available> */
+    uint32_t obj_b_num;
+
+    /** <No documentation available> */
+    uint32_t obj_b_offset;
+} Obj5HeaderPc_t;
+
+/** <No documentation available> */
+typedef struct Obj5ValPc {
+    /** <No documentation available> */
+    float unk_0;
+
+    /** <No documentation available> */
+    float unk_1;
+
+    /** <No documentation available> */
+    float unk_2;
+
+    /** <No documentation available> */
+    float unk_3;
+
+    /** <No documentation available> */
+    float unk_4;
+
+    /** <No documentation available> */
+    float unk_5;
+
+    /** <No documentation available> */
+    float unk_6;
+} Obj5ValPc_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_Obj5ValPc {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    Obj5ValPc_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_Obj5ValPc_t;
+
+
+#include <stdbool.h>
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_uint8 {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    uint8_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_uint8_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_float {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    float const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_float_t;
+
+/** \brief
+ *  The layout of `lotrc::level::pak::animation::AnimVals1RefPc<'_>` is opaque/subject to changes.
+ */
+typedef struct Opaque_AnimVals1RefPc___ Opaque_AnimVals1RefPc____t;
+
+/** <No documentation available> */
+typedef struct Obj1RefPc {
+    /** <No documentation available> */
+    uint8_t flags;
+
+    /** <No documentation available> */
+    uint8_t s2;
+
+    /** <No documentation available> */
+    uint16_t s1;
+
+    /** <No documentation available> */
+    slice_ref_uint8_t data;
+
+    /** <No documentation available> */
+    slice_ref_float_t vals_a;
+
+    /** <No documentation available> */
+    Opaque_AnimVals1RefPc____t * vals;
+
+    /** <No documentation available> */
+    size_t size;
+} Obj1RefPc_t;
+
+/** \brief
+ *  The layout of `lotrc::level::pak::animation::RotationQuantizationRefPc<'_>` is opaque/subject to changes.
+ */
+typedef struct Opaque_RotationQuantizationRefPc___ Opaque_RotationQuantizationRefPc____t;
+
+/** <No documentation available> */
+typedef struct Obj2RefPc {
+    /** <No documentation available> */
+    uint8_t flags;
+
+    /** <No documentation available> */
+    uint8_t s2;
+
+    /** <No documentation available> */
+    uint16_t s1;
+
+    /** <No documentation available> */
+    slice_ref_uint8_t data;
+
+    /** <No documentation available> */
+    Opaque_RotationQuantizationRefPc____t * vals;
+
+    /** <No documentation available> */
+    size_t size;
+} Obj2RefPc_t;
+
+/** <No documentation available> */
+typedef struct BlockValARefPc {
+    /** <No documentation available> */
+    Obj1RefPc_t a;
+
+    /** <No documentation available> */
+    Obj2RefPc_t b;
+
+    /** <No documentation available> */
+    Obj1RefPc_t c;
+} BlockValARefPc_t;
+
+/** \brief
+ *  [`Box`][`rust::Box`]`<[T]>` (fat pointer to a slice),
+ *  but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_boxed_BlockValARefPc {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    BlockValARefPc_t * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_boxed_BlockValARefPc_t;
+
+/** \brief
+ *  [`Box`][`rust::Box`]`<[T]>` (fat pointer to a slice),
+ *  but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_boxed_Obj1RefPc {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    Obj1RefPc_t * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_boxed_Obj1RefPc_t;
+
+/** <No documentation available> */
+typedef struct BlockValRefPc {
+    /** <No documentation available> */
+    slice_boxed_BlockValARefPc_t vals_a;
+
+    /** <No documentation available> */
+    slice_boxed_Obj1RefPc_t vals_b;
+} BlockValRefPc_t;
+
+/** \brief
+ *  [`Box`][`rust::Box`]`<[T]>` (fat pointer to a slice),
+ *  but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_boxed_BlockValRefPc {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    BlockValRefPc_t * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_boxed_BlockValRefPc_t;
+
+/** <No documentation available> */
+typedef struct BlocksRefPc {
+    /** <No documentation available> */
+    slice_ref_uint32_t block_starts;
+
+    /** <No documentation available> */
+    slice_ref_uint32_t block_starts2;
+
+    /** <No documentation available> */
+    slice_ref_uint32_t obj_c3;
+
+    /** <No documentation available> */
+    slice_ref_uint32_t obj_c4;
+
+    /** <No documentation available> */
+    slice_boxed_BlockValRefPc_t blocks;
+} BlocksRefPc_t;
+
+/** \brief
+ *  Simplified for lighter documentation, but the actual impls
+ *  range from `Tuple1` up to `Tuple6`.
+ */
+typedef struct Tuple2_bool_BlocksRefPc {
+    /** <No documentation available> */
+    bool _0;
+
+    /** <No documentation available> */
+    BlocksRefPc_t _1;
+} Tuple2_bool_BlocksRefPc_t;
+
+/** <No documentation available> */
+typedef struct AnimationRefPc {
+    /** <No documentation available> */
+    AnimationInfoPc_t const * info;
+
+    /** <No documentation available> */
+    slice_ref_uint32_t obj1;
+
+    /** <No documentation available> */
+    slice_ref_uint32_t obj2;
+
+    /** <No documentation available> */
+    slice_ref_Obj3Pc_t obj3;
+
+    /** <No documentation available> */
+    slice_ref_uint32_t bones;
+
+    /** <No documentation available> */
+    Obj5HeaderPc_t const * obj5_header;
+
+    /** <No documentation available> */
+    slice_ref_Obj5ValPc_t obj5_a;
+
+    /** <No documentation available> */
+    slice_ref_Obj5ValPc_t obj5_b;
+
+    /** <No documentation available> */
+    Tuple2_bool_BlocksRefPc_t blocks;
+
+    /** <No documentation available> */
+    size_t size;
+} AnimationRefPc_t;
+
+/** <No documentation available> */
+AnimationRefPc_t const *
+lotrc_anim_map_get_pc (
+    MapImpl_u32_AnimationRefPc____t * const * map,
+    uint32_t key);
+
+/** <No documentation available> */
+typedef struct MapImpl_u32_AnimationRefPs3___ MapImpl_u32_AnimationRefPs3____t;
+
+/** <No documentation available> */
+typedef struct AnimationInfoPs3 {
+    /** <No documentation available> */
+    uint32_t key;
+
+    /** <No documentation available> */
+    int32_t gamemodemask;
+
+    /** <No documentation available> */
+    uint32_t offset;
+
+    /** <No documentation available> */
+    uint32_t size;
+
+    /** <No documentation available> */
+    uint32_t kind;
+
+    /** <No documentation available> */
+    float unk_5;
+
+    /** <No documentation available> */
+    uint32_t vals_num;
+
+    /** <No documentation available> */
+    uint32_t vals2_num;
+
+    /** <No documentation available> */
+    uint32_t unk_8;
+
+    /** <No documentation available> */
+    uint32_t vala;
+
+    /** <No documentation available> */
+    uint32_t unk_10;
+
+    /** <No documentation available> */
+    uint32_t unk_11;
+
+    /** <No documentation available> */
+    uint32_t data_offset;
+
+    /** <No documentation available> */
+    float unk_13;
+
+    /** <No documentation available> */
+    float unk_14;
+
+    /** <No documentation available> */
+    float t_scale;
+
+    /** <No documentation available> */
+    uint32_t block_starts_offset;
+
+    /** <No documentation available> */
+    uint32_t block_starts_num;
+
+    /** <No documentation available> */
+    uint32_t block_starts2_offset;
+
+    /** <No documentation available> */
+    uint32_t block_starts2_num;
+
+    /** <No documentation available> */
+    uint32_t obj_c3_offset;
+
+    /** <No documentation available> */
+    uint32_t obj_c3_num;
+
+    /** <No documentation available> */
+    uint32_t obj_c4_offset;
+
+    /** <No documentation available> */
+    uint32_t obj_c4_num;
+
+    /** <No documentation available> */
+    uint32_t block_offset;
+
+    /** <No documentation available> */
+    uint32_t block_size;
+
+    /** <No documentation available> */
+    uint32_t obj3_num;
+
+    /** <No documentation available> */
+    uint32_t obj3_offset;
+
+    /** <No documentation available> */
+    uint32_t bones_num1;
+
+    /** <No documentation available> */
+    uint32_t unk_29;
+
+    /** <No documentation available> */
+    uint32_t obj1_num;
+
+    /** <No documentation available> */
+    uint32_t bones_offset;
+
+    /** <No documentation available> */
+    uint32_t unk_32;
+
+    /** <No documentation available> */
+    uint32_t obj1_offset;
+
+    /** <No documentation available> */
+    uint32_t obj2_offset;
+
+    /** <No documentation available> */
+    uint32_t obj2_num;
+
+    /** <No documentation available> */
+    uint32_t obj5_offset;
+} AnimationInfoPs3_t;
+
+/** <No documentation available> */
+typedef struct Obj3Ps3 {
+    /** <No documentation available> */
+    float t;
+
+    /** <No documentation available> */
+    uint32_t event;
+
+    /** <No documentation available> */
+    uint32_t dat_2;
+
+    /** <No documentation available> */
+    uint32_t dat_3;
+
+    /** <No documentation available> */
+    uint32_t dat_4;
+
+    /** <No documentation available> */
+    uint32_t dat_5;
+
+    /** <No documentation available> */
+    uint32_t dat_6;
+
+    /** <No documentation available> */
+    uint32_t dat_7;
+
+    /** <No documentation available> */
+    uint32_t dat_8;
+
+    /** <No documentation available> */
+    uint32_t dat_9;
+
+    /** <No documentation available> */
+    uint32_t dat_10;
+} Obj3Ps3_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_Obj3Ps3 {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    Obj3Ps3_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_Obj3Ps3_t;
+
+/** <No documentation available> */
+typedef struct Obj5HeaderPs3 {
+    /** <No documentation available> */
+    uint32_t obj_a_num;
+
+    /** <No documentation available> */
+    uint32_t obj_a_offset;
+
+    /** <No documentation available> */
+    uint32_t obj_b_num;
+
+    /** <No documentation available> */
+    uint32_t obj_b_offset;
+} Obj5HeaderPs3_t;
+
+/** <No documentation available> */
+typedef struct Obj5ValPs3 {
+    /** <No documentation available> */
+    float unk_0;
+
+    /** <No documentation available> */
+    float unk_1;
+
+    /** <No documentation available> */
+    float unk_2;
+
+    /** <No documentation available> */
+    float unk_3;
+
+    /** <No documentation available> */
+    float unk_4;
+
+    /** <No documentation available> */
+    float unk_5;
+
+    /** <No documentation available> */
+    float unk_6;
+} Obj5ValPs3_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_Obj5ValPs3 {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    Obj5ValPs3_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_Obj5ValPs3_t;
+
+/** \brief
+ *  The layout of `lotrc::level::pak::animation::AnimVals1RefPs3<'_>` is opaque/subject to changes.
+ */
+typedef struct Opaque_AnimVals1RefPs3___ Opaque_AnimVals1RefPs3____t;
+
+/** <No documentation available> */
+typedef struct Obj1RefPs3 {
+    /** <No documentation available> */
+    uint8_t flags;
+
+    /** <No documentation available> */
+    uint8_t s2;
+
+    /** <No documentation available> */
+    uint16_t s1;
+
+    /** <No documentation available> */
+    slice_ref_uint8_t data;
+
+    /** <No documentation available> */
+    slice_ref_float_t vals_a;
+
+    /** <No documentation available> */
+    Opaque_AnimVals1RefPs3____t * vals;
+
+    /** <No documentation available> */
+    size_t size;
+} Obj1RefPs3_t;
+
+/** \brief
+ *  The layout of `lotrc::level::pak::animation::RotationQuantizationRefPs3<'_>` is opaque/subject to changes.
+ */
+typedef struct Opaque_RotationQuantizationRefPs3___ Opaque_RotationQuantizationRefPs3____t;
+
+/** <No documentation available> */
+typedef struct Obj2RefPs3 {
+    /** <No documentation available> */
+    uint8_t flags;
+
+    /** <No documentation available> */
+    uint8_t s2;
+
+    /** <No documentation available> */
+    uint16_t s1;
+
+    /** <No documentation available> */
+    slice_ref_uint8_t data;
+
+    /** <No documentation available> */
+    Opaque_RotationQuantizationRefPs3____t * vals;
+
+    /** <No documentation available> */
+    size_t size;
+} Obj2RefPs3_t;
+
+/** <No documentation available> */
+typedef struct BlockValARefPs3 {
+    /** <No documentation available> */
+    Obj1RefPs3_t a;
+
+    /** <No documentation available> */
+    Obj2RefPs3_t b;
+
+    /** <No documentation available> */
+    Obj1RefPs3_t c;
+} BlockValARefPs3_t;
+
+/** \brief
+ *  [`Box`][`rust::Box`]`<[T]>` (fat pointer to a slice),
+ *  but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_boxed_BlockValARefPs3 {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    BlockValARefPs3_t * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_boxed_BlockValARefPs3_t;
+
+/** \brief
+ *  [`Box`][`rust::Box`]`<[T]>` (fat pointer to a slice),
+ *  but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_boxed_Obj1RefPs3 {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    Obj1RefPs3_t * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_boxed_Obj1RefPs3_t;
+
+/** <No documentation available> */
+typedef struct BlockValRefPs3 {
+    /** <No documentation available> */
+    slice_boxed_BlockValARefPs3_t vals_a;
+
+    /** <No documentation available> */
+    slice_boxed_Obj1RefPs3_t vals_b;
+} BlockValRefPs3_t;
+
+/** \brief
+ *  [`Box`][`rust::Box`]`<[T]>` (fat pointer to a slice),
+ *  but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_boxed_BlockValRefPs3 {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    BlockValRefPs3_t * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_boxed_BlockValRefPs3_t;
+
+/** <No documentation available> */
+typedef struct BlocksRefPs3 {
+    /** <No documentation available> */
+    slice_ref_uint32_t block_starts;
+
+    /** <No documentation available> */
+    slice_ref_uint32_t block_starts2;
+
+    /** <No documentation available> */
+    slice_ref_uint32_t obj_c3;
+
+    /** <No documentation available> */
+    slice_ref_uint32_t obj_c4;
+
+    /** <No documentation available> */
+    slice_boxed_BlockValRefPs3_t blocks;
+} BlocksRefPs3_t;
+
+/** \brief
+ *  Simplified for lighter documentation, but the actual impls
+ *  range from `Tuple1` up to `Tuple6`.
+ */
+typedef struct Tuple2_bool_BlocksRefPs3 {
+    /** <No documentation available> */
+    bool _0;
+
+    /** <No documentation available> */
+    BlocksRefPs3_t _1;
+} Tuple2_bool_BlocksRefPs3_t;
+
+/** <No documentation available> */
+typedef struct AnimationRefPs3 {
+    /** <No documentation available> */
+    AnimationInfoPs3_t const * info;
+
+    /** <No documentation available> */
+    slice_ref_uint32_t obj1;
+
+    /** <No documentation available> */
+    slice_ref_uint32_t obj2;
+
+    /** <No documentation available> */
+    slice_ref_Obj3Ps3_t obj3;
+
+    /** <No documentation available> */
+    slice_ref_uint32_t bones;
+
+    /** <No documentation available> */
+    Obj5HeaderPs3_t const * obj5_header;
+
+    /** <No documentation available> */
+    slice_ref_Obj5ValPs3_t obj5_a;
+
+    /** <No documentation available> */
+    slice_ref_Obj5ValPs3_t obj5_b;
+
+    /** <No documentation available> */
+    Tuple2_bool_BlocksRefPs3_t blocks;
+
+    /** <No documentation available> */
+    size_t size;
+} AnimationRefPs3_t;
+
+/** <No documentation available> */
+AnimationRefPs3_t const *
+lotrc_anim_map_get_ps3 (
+    MapImpl_u32_AnimationRefPs3____t * const * map,
+    uint32_t key);
+
+/** <No documentation available> */
+typedef struct MapImpl_u32_AnimationRefXbox___ MapImpl_u32_AnimationRefXbox____t;
+
+/** <No documentation available> */
+typedef struct AnimationInfoXbox {
+    /** <No documentation available> */
+    uint32_t key;
+
+    /** <No documentation available> */
+    int32_t gamemodemask;
+
+    /** <No documentation available> */
+    uint32_t offset;
+
+    /** <No documentation available> */
+    uint32_t size;
+
+    /** <No documentation available> */
+    uint32_t kind;
+
+    /** <No documentation available> */
+    float unk_5;
+
+    /** <No documentation available> */
+    uint32_t vals_num;
+
+    /** <No documentation available> */
+    uint32_t vals2_num;
+
+    /** <No documentation available> */
+    uint32_t unk_8;
+
+    /** <No documentation available> */
+    uint32_t vala;
+
+    /** <No documentation available> */
+    uint32_t unk_10;
+
+    /** <No documentation available> */
+    uint32_t unk_11;
+
+    /** <No documentation available> */
+    uint32_t data_offset;
+
+    /** <No documentation available> */
+    float unk_13;
+
+    /** <No documentation available> */
+    float unk_14;
+
+    /** <No documentation available> */
+    float t_scale;
+
+    /** <No documentation available> */
+    uint32_t block_starts_offset;
+
+    /** <No documentation available> */
+    uint32_t block_starts_num;
+
+    /** <No documentation available> */
+    uint32_t block_starts2_offset;
+
+    /** <No documentation available> */
+    uint32_t block_starts2_num;
+
+    /** <No documentation available> */
+    uint32_t obj_c3_offset;
+
+    /** <No documentation available> */
+    uint32_t obj_c3_num;
+
+    /** <No documentation available> */
+    uint32_t obj_c4_offset;
+
+    /** <No documentation available> */
+    uint32_t obj_c4_num;
+
+    /** <No documentation available> */
+    uint32_t block_offset;
+
+    /** <No documentation available> */
+    uint32_t block_size;
+
+    /** <No documentation available> */
+    uint32_t obj3_num;
+
+    /** <No documentation available> */
+    uint32_t obj3_offset;
+
+    /** <No documentation available> */
+    uint32_t bones_num1;
+
+    /** <No documentation available> */
+    uint32_t unk_29;
+
+    /** <No documentation available> */
+    uint32_t obj1_num;
+
+    /** <No documentation available> */
+    uint32_t bones_offset;
+
+    /** <No documentation available> */
+    uint32_t unk_32;
+
+    /** <No documentation available> */
+    uint32_t obj1_offset;
+
+    /** <No documentation available> */
+    uint32_t obj2_offset;
+
+    /** <No documentation available> */
+    uint32_t obj2_num;
+
+    /** <No documentation available> */
+    uint32_t obj5_offset;
+} AnimationInfoXbox_t;
+
+/** <No documentation available> */
+typedef struct Obj3Xbox {
+    /** <No documentation available> */
+    float t;
+
+    /** <No documentation available> */
+    uint32_t event;
+
+    /** <No documentation available> */
+    uint32_t dat_2;
+
+    /** <No documentation available> */
+    uint32_t dat_3;
+
+    /** <No documentation available> */
+    uint32_t dat_4;
+
+    /** <No documentation available> */
+    uint32_t dat_5;
+
+    /** <No documentation available> */
+    uint32_t dat_6;
+
+    /** <No documentation available> */
+    uint32_t dat_7;
+
+    /** <No documentation available> */
+    uint32_t dat_8;
+
+    /** <No documentation available> */
+    uint32_t dat_9;
+
+    /** <No documentation available> */
+    uint32_t dat_10;
+} Obj3Xbox_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_Obj3Xbox {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    Obj3Xbox_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_Obj3Xbox_t;
+
+/** <No documentation available> */
+typedef struct Obj5HeaderXbox {
+    /** <No documentation available> */
+    uint32_t obj_a_num;
+
+    /** <No documentation available> */
+    uint32_t obj_a_offset;
+
+    /** <No documentation available> */
+    uint32_t obj_b_num;
+
+    /** <No documentation available> */
+    uint32_t obj_b_offset;
+} Obj5HeaderXbox_t;
+
+/** <No documentation available> */
+typedef struct Obj5ValXbox {
+    /** <No documentation available> */
+    float unk_0;
+
+    /** <No documentation available> */
+    float unk_1;
+
+    /** <No documentation available> */
+    float unk_2;
+
+    /** <No documentation available> */
+    float unk_3;
+
+    /** <No documentation available> */
+    float unk_4;
+
+    /** <No documentation available> */
+    float unk_5;
+
+    /** <No documentation available> */
+    float unk_6;
+} Obj5ValXbox_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_Obj5ValXbox {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    Obj5ValXbox_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_Obj5ValXbox_t;
+
+/** \brief
+ *  The layout of `lotrc::level::pak::animation::AnimVals1RefXbox<'_>` is opaque/subject to changes.
+ */
+typedef struct Opaque_AnimVals1RefXbox___ Opaque_AnimVals1RefXbox____t;
+
+/** <No documentation available> */
+typedef struct Obj1RefXbox {
+    /** <No documentation available> */
+    uint8_t flags;
+
+    /** <No documentation available> */
+    uint8_t s2;
+
+    /** <No documentation available> */
+    uint16_t s1;
+
+    /** <No documentation available> */
+    slice_ref_uint8_t data;
+
+    /** <No documentation available> */
+    slice_ref_float_t vals_a;
+
+    /** <No documentation available> */
+    Opaque_AnimVals1RefXbox____t * vals;
+
+    /** <No documentation available> */
+    size_t size;
+} Obj1RefXbox_t;
+
+/** \brief
+ *  The layout of `lotrc::level::pak::animation::RotationQuantizationRefXbox<'_>` is opaque/subject to changes.
+ */
+typedef struct Opaque_RotationQuantizationRefXbox___ Opaque_RotationQuantizationRefXbox____t;
+
+/** <No documentation available> */
+typedef struct Obj2RefXbox {
+    /** <No documentation available> */
+    uint8_t flags;
+
+    /** <No documentation available> */
+    uint8_t s2;
+
+    /** <No documentation available> */
+    uint16_t s1;
+
+    /** <No documentation available> */
+    slice_ref_uint8_t data;
+
+    /** <No documentation available> */
+    Opaque_RotationQuantizationRefXbox____t * vals;
+
+    /** <No documentation available> */
+    size_t size;
+} Obj2RefXbox_t;
+
+/** <No documentation available> */
+typedef struct BlockValARefXbox {
+    /** <No documentation available> */
+    Obj1RefXbox_t a;
+
+    /** <No documentation available> */
+    Obj2RefXbox_t b;
+
+    /** <No documentation available> */
+    Obj1RefXbox_t c;
+} BlockValARefXbox_t;
+
+/** \brief
+ *  [`Box`][`rust::Box`]`<[T]>` (fat pointer to a slice),
+ *  but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_boxed_BlockValARefXbox {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    BlockValARefXbox_t * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_boxed_BlockValARefXbox_t;
+
+/** \brief
+ *  [`Box`][`rust::Box`]`<[T]>` (fat pointer to a slice),
+ *  but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_boxed_Obj1RefXbox {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    Obj1RefXbox_t * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_boxed_Obj1RefXbox_t;
+
+/** <No documentation available> */
+typedef struct BlockValRefXbox {
+    /** <No documentation available> */
+    slice_boxed_BlockValARefXbox_t vals_a;
+
+    /** <No documentation available> */
+    slice_boxed_Obj1RefXbox_t vals_b;
+} BlockValRefXbox_t;
+
+/** \brief
+ *  [`Box`][`rust::Box`]`<[T]>` (fat pointer to a slice),
+ *  but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_boxed_BlockValRefXbox {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    BlockValRefXbox_t * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_boxed_BlockValRefXbox_t;
+
+/** <No documentation available> */
+typedef struct BlocksRefXbox {
+    /** <No documentation available> */
+    slice_ref_uint32_t block_starts;
+
+    /** <No documentation available> */
+    slice_ref_uint32_t block_starts2;
+
+    /** <No documentation available> */
+    slice_ref_uint32_t obj_c3;
+
+    /** <No documentation available> */
+    slice_ref_uint32_t obj_c4;
+
+    /** <No documentation available> */
+    slice_boxed_BlockValRefXbox_t blocks;
+} BlocksRefXbox_t;
+
+/** \brief
+ *  Simplified for lighter documentation, but the actual impls
+ *  range from `Tuple1` up to `Tuple6`.
+ */
+typedef struct Tuple2_bool_BlocksRefXbox {
+    /** <No documentation available> */
+    bool _0;
+
+    /** <No documentation available> */
+    BlocksRefXbox_t _1;
+} Tuple2_bool_BlocksRefXbox_t;
+
+/** <No documentation available> */
+typedef struct AnimationRefXbox {
+    /** <No documentation available> */
+    AnimationInfoXbox_t const * info;
+
+    /** <No documentation available> */
+    slice_ref_uint32_t obj1;
+
+    /** <No documentation available> */
+    slice_ref_uint32_t obj2;
+
+    /** <No documentation available> */
+    slice_ref_Obj3Xbox_t obj3;
+
+    /** <No documentation available> */
+    slice_ref_uint32_t bones;
+
+    /** <No documentation available> */
+    Obj5HeaderXbox_t const * obj5_header;
+
+    /** <No documentation available> */
+    slice_ref_Obj5ValXbox_t obj5_a;
+
+    /** <No documentation available> */
+    slice_ref_Obj5ValXbox_t obj5_b;
+
+    /** <No documentation available> */
+    Tuple2_bool_BlocksRefXbox_t blocks;
+
+    /** <No documentation available> */
+    size_t size;
+} AnimationRefXbox_t;
+
+/** <No documentation available> */
+AnimationRefXbox_t const *
+lotrc_anim_map_get_xbox (
+    MapImpl_u32_AnimationRefXbox____t * const * map,
+    uint32_t key);
+
+/** \brief
+ *  keys is a caller allocated array for returning keys
+ */
+void
+lotrc_anim_map_keys_pc (
+    MapImpl_u32_AnimationRefPc____t * const * map,
+    uint32_t * keys);
+
+/** \brief
+ *  keys is a caller allocated array for returning keys
+ */
+void
+lotrc_anim_map_keys_ps3 (
+    MapImpl_u32_AnimationRefPs3____t * const * map,
+    uint32_t * keys);
+
+/** \brief
+ *  keys is a caller allocated array for returning keys
+ */
+void
+lotrc_anim_map_keys_xbox (
+    MapImpl_u32_AnimationRefXbox____t * const * map,
+    uint32_t * keys);
+
+/** <No documentation available> */
+size_t
+lotrc_anim_map_len_pc (
+    MapImpl_u32_AnimationRefPc____t * const * map,
+    uint32_t key);
+
+/** <No documentation available> */
+size_t
+lotrc_anim_map_len_ps3 (
+    MapImpl_u32_AnimationRefPs3____t * const * map,
+    uint32_t key);
+
+/** <No documentation available> */
+size_t
+lotrc_anim_map_len_xbox (
+    MapImpl_u32_AnimationRefXbox____t * const * map,
+    uint32_t key);
+
+/** <No documentation available> */
+slice_ref_uint8_t
+lotrc_anim_vals1_get_type1_pc (
+    Opaque_AnimVals1RefPc____t const * vals);
+
+/** <No documentation available> */
+slice_ref_uint8_t
+lotrc_anim_vals1_get_type1_ps3 (
+    Opaque_AnimVals1RefPs3____t const * vals);
+
+/** <No documentation available> */
+slice_ref_uint8_t
+lotrc_anim_vals1_get_type1_xbox (
+    Opaque_AnimVals1RefXbox____t const * vals);
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_uint16 {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    uint16_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_uint16_t;
+
+/** <No documentation available> */
+slice_ref_uint16_t
+lotrc_anim_vals1_get_type2_pc (
+    Opaque_AnimVals1RefPc____t const * vals);
+
+/** <No documentation available> */
+slice_ref_uint16_t
+lotrc_anim_vals1_get_type2_ps3 (
+    Opaque_AnimVals1RefPs3____t const * vals);
+
+/** <No documentation available> */
+slice_ref_uint16_t
+lotrc_anim_vals1_get_type2_xbox (
+    Opaque_AnimVals1RefXbox____t const * vals);
+
+/** <No documentation available> */
+slice_ref_uint16_t
+lotrc_anim_vals1_get_type3_pc (
+    Opaque_AnimVals1RefPc____t const * vals);
+
+/** <No documentation available> */
+slice_ref_uint16_t
+lotrc_anim_vals1_get_type3_ps3 (
+    Opaque_AnimVals1RefPs3____t const * vals);
+
+/** <No documentation available> */
+slice_ref_uint16_t
+lotrc_anim_vals1_get_type3_xbox (
+    Opaque_AnimVals1RefXbox____t const * vals);
+
+/** <No documentation available> */
+slice_ref_uint16_t
+lotrc_anim_vals1_get_type4_pc (
+    Opaque_AnimVals1RefPc____t const * vals);
+
+/** <No documentation available> */
+slice_ref_uint16_t
+lotrc_anim_vals1_get_type4_ps3 (
+    Opaque_AnimVals1RefPs3____t const * vals);
+
+/** <No documentation available> */
+slice_ref_uint16_t
+lotrc_anim_vals1_get_type4_xbox (
+    Opaque_AnimVals1RefXbox____t const * vals);
+
+/** <No documentation available> */
+/** \remark Has the same ABI as `uint8_t` **/
+#ifdef DOXYGEN
+typedef
+#endif
+enum AnimVals1Type {
+    /** <No documentation available> */
+    ANIM_VALS1_TYPE_TYPE1 = 0,
+    /** <No documentation available> */
+    ANIM_VALS1_TYPE_TYPE2,
+    /** <No documentation available> */
+    ANIM_VALS1_TYPE_TYPE3,
+    /** <No documentation available> */
+    ANIM_VALS1_TYPE_TYPE4,
+}
+#ifndef DOXYGEN
+; typedef uint8_t
+#endif
+AnimVals1Type_t;
+
+/** <No documentation available> */
+AnimVals1Type_t
+lotrc_anim_vals1_get_type_pc (
+    Opaque_AnimVals1RefPc____t const * vals);
+
+/** <No documentation available> */
+AnimVals1Type_t
+lotrc_anim_vals1_get_type_ps3 (
+    Opaque_AnimVals1RefPs3____t const * vals);
+
+/** <No documentation available> */
+AnimVals1Type_t
+lotrc_anim_vals1_get_type_xbox (
+    Opaque_AnimVals1RefXbox____t const * vals);
+
+/** \brief
+ *  The layout of `lotrc::sub_blocks::gameobjs::BaseTypeRefPc<'_>` is opaque/subject to changes.
+ */
+typedef struct Opaque_BaseTypeRefPc___ Opaque_BaseTypeRefPc____t;
+
+/** <No documentation available> */
+bool
+lotrc_basetype_get_bool_pc (
+    Opaque_BaseTypeRefPc____t const * basetype);
+
+/** \brief
+ *  The layout of `lotrc::sub_blocks::gameobjs::BaseTypeRefPs3<'_>` is opaque/subject to changes.
+ */
+typedef struct Opaque_BaseTypeRefPs3___ Opaque_BaseTypeRefPs3____t;
+
+/** <No documentation available> */
+bool
+lotrc_basetype_get_bool_ps3 (
+    Opaque_BaseTypeRefPs3____t const * basetype);
+
+/** \brief
+ *  The layout of `lotrc::sub_blocks::gameobjs::BaseTypeRefXbox<'_>` is opaque/subject to changes.
+ */
+typedef struct Opaque_BaseTypeRefXbox___ Opaque_BaseTypeRefXbox____t;
+
+/** <No documentation available> */
+bool
+lotrc_basetype_get_bool_xbox (
+    Opaque_BaseTypeRefXbox____t const * basetype);
+
+/** <No documentation available> */
+uint32_t
+lotrc_basetype_get_color_pc (
+    Opaque_BaseTypeRefPc____t const * basetype);
+
+/** <No documentation available> */
+uint32_t
+lotrc_basetype_get_color_ps3 (
+    Opaque_BaseTypeRefPs3____t const * basetype);
+
+/** <No documentation available> */
+uint32_t
+lotrc_basetype_get_color_xbox (
+    Opaque_BaseTypeRefXbox____t const * basetype);
 
 /** <No documentation available> */
 slice_ref_uint32_t
@@ -552,37 +2267,6 @@ lotrc_basetype_get_object_list_ps3 (
 slice_ref_uint32_t
 lotrc_basetype_get_object_list_xbox (
     Opaque_BaseTypeRefXbox____t const * basetype);
-
-/** \brief
- *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
- *
- *  # C layout (for some given type T)
- *
- *  ```c
- *  typedef struct {
- *  // Cannot be NULL
- *  T * ptr;
- *  size_t len;
- *  } slice_T;
- *  ```
- *
- *  # Nullable pointer?
- *
- *  If you want to support the above typedef, but where the `ptr` field is
- *  allowed to be `NULL` (with the contents of `len` then being undefined)
- *  use the `Option< slice_ptr<_> >` type.
- */
-typedef struct slice_ref_uint8 {
-    /** \brief
-     *  Pointer to the first element (if any).
-     */
-    uint8_t const * ptr;
-
-    /** \brief
-     *  Element count
-     */
-    size_t len;
-} slice_ref_uint8_t;
 
 /** \brief
  *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
@@ -1213,49 +2897,46 @@ lotrc_gameobjs_from_data_xbox (
 typedef struct LevelCompressedData LevelCompressedData_t;
 
 /** <No documentation available> */
-void
-lotrc_level_compressed_data_free_pc (
-    LevelCompressedData_t * data);
-
-/** <No documentation available> */
-void
-lotrc_level_compressed_data_free_ps3 (
-    LevelCompressedData_t * data);
+LevelCompressedData_t *
+lotrc_level_compressed_data (void);
 
 /** <No documentation available> */
 void
-lotrc_level_compressed_data_free_xbox (
+lotrc_level_compressed_data_free (
     LevelCompressedData_t * data);
-
-/** <No documentation available> */
-LevelCompressedData_t *
-lotrc_level_compressed_data_pc (void);
-
-/** <No documentation available> */
-LevelCompressedData_t *
-lotrc_level_compressed_data_ps3 (void);
-
-/** <No documentation available> */
-LevelCompressedData_t *
-lotrc_level_compressed_data_xbox (void);
 
 /** <No documentation available> */
 typedef struct LevelData LevelData_t;
 
 /** <No documentation available> */
 void
-lotrc_level_data_free_pc (
+lotrc_level_data_free (
     LevelData_t * level_data);
 
 /** <No documentation available> */
-void
-lotrc_level_data_free_ps3 (
-    LevelData_t * level_data);
+/** \remark Has the same ABI as `uint8_t` **/
+#ifdef DOXYGEN
+typedef
+#endif
+enum Version {
+    /** <No documentation available> */
+    VERSION_PC = 0,
+    /** <No documentation available> */
+    VERSION_XBOX,
+    /** <No documentation available> */
+    VERSION_PS3,
+    /** <No documentation available> */
+    VERSION_ERR,
+}
+#ifndef DOXYGEN
+; typedef uint8_t
+#endif
+Version_t;
 
 /** <No documentation available> */
-void
-lotrc_level_data_free_xbox (
-    LevelData_t * level_data);
+Version_t
+lotrc_level_data_get_version (
+    LevelData_t const * src);
 
 /** <No documentation available> */
 typedef struct PakHeaderPc {
@@ -3809,120 +5490,6 @@ typedef struct slice_ref_TextureInfoPc {
     size_t len;
 } slice_ref_TextureInfoPc_t;
 
-/** <No documentation available> */
-typedef struct AnimationInfoPc {
-    /** <No documentation available> */
-    uint32_t key;
-
-    /** <No documentation available> */
-    int32_t gamemodemask;
-
-    /** <No documentation available> */
-    uint32_t offset;
-
-    /** <No documentation available> */
-    uint32_t size;
-
-    /** <No documentation available> */
-    uint32_t kind;
-
-    /** <No documentation available> */
-    float unk_5;
-
-    /** <No documentation available> */
-    uint32_t vals_num;
-
-    /** <No documentation available> */
-    uint32_t vals2_num;
-
-    /** <No documentation available> */
-    uint32_t unk_8;
-
-    /** <No documentation available> */
-    uint32_t vala;
-
-    /** <No documentation available> */
-    uint32_t unk_10;
-
-    /** <No documentation available> */
-    uint32_t unk_11;
-
-    /** <No documentation available> */
-    uint32_t data_offset;
-
-    /** <No documentation available> */
-    float unk_13;
-
-    /** <No documentation available> */
-    float unk_14;
-
-    /** <No documentation available> */
-    float t_scale;
-
-    /** <No documentation available> */
-    uint32_t block_starts_offset;
-
-    /** <No documentation available> */
-    uint32_t block_starts_num;
-
-    /** <No documentation available> */
-    uint32_t block_starts2_offset;
-
-    /** <No documentation available> */
-    uint32_t block_starts2_num;
-
-    /** <No documentation available> */
-    uint32_t obj_c3_offset;
-
-    /** <No documentation available> */
-    uint32_t obj_c3_num;
-
-    /** <No documentation available> */
-    uint32_t obj_c4_offset;
-
-    /** <No documentation available> */
-    uint32_t obj_c4_num;
-
-    /** <No documentation available> */
-    uint32_t block_offset;
-
-    /** <No documentation available> */
-    uint32_t block_size;
-
-    /** <No documentation available> */
-    uint32_t obj3_num;
-
-    /** <No documentation available> */
-    uint32_t obj3_offset;
-
-    /** <No documentation available> */
-    uint32_t bones_num1;
-
-    /** <No documentation available> */
-    uint32_t unk_29;
-
-    /** <No documentation available> */
-    uint32_t obj1_num;
-
-    /** <No documentation available> */
-    uint32_t bones_offset;
-
-    /** <No documentation available> */
-    uint32_t unk_32;
-
-    /** <No documentation available> */
-    uint32_t obj1_offset;
-
-    /** <No documentation available> */
-    uint32_t obj2_offset;
-
-    /** <No documentation available> */
-    uint32_t obj2_num;
-
-    /** <No documentation available> */
-    uint32_t obj5_offset;
-} AnimationInfoPc_t;
-
 /** \brief
  *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
  *
@@ -4452,37 +6019,8 @@ typedef struct CompressedDataRefAlt {
     AlignedBuf_t data_decomp;
 } CompressedDataRefAlt_t;
 
-/** \brief
- *  [`Box`][`rust::Box`]`<[T]>` (fat pointer to a slice),
- *  but with a guaranteed `#[repr(C)]` layout.
- *
- *  # C layout (for some given type T)
- *
- *  ```c
- *  typedef struct {
- *  // Cannot be NULL
- *  T * ptr;
- *  size_t len;
- *  } slice_T;
- *  ```
- *
- *  # Nullable pointer?
- *
- *  If you want to support the above typedef, but where the `ptr` field is
- *  allowed to be `NULL` (with the contents of `len` then being undefined)
- *  use the `Option< slice_ptr<_> >` type.
- */
-typedef struct slice_boxed_slice_ref_int32 {
-    /** \brief
-     *  Pointer to the first element (if any).
-     */
-    slice_ref_int32_t * ptr;
-
-    /** \brief
-     *  Element count
-     */
-    size_t len;
-} slice_boxed_slice_ref_int32_t;
+/** <No documentation available> */
+typedef struct MapImpl_u32_RadiosityValsRefPc___ MapImpl_u32_RadiosityValsRefPc____t;
 
 /** <No documentation available> */
 typedef struct RadiosityRefPc {
@@ -4490,10 +6028,7 @@ typedef struct RadiosityRefPc {
     CompressedDataRefAlt_t const * data;
 
     /** <No documentation available> */
-    slice_ref_RadiosityValsInfoPc_t infos;
-
-    /** <No documentation available> */
-    slice_boxed_slice_ref_int32_t offs;
+    MapImpl_u32_RadiosityValsRefPc____t * vals;
 
     /** <No documentation available> */
     uint32_t usage;
@@ -4757,12 +6292,12 @@ typedef struct Block2RefPc {
 } Block2RefPc_t;
 
 /** <No documentation available> */
-typedef struct MapImpl_u32_AnimationRefPc___ MapImpl_u32_AnimationRefPc____t;
-
-/** <No documentation available> */
 typedef struct AnimationsRefPc {
     /** <No documentation available> */
     MapImpl_u32_AnimationRefPc____t * animations;
+
+    /** <No documentation available> */
+    slice_ref_AnimationBlockInfoPc_t block_infos;
 } AnimationsRefPc_t;
 
 /** <No documentation available> */
@@ -7570,120 +9105,6 @@ typedef struct slice_ref_TextureInfoPs3 {
     size_t len;
 } slice_ref_TextureInfoPs3_t;
 
-/** <No documentation available> */
-typedef struct AnimationInfoPs3 {
-    /** <No documentation available> */
-    uint32_t key;
-
-    /** <No documentation available> */
-    int32_t gamemodemask;
-
-    /** <No documentation available> */
-    uint32_t offset;
-
-    /** <No documentation available> */
-    uint32_t size;
-
-    /** <No documentation available> */
-    uint32_t kind;
-
-    /** <No documentation available> */
-    float unk_5;
-
-    /** <No documentation available> */
-    uint32_t vals_num;
-
-    /** <No documentation available> */
-    uint32_t vals2_num;
-
-    /** <No documentation available> */
-    uint32_t unk_8;
-
-    /** <No documentation available> */
-    uint32_t vala;
-
-    /** <No documentation available> */
-    uint32_t unk_10;
-
-    /** <No documentation available> */
-    uint32_t unk_11;
-
-    /** <No documentation available> */
-    uint32_t data_offset;
-
-    /** <No documentation available> */
-    float unk_13;
-
-    /** <No documentation available> */
-    float unk_14;
-
-    /** <No documentation available> */
-    float t_scale;
-
-    /** <No documentation available> */
-    uint32_t block_starts_offset;
-
-    /** <No documentation available> */
-    uint32_t block_starts_num;
-
-    /** <No documentation available> */
-    uint32_t block_starts2_offset;
-
-    /** <No documentation available> */
-    uint32_t block_starts2_num;
-
-    /** <No documentation available> */
-    uint32_t obj_c3_offset;
-
-    /** <No documentation available> */
-    uint32_t obj_c3_num;
-
-    /** <No documentation available> */
-    uint32_t obj_c4_offset;
-
-    /** <No documentation available> */
-    uint32_t obj_c4_num;
-
-    /** <No documentation available> */
-    uint32_t block_offset;
-
-    /** <No documentation available> */
-    uint32_t block_size;
-
-    /** <No documentation available> */
-    uint32_t obj3_num;
-
-    /** <No documentation available> */
-    uint32_t obj3_offset;
-
-    /** <No documentation available> */
-    uint32_t bones_num1;
-
-    /** <No documentation available> */
-    uint32_t unk_29;
-
-    /** <No documentation available> */
-    uint32_t obj1_num;
-
-    /** <No documentation available> */
-    uint32_t bones_offset;
-
-    /** <No documentation available> */
-    uint32_t unk_32;
-
-    /** <No documentation available> */
-    uint32_t obj1_offset;
-
-    /** <No documentation available> */
-    uint32_t obj2_offset;
-
-    /** <No documentation available> */
-    uint32_t obj2_num;
-
-    /** <No documentation available> */
-    uint32_t obj5_offset;
-} AnimationInfoPs3_t;
-
 /** \brief
  *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
  *
@@ -8146,15 +9567,15 @@ typedef struct MapImpl_u32_GameObjsRefPs3___ MapImpl_u32_GameObjsRefPs3____t;
 typedef struct MapImpl_u32_slice_boxed_FoliageRefPs3___ MapImpl_u32_slice_boxed_FoliageRefPs3____t;
 
 /** <No documentation available> */
+typedef struct MapImpl_u32_RadiosityValsRefPs3___ MapImpl_u32_RadiosityValsRefPs3____t;
+
+/** <No documentation available> */
 typedef struct RadiosityRefPs3 {
     /** <No documentation available> */
     CompressedDataRefAlt_t const * data;
 
     /** <No documentation available> */
-    slice_ref_RadiosityValsInfoPs3_t infos;
-
-    /** <No documentation available> */
-    slice_boxed_slice_ref_int32_t offs;
+    MapImpl_u32_RadiosityValsRefPs3____t * vals;
 
     /** <No documentation available> */
     uint32_t usage;
@@ -8418,12 +9839,12 @@ typedef struct Block2RefPs3 {
 } Block2RefPs3_t;
 
 /** <No documentation available> */
-typedef struct MapImpl_u32_AnimationRefPs3___ MapImpl_u32_AnimationRefPs3____t;
-
-/** <No documentation available> */
 typedef struct AnimationsRefPs3 {
     /** <No documentation available> */
     MapImpl_u32_AnimationRefPs3____t * animations;
+
+    /** <No documentation available> */
+    slice_ref_AnimationBlockInfoPs3_t block_infos;
 } AnimationsRefPs3_t;
 
 /** <No documentation available> */
@@ -11237,120 +12658,6 @@ typedef struct slice_ref_TextureInfoXbox {
     size_t len;
 } slice_ref_TextureInfoXbox_t;
 
-/** <No documentation available> */
-typedef struct AnimationInfoXbox {
-    /** <No documentation available> */
-    uint32_t key;
-
-    /** <No documentation available> */
-    int32_t gamemodemask;
-
-    /** <No documentation available> */
-    uint32_t offset;
-
-    /** <No documentation available> */
-    uint32_t size;
-
-    /** <No documentation available> */
-    uint32_t kind;
-
-    /** <No documentation available> */
-    float unk_5;
-
-    /** <No documentation available> */
-    uint32_t vals_num;
-
-    /** <No documentation available> */
-    uint32_t vals2_num;
-
-    /** <No documentation available> */
-    uint32_t unk_8;
-
-    /** <No documentation available> */
-    uint32_t vala;
-
-    /** <No documentation available> */
-    uint32_t unk_10;
-
-    /** <No documentation available> */
-    uint32_t unk_11;
-
-    /** <No documentation available> */
-    uint32_t data_offset;
-
-    /** <No documentation available> */
-    float unk_13;
-
-    /** <No documentation available> */
-    float unk_14;
-
-    /** <No documentation available> */
-    float t_scale;
-
-    /** <No documentation available> */
-    uint32_t block_starts_offset;
-
-    /** <No documentation available> */
-    uint32_t block_starts_num;
-
-    /** <No documentation available> */
-    uint32_t block_starts2_offset;
-
-    /** <No documentation available> */
-    uint32_t block_starts2_num;
-
-    /** <No documentation available> */
-    uint32_t obj_c3_offset;
-
-    /** <No documentation available> */
-    uint32_t obj_c3_num;
-
-    /** <No documentation available> */
-    uint32_t obj_c4_offset;
-
-    /** <No documentation available> */
-    uint32_t obj_c4_num;
-
-    /** <No documentation available> */
-    uint32_t block_offset;
-
-    /** <No documentation available> */
-    uint32_t block_size;
-
-    /** <No documentation available> */
-    uint32_t obj3_num;
-
-    /** <No documentation available> */
-    uint32_t obj3_offset;
-
-    /** <No documentation available> */
-    uint32_t bones_num1;
-
-    /** <No documentation available> */
-    uint32_t unk_29;
-
-    /** <No documentation available> */
-    uint32_t obj1_num;
-
-    /** <No documentation available> */
-    uint32_t bones_offset;
-
-    /** <No documentation available> */
-    uint32_t unk_32;
-
-    /** <No documentation available> */
-    uint32_t obj1_offset;
-
-    /** <No documentation available> */
-    uint32_t obj2_offset;
-
-    /** <No documentation available> */
-    uint32_t obj2_num;
-
-    /** <No documentation available> */
-    uint32_t obj5_offset;
-} AnimationInfoXbox_t;
-
 /** \brief
  *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
  *
@@ -11813,15 +13120,15 @@ typedef struct MapImpl_u32_GameObjsRefXbox___ MapImpl_u32_GameObjsRefXbox____t;
 typedef struct MapImpl_u32_slice_boxed_FoliageRefXbox___ MapImpl_u32_slice_boxed_FoliageRefXbox____t;
 
 /** <No documentation available> */
+typedef struct MapImpl_u32_RadiosityValsRefXbox___ MapImpl_u32_RadiosityValsRefXbox____t;
+
+/** <No documentation available> */
 typedef struct RadiosityRefXbox {
     /** <No documentation available> */
     CompressedDataRefAlt_t const * data;
 
     /** <No documentation available> */
-    slice_ref_RadiosityValsInfoXbox_t infos;
-
-    /** <No documentation available> */
-    slice_boxed_slice_ref_int32_t offs;
+    MapImpl_u32_RadiosityValsRefXbox____t * vals;
 
     /** <No documentation available> */
     uint32_t usage;
@@ -12085,12 +13392,12 @@ typedef struct Block2RefXbox {
 } Block2RefXbox_t;
 
 /** <No documentation available> */
-typedef struct MapImpl_u32_AnimationRefXbox___ MapImpl_u32_AnimationRefXbox____t;
-
-/** <No documentation available> */
 typedef struct AnimationsRefXbox {
     /** <No documentation available> */
     MapImpl_u32_AnimationRefXbox____t * animations;
+
+    /** <No documentation available> */
+    slice_ref_AnimationBlockInfoXbox_t block_infos;
 } AnimationsRefXbox_t;
 
 /** <No documentation available> */
@@ -12545,18 +13852,911 @@ lotrc_obj_map_len_xbox (
 
 /** <No documentation available> */
 LevelData_t *
-lotrc_read_level_data_pc (
+lotrc_read_level_data (
     char const * path);
 
 /** <No documentation available> */
-LevelData_t *
-lotrc_read_level_data_ps3 (
-    char const * path);
+typedef struct RotationPolar32Pc {
+    /** <No documentation available> */
+    uint32_t a;
+} RotationPolar32Pc_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_RotationPolar32Pc {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    RotationPolar32Pc_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_RotationPolar32Pc_t;
 
 /** <No documentation available> */
-LevelData_t *
-lotrc_read_level_data_xbox (
-    char const * path);
+slice_ref_RotationPolar32Pc_t
+lotrc_rotation_quantization_get_polar32_pc (
+    Opaque_RotationQuantizationRefPc____t const * vals);
+
+/** <No documentation available> */
+typedef struct RotationPolar32Ps3 {
+    /** <No documentation available> */
+    uint32_t a;
+} RotationPolar32Ps3_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_RotationPolar32Ps3 {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    RotationPolar32Ps3_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_RotationPolar32Ps3_t;
+
+/** <No documentation available> */
+slice_ref_RotationPolar32Ps3_t
+lotrc_rotation_quantization_get_polar32_ps3 (
+    Opaque_RotationQuantizationRefPs3____t const * vals);
+
+/** <No documentation available> */
+typedef struct RotationPolar32Xbox {
+    /** <No documentation available> */
+    uint32_t a;
+} RotationPolar32Xbox_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_RotationPolar32Xbox {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    RotationPolar32Xbox_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_RotationPolar32Xbox_t;
+
+/** <No documentation available> */
+slice_ref_RotationPolar32Xbox_t
+lotrc_rotation_quantization_get_polar32_xbox (
+    Opaque_RotationQuantizationRefXbox____t const * vals);
+
+/** <No documentation available> */
+typedef struct RotationStraight16Pc {
+    /** <No documentation available> */
+    uint8_t a;
+
+    /** <No documentation available> */
+    uint8_t b;
+} RotationStraight16Pc_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_RotationStraight16Pc {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    RotationStraight16Pc_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_RotationStraight16Pc_t;
+
+/** <No documentation available> */
+slice_ref_RotationStraight16Pc_t
+lotrc_rotation_quantization_get_straight16_pc (
+    Opaque_RotationQuantizationRefPc____t const * vals);
+
+/** <No documentation available> */
+typedef struct RotationStraight16Ps3 {
+    /** <No documentation available> */
+    uint8_t a;
+
+    /** <No documentation available> */
+    uint8_t b;
+} RotationStraight16Ps3_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_RotationStraight16Ps3 {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    RotationStraight16Ps3_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_RotationStraight16Ps3_t;
+
+/** <No documentation available> */
+slice_ref_RotationStraight16Ps3_t
+lotrc_rotation_quantization_get_straight16_ps3 (
+    Opaque_RotationQuantizationRefPs3____t const * vals);
+
+/** <No documentation available> */
+typedef struct RotationStraight16Xbox {
+    /** <No documentation available> */
+    uint8_t a;
+
+    /** <No documentation available> */
+    uint8_t b;
+} RotationStraight16Xbox_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_RotationStraight16Xbox {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    RotationStraight16Xbox_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_RotationStraight16Xbox_t;
+
+/** <No documentation available> */
+slice_ref_RotationStraight16Xbox_t
+lotrc_rotation_quantization_get_straight16_xbox (
+    Opaque_RotationQuantizationRefXbox____t const * vals);
+
+/** <No documentation available> */
+typedef struct RotationThreeComp24Pc {
+    /** <No documentation available> */
+    uint8_t a;
+
+    /** <No documentation available> */
+    uint8_t b;
+
+    /** <No documentation available> */
+    uint8_t c;
+} RotationThreeComp24Pc_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_RotationThreeComp24Pc {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    RotationThreeComp24Pc_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_RotationThreeComp24Pc_t;
+
+/** <No documentation available> */
+slice_ref_RotationThreeComp24Pc_t
+lotrc_rotation_quantization_get_threecomp24_pc (
+    Opaque_RotationQuantizationRefPc____t const * vals);
+
+/** <No documentation available> */
+typedef struct RotationThreeComp24Ps3 {
+    /** <No documentation available> */
+    uint8_t a;
+
+    /** <No documentation available> */
+    uint8_t b;
+
+    /** <No documentation available> */
+    uint8_t c;
+} RotationThreeComp24Ps3_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_RotationThreeComp24Ps3 {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    RotationThreeComp24Ps3_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_RotationThreeComp24Ps3_t;
+
+/** <No documentation available> */
+slice_ref_RotationThreeComp24Ps3_t
+lotrc_rotation_quantization_get_threecomp24_ps3 (
+    Opaque_RotationQuantizationRefPs3____t const * vals);
+
+/** <No documentation available> */
+typedef struct RotationThreeComp24Xbox {
+    /** <No documentation available> */
+    uint8_t a;
+
+    /** <No documentation available> */
+    uint8_t b;
+
+    /** <No documentation available> */
+    uint8_t c;
+} RotationThreeComp24Xbox_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_RotationThreeComp24Xbox {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    RotationThreeComp24Xbox_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_RotationThreeComp24Xbox_t;
+
+/** <No documentation available> */
+slice_ref_RotationThreeComp24Xbox_t
+lotrc_rotation_quantization_get_threecomp24_xbox (
+    Opaque_RotationQuantizationRefXbox____t const * vals);
+
+/** <No documentation available> */
+typedef struct RotationThreeComp40Pc {
+    /** <No documentation available> */
+    uint8_t a;
+
+    /** <No documentation available> */
+    uint8_t b;
+
+    /** <No documentation available> */
+    uint8_t c;
+
+    /** <No documentation available> */
+    uint8_t d;
+
+    /** <No documentation available> */
+    uint8_t e;
+} RotationThreeComp40Pc_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_RotationThreeComp40Pc {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    RotationThreeComp40Pc_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_RotationThreeComp40Pc_t;
+
+/** <No documentation available> */
+slice_ref_RotationThreeComp40Pc_t
+lotrc_rotation_quantization_get_threecomp40_pc (
+    Opaque_RotationQuantizationRefPc____t const * vals);
+
+/** <No documentation available> */
+typedef struct RotationThreeComp40Ps3 {
+    /** <No documentation available> */
+    uint8_t a;
+
+    /** <No documentation available> */
+    uint8_t b;
+
+    /** <No documentation available> */
+    uint8_t c;
+
+    /** <No documentation available> */
+    uint8_t d;
+
+    /** <No documentation available> */
+    uint8_t e;
+} RotationThreeComp40Ps3_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_RotationThreeComp40Ps3 {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    RotationThreeComp40Ps3_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_RotationThreeComp40Ps3_t;
+
+/** <No documentation available> */
+slice_ref_RotationThreeComp40Ps3_t
+lotrc_rotation_quantization_get_threecomp40_ps3 (
+    Opaque_RotationQuantizationRefPs3____t const * vals);
+
+/** <No documentation available> */
+typedef struct RotationThreeComp40Xbox {
+    /** <No documentation available> */
+    uint8_t a;
+
+    /** <No documentation available> */
+    uint8_t b;
+
+    /** <No documentation available> */
+    uint8_t c;
+
+    /** <No documentation available> */
+    uint8_t d;
+
+    /** <No documentation available> */
+    uint8_t e;
+} RotationThreeComp40Xbox_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_RotationThreeComp40Xbox {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    RotationThreeComp40Xbox_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_RotationThreeComp40Xbox_t;
+
+/** <No documentation available> */
+slice_ref_RotationThreeComp40Xbox_t
+lotrc_rotation_quantization_get_threecomp40_xbox (
+    Opaque_RotationQuantizationRefXbox____t const * vals);
+
+/** <No documentation available> */
+typedef struct RotationThreeComp48Pc {
+    /** <No documentation available> */
+    uint16_t a;
+
+    /** <No documentation available> */
+    uint16_t b;
+
+    /** <No documentation available> */
+    uint16_t c;
+} RotationThreeComp48Pc_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_RotationThreeComp48Pc {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    RotationThreeComp48Pc_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_RotationThreeComp48Pc_t;
+
+/** <No documentation available> */
+slice_ref_RotationThreeComp48Pc_t
+lotrc_rotation_quantization_get_threecomp48_pc (
+    Opaque_RotationQuantizationRefPc____t const * vals);
+
+/** <No documentation available> */
+typedef struct RotationThreeComp48Ps3 {
+    /** <No documentation available> */
+    uint16_t a;
+
+    /** <No documentation available> */
+    uint16_t b;
+
+    /** <No documentation available> */
+    uint16_t c;
+} RotationThreeComp48Ps3_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_RotationThreeComp48Ps3 {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    RotationThreeComp48Ps3_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_RotationThreeComp48Ps3_t;
+
+/** <No documentation available> */
+slice_ref_RotationThreeComp48Ps3_t
+lotrc_rotation_quantization_get_threecomp48_ps3 (
+    Opaque_RotationQuantizationRefPs3____t const * vals);
+
+/** <No documentation available> */
+typedef struct RotationThreeComp48Xbox {
+    /** <No documentation available> */
+    uint16_t a;
+
+    /** <No documentation available> */
+    uint16_t b;
+
+    /** <No documentation available> */
+    uint16_t c;
+} RotationThreeComp48Xbox_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_RotationThreeComp48Xbox {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    RotationThreeComp48Xbox_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_RotationThreeComp48Xbox_t;
+
+/** <No documentation available> */
+slice_ref_RotationThreeComp48Xbox_t
+lotrc_rotation_quantization_get_threecomp48_xbox (
+    Opaque_RotationQuantizationRefXbox____t const * vals);
+
+/** <No documentation available> */
+/** \remark Has the same ABI as `uint8_t` **/
+#ifdef DOXYGEN
+typedef
+#endif
+enum RotationQuantizationType {
+    /** <No documentation available> */
+    ROTATION_QUANTIZATION_TYPE_POLAR32 = 0,
+    /** <No documentation available> */
+    ROTATION_QUANTIZATION_TYPE_THREE_COMP40,
+    /** <No documentation available> */
+    ROTATION_QUANTIZATION_TYPE_THREE_COMP48,
+    /** <No documentation available> */
+    ROTATION_QUANTIZATION_TYPE_THREE_COMP24,
+    /** <No documentation available> */
+    ROTATION_QUANTIZATION_TYPE_STRAIGHT16,
+    /** <No documentation available> */
+    ROTATION_QUANTIZATION_TYPE_UNCOMPRESSED,
+}
+#ifndef DOXYGEN
+; typedef uint8_t
+#endif
+RotationQuantizationType_t;
+
+/** <No documentation available> */
+RotationQuantizationType_t
+lotrc_rotation_quantization_get_type_pc (
+    Opaque_RotationQuantizationRefPc____t const * vals);
+
+/** <No documentation available> */
+RotationQuantizationType_t
+lotrc_rotation_quantization_get_type_ps3 (
+    Opaque_RotationQuantizationRefPs3____t const * vals);
+
+/** <No documentation available> */
+RotationQuantizationType_t
+lotrc_rotation_quantization_get_type_xbox (
+    Opaque_RotationQuantizationRefXbox____t const * vals);
+
+/** <No documentation available> */
+typedef struct RotationUncompressedPc {
+    /** <No documentation available> */
+    float a;
+
+    /** <No documentation available> */
+    float b;
+
+    /** <No documentation available> */
+    float c;
+
+    /** <No documentation available> */
+    float d;
+} RotationUncompressedPc_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_RotationUncompressedPc {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    RotationUncompressedPc_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_RotationUncompressedPc_t;
+
+/** <No documentation available> */
+slice_ref_RotationUncompressedPc_t
+lotrc_rotation_quantization_get_uncompressed_pc (
+    Opaque_RotationQuantizationRefPc____t const * vals);
+
+/** <No documentation available> */
+typedef struct RotationUncompressedPs3 {
+    /** <No documentation available> */
+    float a;
+
+    /** <No documentation available> */
+    float b;
+
+    /** <No documentation available> */
+    float c;
+
+    /** <No documentation available> */
+    float d;
+} RotationUncompressedPs3_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_RotationUncompressedPs3 {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    RotationUncompressedPs3_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_RotationUncompressedPs3_t;
+
+/** <No documentation available> */
+slice_ref_RotationUncompressedPs3_t
+lotrc_rotation_quantization_get_uncompressed_ps3 (
+    Opaque_RotationQuantizationRefPs3____t const * vals);
+
+/** <No documentation available> */
+typedef struct RotationUncompressedXbox {
+    /** <No documentation available> */
+    float a;
+
+    /** <No documentation available> */
+    float b;
+
+    /** <No documentation available> */
+    float c;
+
+    /** <No documentation available> */
+    float d;
+} RotationUncompressedXbox_t;
+
+/** \brief
+ *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
+ *
+ *  # C layout (for some given type T)
+ *
+ *  ```c
+ *  typedef struct {
+ *  // Cannot be NULL
+ *  T * ptr;
+ *  size_t len;
+ *  } slice_T;
+ *  ```
+ *
+ *  # Nullable pointer?
+ *
+ *  If you want to support the above typedef, but where the `ptr` field is
+ *  allowed to be `NULL` (with the contents of `len` then being undefined)
+ *  use the `Option< slice_ptr<_> >` type.
+ */
+typedef struct slice_ref_RotationUncompressedXbox {
+    /** \brief
+     *  Pointer to the first element (if any).
+     */
+    RotationUncompressedXbox_t const * ptr;
+
+    /** \brief
+     *  Element count
+     */
+    size_t len;
+} slice_ref_RotationUncompressedXbox_t;
+
+/** <No documentation available> */
+slice_ref_RotationUncompressedXbox_t
+lotrc_rotation_quantization_get_uncompressed_xbox (
+    Opaque_RotationQuantizationRefXbox____t const * vals);
 
 /** <No documentation available> */
 StringKeysRefPc_t
@@ -13187,37 +15387,6 @@ typedef struct DataRefXbox {
 DataRefXbox_t const *
 lotrc_sub_block_get_data_xbox (
     Opaque_SubBlockRefXbox____t const * sub_block);
-
-/** \brief
- *  `&'lt [T]` but with a guaranteed `#[repr(C)]` layout.
- *
- *  # C layout (for some given type T)
- *
- *  ```c
- *  typedef struct {
- *  // Cannot be NULL
- *  T * ptr;
- *  size_t len;
- *  } slice_T;
- *  ```
- *
- *  # Nullable pointer?
- *
- *  If you want to support the above typedef, but where the `ptr` field is
- *  allowed to be `NULL` (with the contents of `len` then being undefined)
- *  use the `Option< slice_ptr<_> >` type.
- */
-typedef struct slice_ref_uint16 {
-    /** \brief
-     *  Pointer to the first element (if any).
-     */
-    uint16_t const * ptr;
-
-    /** \brief
-     *  Element count
-     */
-    size_t len;
-} slice_ref_uint16_t;
 
 /** \brief
  *  [`Box`][`rust::Box`]`<[T]>` (fat pointer to a slice),

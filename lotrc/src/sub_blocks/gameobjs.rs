@@ -815,7 +815,7 @@ impl DumpBaseTypeVER for BaseTypeRefVER<'_> {
 }
 
 #[make_platforms]
-impl DumpBaseTypeVER for &BaseType {
+impl DumpBaseTypeVER for BaseType {
     fn string_lens(&self) -> Option<impl Iterator<Item = usize>> {
         match self {
             BaseType::StringList(vals) => Some(vals.iter().map(|x| x.len())),
@@ -1057,11 +1057,19 @@ pub trait DumpTypeVER {
     fn write_header(&self, header: &mut TypeHeaderVER) -> Result<()>;
     fn write_fields(&self, fields: &mut [TypeFieldVER]) -> Result<()>;
 
+    fn get_info(&self) -> (usize, Vec<(u32, u32, u32)>) {
+        let mut off = 0;
+        let infos = self.fields().map(|t| {
+            off = off.max(t.offset() as usize + BaseTypeVER::size(t.kind()));
+            (t.key(), t.kind(), t.offset())
+        }).collect();
+        (off, infos)
+    }
     fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
         let header = TypeHeaderVER::mut_from_data(dst).context("header")?;
         self.write_header(header).context("write header")?;
         let fields = TypeFieldVER::mut_slice_from_data(dst, self.fields_len()).context("fields")?;
-        self.write_fields(fields).context("write fileds")?;
+        self.write_fields(fields).context("write fields")?;
         Ok(())
     }
     fn size(&self) -> usize {
@@ -1297,50 +1305,34 @@ impl From<&ObjVER> for Obj {
 pub trait DumpObjVER {
     fn key(&self) -> u32;
     fn layer(&self) -> u32;
-    fn field(&self, index: &u32) -> Option<impl DumpBaseTypeVER>;
+    fn field(&self, index: &u32) -> Option<&impl DumpBaseTypeVER>;
+    fn fields(&self) -> impl Iterator<Item=&impl DumpBaseTypeVER>;
 
-    fn dump_into(&self, dst: &mut DumpSlice, ts: &impl DumpTypeVER) -> Result<()> {
+    fn dump_into(&self, dst: &mut DumpSlice, val_offset: usize, fields: &[(u32, u32, u32)]) -> Result<()> {
         let header = ObjHeaderVER::mut_from_data(dst).context("header")?;
-        let val_offset = ts
-            .fields()
-            .map(|t| t.offset() as usize + BaseTypeVER::size(t.kind()))
-            .fold(0, usize::max);
-        assert!(val_offset > dst.offset, "malformed gameobj {}", self.key());
-        let mut val_dst = dst.split(val_offset);
-        val_dst.align(16);
-        for t in ts.fields() {
-            let key = t.key();
-            let f = self.field(&key).ok_or(anyhow!("missing field {}", key))?;
-            let mut obj_dst = dst.view(t.offset() as usize);
-            f.dump_into(&mut obj_dst, &mut val_dst, t.kind())
+        let mut obj_dst = dst.split(val_offset);
+        dst.align(16);
+        for (f, (key, kind, offset)) in self.fields().zip(fields) {
+            let mut obj_dst = obj_dst.view(*offset as usize);
+            f.dump_into(&mut obj_dst, dst, *kind)
                 .with_context(|| format!("field {}", key))?;
         }
-        val_dst.align(16);
-        *dst = val_dst;
+        dst.align(16);
         header.layer = self.layer().conv();
         header.key = self.key().conv();
         header.size = val_offset.conv();
         Ok(())
     }
 
-    fn size<'a>(&'a self, ts: &impl DumpTypeVER) -> usize {
-        let mut off = ts
-            .fields()
-            .map(|t| t.offset() as usize + BaseTypeVER::size(t.kind()))
-            .fold(0, usize::max);
-        off = align_offset(off, 16);
-        for t in ts.fields() {
-            let key = t.key();
-            let f = self
-                .field(&key)
-                .ok_or(anyhow!("missing field {}", key))
-                .unwrap();
+    fn size(&self, val_offset: usize, fields: &[(u32, u32, u32)]) -> usize {
+        let mut off = align_offset(val_offset + std::mem::size_of::<ObjHeaderVER>(), 16);
+        for (f, (key, _, _)) in self.fields().zip(fields) {
             off += f.off_size();
-            if key == keys::INTLIST_KEY {
+            if *key == keys::INTLIST_KEY {
                 off = align_offset(off, 16);
             }
         }
-        align_offset(off, 16) + ObjHeaderVER::size_of()
+        align_offset(off, 16)
     }
 }
 
@@ -1352,21 +1344,11 @@ impl DumpObjVER for ObjRefVER<'_> {
     fn layer(&self) -> u32 {
         self.header.layer.into()
     }
-    fn field(&self, index: &u32) -> Option<impl DumpBaseTypeVER> {
-        self.fields.get(index).cloned()
+    fn field(&self, index: &u32) -> Option<&impl DumpBaseTypeVER> {
+        self.fields.get(index)
     }
-}
-
-#[make_platforms]
-impl DumpObjVER for ObjVER {
-    fn key(&self) -> u32 {
-        self.header().key.into()
-    }
-    fn layer(&self) -> u32 {
-        self.header().layer.into()
-    }
-    fn field(&self, index: &u32) -> Option<impl DumpBaseTypeVER> {
-        self.get(index)
+    fn fields(&self) -> impl Iterator<Item=&impl DumpBaseTypeVER> {
+        self.fields.values()
     }
 }
 
@@ -1378,8 +1360,11 @@ impl DumpObjVER for Obj {
     fn layer(&self) -> u32 {
         self.layer
     }
-    fn field(&self, index: &u32) -> Option<impl DumpBaseTypeVER> {
+    fn field(&self, index: &u32) -> Option<&impl DumpBaseTypeVER> {
         self.fields.get(&Crc::from(*index))
+    }
+    fn fields(&self) -> impl Iterator<Item=&impl DumpBaseTypeVER> {
+        self.fields.values()
     }
 }
 
@@ -1537,6 +1522,7 @@ impl From<&GameObjsVER> for GameObjs {
     }
 }
 
+pub type TypeInfos = IndexMap<u32, (usize, Vec<(u32, u32, u32)>)>;
 #[make_platforms]
 pub trait DumpGameObjsVER {
     fn gamemodemask(&self) -> i32;
@@ -1545,17 +1531,27 @@ pub trait DumpGameObjsVER {
     fn get_type(&self, key: u32) -> Option<impl DumpTypeVER>;
     fn objs(&self) -> impl Iterator<Item = &impl DumpObjVER>;
     fn objs_num(&self) -> usize;
-    fn size(&self) -> usize {
-        let size = GameObjsHeaderVER::size_of()
-            + self.types_num() * TypeHeaderVER::size_of()
-            + self.types().map(|x| x.fields_len()).sum::<usize>() * TypeFieldVER::size_of();
-        align_offset(size, 16)
+    fn size(&self) -> (usize, TypeInfos) {
+
+        let mut size = GameObjsHeaderVER::size_of() + self.types_num() * TypeHeaderVER::size_of();
+        let mut fields_num = 0;
+        let type_infos: TypeInfos = self.types().map(|x| {
+            fields_num += x.fields_len();
+            (x.key(), x.get_info())
+        }).collect();
+        size += fields_num * std::mem::size_of::<TypeFieldVER>();
+
+        size = align_offset(size, 16)
             + self
                 .objs()
-                .map(|x| x.size(&self.get_type(x.key()).unwrap()))
-                .sum::<usize>()
+                .map(|x| {
+                    let (off, info) = type_infos.get(&x.key()).unwrap();
+                    x.size(*off, info)
+                })
+                .sum::<usize>();
+        (size, type_infos)
     }
-    fn dump_into<'a>(&self, dst: &mut DumpSlice) -> Result<()> {
+    fn dump_into(&self, dst: &mut DumpSlice, infos: &TypeInfos) -> Result<()> {
         let start = dst.offset;
         let header = GameObjsHeaderVER::mut_from_data(dst).context("header")?;
         header.const_ = 1296123652u32.conv();
@@ -1572,8 +1568,8 @@ pub trait DumpGameObjsVER {
         header.obj_num = self.objs_num().conv();
         for (i, obj) in self.objs().enumerate() {
             let key = obj.key();
-            let ty = self.get_type(key).ok_or(anyhow!("obj {} ty {}", i, key))?;
-            obj.dump_into(dst, &ty)
+            let (off, info) = infos.get(&key).unwrap();
+            obj.dump_into(dst, *off, info)
                 .with_context(|| format!("obj {}", i))?;
         }
 
@@ -1594,28 +1590,6 @@ impl DumpGameObjsVER for GameObjsRefVER<'_> {
     }
     fn get_type(&self, key: u32) -> Option<impl DumpTypeVER> {
         self.types.get(&key).cloned()
-    }
-    fn objs(&self) -> impl Iterator<Item = &impl DumpObjVER> {
-        self.objs.values()
-    }
-    fn objs_num(&self) -> usize {
-        self.objs.len()
-    }
-}
-
-#[make_platforms]
-impl DumpGameObjsVER for GameObjsVER {
-    fn gamemodemask(&self) -> i32 {
-        self.gamemodemask
-    }
-    fn types(&self) -> impl Iterator<Item = impl DumpTypeVER> {
-        self.types.values()
-    }
-    fn types_num(&self) -> usize {
-        self.types.len()
-    }
-    fn get_type(&self, key: u32) -> Option<impl DumpTypeVER> {
-        self.types.get(&key)
     }
     fn objs(&self) -> impl Iterator<Item = &impl DumpObjVER> {
         self.objs.values()

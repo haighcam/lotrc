@@ -59,6 +59,8 @@ mod wrappers {
                     Display::fmt(&self.0, f)
                 }
             }
+            // TODO hack some kind of opaque but not really ctype to allow for different repr in
+            // header
             #[cfg(feature = "ffi")]
             unsafe impl safer_ffi::layout::ReprC for $name {
                 type CLayout = <$alt as safer_ffi::layout::ReprC>::CLayout;
@@ -93,6 +95,7 @@ mod wrappers {
     pub type slice<'a, T> = safer_ffi::slice::slice_ref<'a, T>;
     pub type str_ref<'a> = safer_ffi::string::str_ref<'a>;
     pub type box_slice<T> = safer_ffi::boxed::slice_boxed<T>;
+    pub type option<T> = safer_ffi::option::TaggedOption<T>;
 
     #[safer_ffi::derive_ReprC]
     #[repr(opaque)]
@@ -209,6 +212,7 @@ mod wrappers {
     pub type slice<'a, T> = &'a [T];
     pub type str_ref<'a> = &'a str;
     pub type box_slice<T> = Box<[T]>;
+    pub type option<T> = Option<T>;
 
     pub trait AsSlice<'a> {
         type T;

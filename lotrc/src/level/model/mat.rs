@@ -9,7 +9,7 @@ use crate::{
 
 #[cfg(not(feature = "ffi"))]
 use crate::types::GetNative;
-use crate::types::{Crc, RefFromData, OrderedData, OrderedDataStrict, BufType, DumpData};
+use crate::types::{Crc, RefFromData, OrderedData, OrderedDataStrict, BufType, DumpData, DumpCompressedData};
 use crate::level::pak::objs::InfoCounts;
 use lotrc_proc::{make_platforms, OrderedData};
 
@@ -411,53 +411,57 @@ impl MatVER {
 
 #[make_platforms]
 pub trait DumpMatVER {
-    fn dump_infos(&self, infos: &mut DumpInfosVER) -> Result<u32>;
+    fn dump_infos<D>(&self, infos: &mut DumpInfosVER<D>) -> Result<u32>;
     fn add_counts(&self, counts: &mut InfoCounts);
 }
 
 #[make_platforms]
 impl DumpMatVER for MatRefVER<'_> {
-    fn dump_infos(&self, infos: &mut DumpInfosVER) -> Result<u32> {
+    fn dump_infos<D>(&self, infos: &mut DumpInfosVER<D>) -> Result<u32> {
         match self {
             Self::Mat1(info, extra) => {
-                let val = infos.mat1s.offset as u32;
+                let val = infos.mat1s.offset;
                 let mat = infos.mat1s.next();
                 mat.write_from(info)?;
                 mat.base.mat_extra_offset = extra.map(|_| infos.mat_extras.offset as u32).unwrap_or_default().conv();
                 if let Some(extra) = extra {
                     infos.mat_extras.next().write_from(extra)?;
+                    *infos.offsets.next() = (val + std::mem::offset_of!(Mat1VER, base) + std::mem::offset_of!(MatBaseVER, mat_extra_offset)).conv();
                 }
-                Ok(val)
+                Ok(val as u32)
             }
             Self::Mat2(info, extra) => {
-                let val = infos.mat2s.offset as u32;
+                let val = infos.mat2s.offset;
                 let mat = infos.mat2s.next();
                 mat.write_from(info)?;
                 mat.base.mat_extra_offset = extra.map(|_| infos.mat_extras.offset as u32).unwrap_or_default().conv();
                 if let Some(extra) = extra {
+                    *infos.offsets.next() = (val + std::mem::offset_of!(Mat2VER, base) + std::mem::offset_of!(MatBaseVER, mat_extra_offset)).conv();
                     infos.mat_extras.next().write_from(extra)?;
                 }
-                Ok(val)
+                Ok(val as u32)
             }
             Self::Mat3(info, extra) => {
-                let val = infos.mat3s.offset as u32;
+                let val = infos.mat3s.offset;
                 let mat = infos.mat3s.next();
                 mat.write_from(info)?;
                 mat.base.mat_extra_offset = extra.map(|_| infos.mat_extras.offset as u32).unwrap_or_default().conv();
                 if let Some(extra) = extra {
                     infos.mat_extras.next().write_from(extra)?;
+                    *infos.offsets.next() = (val + std::mem::offset_of!(Mat3VER, base) + std::mem::offset_of!(MatBaseVER, mat_extra_offset)).conv();
                 }
-                Ok(val)
+                Ok(val as u32)
             }
             Self::Mat4(info, extra) => {
-                let val = infos.mat4s.offset as u32;
+                let val = infos.mat4s.offset;
                 let mat = infos.mat4s.next();
                 mat.write_from(info)?;
                 mat.base.mat_extra_offset = extra.map(|_| infos.mat_extras.offset as u32).unwrap_or_default().conv();
                 if let Some(extra) = extra {
                     infos.mat_extras.next().write_from(extra)?;
+                    *infos.offsets.next() = (val + std::mem::offset_of!(Mat4VER, base) + std::mem::offset_of!(MatBaseVER, mat_extra_offset)).conv();
                 }
-                Ok(val)
+                Ok(val as u32)
             }
         }
     }
@@ -467,24 +471,28 @@ impl DumpMatVER for MatRefVER<'_> {
                 counts.mat1s += 1;
                 if extra.is_some() {
                     counts.mat_extras += 1;
+                    counts.offsets += 1;
                 }
             }
             Self::Mat2(_, extra) => {
                 counts.mat2s += 1;
                 if extra.is_some() {
                     counts.mat_extras += 1;
+                    counts.offsets += 1;
                 }
             }
             Self::Mat3(_, extra) => {
                 counts.mat3s += 1;
                 if extra.is_some() {
                     counts.mat_extras += 1;
+                    counts.offsets += 1;
                 }
             }
             Self::Mat4(_, extra) => {
                 counts.mat4s += 1;
                 if extra.is_some() {
                     counts.mat_extras += 1;
+                    counts.offsets += 1;
                 }
             }
         }

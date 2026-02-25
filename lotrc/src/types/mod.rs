@@ -92,6 +92,11 @@ impl<'a, T: AsMut<[u8]>> From<&'a mut T> for DumpSlice<'a> {
         }
     }
 }
+impl<'a> From<&'a mut [u8]> for DumpSlice<'a> {
+    fn from(vals: &'a mut [u8]) -> Self {
+        Self { vals, offset: 0 }
+    }
+}
 
 impl<'a> DumpSlice<'a> {
     pub fn view<'b>(&'b mut self, off: usize) -> DumpSlice<'b> {
@@ -102,10 +107,10 @@ impl<'a> DumpSlice<'a> {
     }
     pub fn split(&mut self, off: usize) -> Self {
         let Self { vals, mut offset } = std::mem::take(self);
-        let (vals, res) = vals.split_at_mut(off);
-        let res = Self { vals: res, offset };
+        let (vals, rem) = vals.split_at_mut(off);
+        let res = Self { vals, offset };
         offset += off;
-        *self = Self { vals, offset };
+        *self = Self { vals: rem, offset };
         res
     }
     pub fn align(&mut self, size: usize) {
@@ -207,6 +212,9 @@ pub struct Crc {
 }
 
 impl Crc {
+    pub const fn new(val: u32) -> Self {
+        Self { val }
+    }
     pub const fn get(&self) -> u32 {
         self.val
     }
@@ -588,8 +596,8 @@ pub trait DumpStringsVER {
     fn num_strings(&self) -> usize;
     fn dump_into<'a>(&self, dst: &mut DumpSlice) -> Result<()> {
         for val in self.strings() {
-            let k = u32VER::mut_from_data(dst)?;
-            *k = val.len().conv();
+            let k = U32VER::mut_from_data(dst)?;
+            *k = (val.len() as u32).into();
             val.as_bytes().dump_into(dst)?;
         }
         Ok(())
@@ -821,7 +829,7 @@ impl CompressedBlock {
             compressed: vec![]
         }
     }
-    pub fn dump_slice(&self) -> DumpSlice<'_> {
+    pub fn dump_slice(&mut self) -> DumpSlice<'_> {
         (&mut self.data[..]).into()
     }
     pub fn compress(&mut self) -> Result<()> {
@@ -891,8 +899,8 @@ impl CompressedDataRef {
 #[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
 #[repr(C)]
 pub struct CompressedDataRefAlt<'a> {
-    data: slice<'a, u8>,
-    data_decomp: AlignedBuf
+    pub data: slice<'a, u8>,
+    pub data_decomp: AlignedBuf
 }
 
 impl<'a> CompressedDataRefAlt<'a> {
@@ -916,3 +924,34 @@ impl<'a> CompressedDataRefAlt<'a> {
         &*self.data_decomp
     }
 }
+
+pub trait DumpCompressedData {
+    fn compress(&mut self) -> Result<()>;
+    fn size_comp(&self) -> usize;
+    fn size(&self) -> usize;
+    fn dump_into(&self, dst: &mut DumpSlice) -> Result<()>;
+}
+
+impl DumpCompressedData for &'_ CompressedDataRefAlt<'_> {
+    fn compress(&mut self) -> Result<()> {
+        Ok(())
+    }
+    fn size_comp(&self) -> usize {
+        self.data.len()
+    }
+    fn size(&self) -> usize {
+        self.data_decomp.len()
+    }
+    fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
+        (&self.data[..]).dump_into(dst)
+    }
+}
+
+#[make_platforms]
+pub struct DumpCompressedDataImplVER<'a, D: DumpCompressedData> {
+    pub data: &'a mut D,
+    pub offset: &'a mut u32VER,
+    pub size: &'a mut u32VER,
+    pub size_comp: &'a mut u32VER
+}
+

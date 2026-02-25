@@ -27,7 +27,7 @@ enum RotationQuantizationType {
 mod impl_ver {
     use super::*;
     use lotrc::{
-        level::pak::animation::{AnimVals1RefVER, RotationQuantizationRefVER, RotationPolar32VER, RotationThreeComp40VER, RotationThreeComp48VER, RotationThreeComp24VER, RotationStraight16VER, RotationUncompressedVER},
+        level::pak::animation::{AnimVals1RefVER, RotationQuantizationRefVER, RotationPolar32VER, RotationThreeComp40VER, RotationThreeComp48VER, RotationThreeComp24VER, RotationStraight16VER, RotationUncompressedVER, AnimationRefVER},
         types::u16VER,
     };
     #[ffi_export]

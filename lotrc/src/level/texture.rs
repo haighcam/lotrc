@@ -6,7 +6,7 @@ use lotrc_proc::{make_platforms, OrderedData};
 
 #[cfg(not(feature = "ffi"))]
 use crate::types::GetNative;
-use crate::types::{Crc, hash_string, RefFromData, CompressedDataRef, OrderedData, OrderedDataStrict, BufType, CompressedDataRefAlt, Map, MapImpl, get_default_ref};
+use crate::types::{Crc, hash_string, RefFromData, CompressedDataRef, OrderedData, OrderedDataStrict, BufType, CompressedDataRefAlt, Map, MapImpl, get_default_ref, DumpSlice, DumpData, DumpCompressedData};
 #[make_platforms]
 use crate::types::{CrcVER, u32VER, u16VER, i32VER, u8VER};
 
@@ -640,4 +640,40 @@ impl From<&TextureVER> for Texture {
 pub enum TextureParsedVER {
     Raw(TextureRawVER),
     Parsed(Texture)
+}
+
+#[make_platforms]
+pub trait DumpTextureVER {
+    type Data;
+    fn key(&self) -> u32;
+    fn asset_info(&self) -> (u32VER, u32VER);
+    fn write_info(&self, info: &mut TextureInfoVER) -> Result<()>;
+    fn data0(&self) -> Option<Self::Data>;
+    fn data1(&self) -> Option<Self::Data>;
+}
+
+#[make_platforms]
+impl<'a> DumpTextureVER for TextureRefVER<'a> {
+    type Data = &'a CompressedDataRefAlt<'a>;
+    fn key(&self) -> u32 {
+        self.info.key.get()
+    }
+    fn asset_info(&self) -> (u32VER, u32VER) {
+        (self.info.asset_key, self.info.asset_type)
+    }
+    fn write_info(&self, info: &mut TextureInfoVER) -> Result<()> {
+        info.write_from(self.info)
+    }
+    fn data0(&self) -> Option<Self::Data> {
+        self.data0
+    }
+    fn data1(&self) -> Option<Self::Data> {
+        self.data1
+    }
+}
+
+#[make_platforms]
+pub trait DumpTexturesVER {
+    fn num(&self) -> usize;
+    fn write_infos(&self, infos: &mut [TextureInfoVER]);
 }

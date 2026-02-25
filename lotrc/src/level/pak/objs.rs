@@ -22,7 +22,7 @@ use crate::{
         },
         bin::{BinVER, BinRefVER},
         radiosity::{RadiosityValsInfoVER, RadiosityValsVER, RadiosityVER, RadiosityRawVER, RadiosityRefVER, DumpRadiosityVER},
-        texture::{TextureInfoVER, TextureVER, TextureRawVER, TextureRefVER},
+        texture::{TextureInfoVER, TextureVER, TextureRawVER, TextureRefVER, DumpTextureVER},
     },
     sub_blocks::{
         gameobjs::{GameObjsVER, GameObjsRefVER, DumpGameObjsVER},
@@ -42,8 +42,8 @@ use crate::{
         radiosity::{RadiosityValsInfo, Radiosity},
         texture::Texture,
     },
-    sub_blocks::gameobjs::GameObjs,
-    types::{Crc, DumpData, DumpSlice, RefFromData, Vector4, hash_string, OrderedData, OrderedDataStrict, BufType, slice, Map, MapImpl, box_slice, get_str, align_offset},
+    sub_blocks::gameobjs::{GameObjs, TypeInfos},
+    types::{Crc, DumpData, DumpSlice, RefFromData, Vector4, hash_string, OrderedData, OrderedDataStrict, BufType, slice, Map, MapImpl, box_slice, get_str, align_offset, CompressedDataRefAlt, DumpCompressedData},
 };
 use lotrc_proc::{make_platforms, OrderedData};
 
@@ -1058,6 +1058,7 @@ pub struct InfoCounts {
     pub animations: usize,
     pub hk_constraints: usize,
     pub animation_blocks: usize,
+    pub radiosity_vals: usize,
     pub offsets: usize,
 }
 
@@ -1078,6 +1079,9 @@ impl<'a, T: RefFromData> Default for DumpInfo<'a, T> {
 }
 
 impl<'a, T: RefFromData> DumpInfo<'a, T> {
+    pub fn len(&self) -> usize {
+        self.vals.len()
+    }
     pub fn as_ref(&mut self) -> &mut [T] {
         self.vals
     }
@@ -1118,7 +1122,7 @@ impl<'a, T: RefFromData> DumpInfo<'a, T> {
 }
 
 #[make_platforms]
-pub struct DumpInfosVER<'a> {
+pub struct DumpInfosVER<'a, D> {
     pub models: DumpInfo<'a, ModelInfoVER>,
     pub buffers: DumpInfo<'a, BufferInfoVER>,
     pub mat1s: DumpInfo<'a, Mat1VER>,
@@ -1135,7 +1139,10 @@ pub struct DumpInfosVER<'a> {
     pub animations: DumpInfo<'a, AnimationInfoVER>,
     pub hk_constraints: DumpInfo<'a, HkConstraintInfoVER>,
     pub animation_blocks: DumpInfo<'a, AnimationBlockInfoVER>,
+    pub radiosity_vals: DumpInfo<'a, RadiosityValsInfoVER>,
     pub offsets: DumpInfo<'a, u32VER>,
+    pub model_data: Vec<(u32VER, u32VER, Option<D>)>,
+    pub texture_data: Vec<(u32VER, u32VER, Option<D>)>,
 }
 
 struct Key<T>(u32, T);
@@ -1162,22 +1169,24 @@ impl<T> Eq for Key<T> {}
 
 #[make_platforms]
 pub trait DumpObjsVER {
+    type Data;
     fn obja_num(&self) -> usize;
     fn obj0_num(&self) -> usize;
     fn effect_num(&self) -> usize;
-    fn folage_num(&self) -> usize;
+    fn foliage_num(&self) -> usize;
     // TODO proper pfield dumping
     fn pfield_num(&self) -> usize;
     fn gfx_num(&self) -> usize;
     fn write_objas(&self, objas: &mut [ObjAVER]) -> Result<()>;
     fn write_obj0s(&self, obj0s: &mut [Obj0VER]) -> Result<()>;
-    fn effects(&self) -> impl Iterator<Item=(u32, &impl DumpGameObjsVER)>;
-    fn models(&self) -> impl Iterator<Item=(u32, &impl DumpModelVER)>;
-    fn foliages(&self) -> impl Iterator<Item=&impl DumpFoliageVER>;
-    fn gfxs(&self) -> impl Iterator<Item=(u32, &[u8])>;
-    fn radiosity(&self) -> &impl DumpRadiosityVER;
+    fn effects<'a>(&'a self) -> impl Iterator<Item=(u32, &'a (impl DumpGameObjsVER + 'a))>;
+    fn models<'a>(&'a self) -> impl Iterator<Item=(u32, &'a (impl DumpModelVER<Data=Self::Data> + 'a))>;
+    fn foliages<'a>(&'a self) -> impl Iterator<Item=&'a (impl DumpFoliageVER + 'a)>;
+    fn gfxs<'a>(&'a self) -> impl Iterator<Item=(u32, &'a [u8])>;
+    fn radiosity(&self) -> &impl DumpRadiosityVER<Data=Self::Data>;
+    fn textures<'a>(&'a self) -> impl Iterator<Item=(u32, &'a (impl DumpTextureVER<Data=Self::Data> + 'a))>;
 
-    fn group_models(&self) -> (impl Iterator<Item=&impl DumpModelVER>, impl ExactSizeIterator<Item=&impl DumpModelVER>, Option<&impl DumpModelVER>) {
+    fn group_models<'a>(&'a self) -> (impl Iterator<Item=&'a (impl DumpModelVER<Data=Self::Data> + 'a)>, impl ExactSizeIterator<Item=&'a (impl DumpModelVER<Data=Self::Data> + 'a)>, Option<&'a (impl DumpModelVER<Data=Self::Data> + 'a)>) {
         let mut normal = BinaryHeap::new();
         let mut collision_road = BinaryHeap::new();
         let mut terrain = BinaryHeap::new();
@@ -1204,7 +1213,7 @@ pub trait DumpObjsVER {
         )
     }
 
-    fn dump_into<'a>(&self, dst: &mut DumpSlice<'a>, offsets: &'a mut [u32VER], counts: &InfoCounts, pak_header: &mut PakHeaderVER) -> Result<DumpInfosVER<'a>> {
+    fn dump_into<'a>(&self, dst: &mut DumpSlice<'a>, offsets: &'a mut [u32VER], counts: &InfoCounts, pak_header: &mut PakHeaderVER, type_infos: &[TypeInfos]) -> Result<DumpInfosVER<'a, Self::Data>> {
         dst.align(16);
         pak_header.obja_offset = dst.offset.conv();
         let objas = ObjAVER::mut_slice_from_data(dst, self.obja_num()).context("objas")?;
@@ -1293,13 +1302,15 @@ pub trait DumpObjsVER {
         let hk_constraints = DumpInfo::<HkConstraintInfoVER>::ref_from(dst, counts.hk_constraints).context("hk_constraint_infos")?;
 
         dst.align(16);
-        pak_header.effect_info_offset = dst.offset.conv();
+        let mut effect_info_offset = dst.offset;
+        pak_header.effect_info_offset = effect_info_offset.conv();
         let effect_infos = EffectInfoVER::mut_slice_from_data(dst, self.effect_num()).context("effect_infos")?;
         pak_header.effect_info_num = effect_infos.len().conv();
 
         dst.align(16);
-        pak_header.foliage_info_offset = dst.offset.conv();
-        let foliage_infos = FoliageInfoVER::mut_slice_from_data(dst, self.folage_num()).context("foliage_infos")?;
+        let mut foliage_info_offset = dst.offset;
+        pak_header.foliage_info_offset = foliage_info_offset.conv();
+        let foliage_infos = FoliageInfoVER::mut_slice_from_data(dst, self.foliage_num()).context("foliage_infos")?;
         pak_header.foliage_info_num = foliage_infos.len().conv();
 
         dst.align(16);
@@ -1308,20 +1319,24 @@ pub trait DumpObjsVER {
         pak_header.pfield_info_num = pfield_infos.len().conv();
 
         dst.align(16);
-        pak_header.gfx_block_info_offset = dst.offset.conv();
+        let mut gfx_block_info_offset = dst.offset;
+        pak_header.gfx_block_info_offset = gfx_block_info_offset.conv();
         let gfx_block_infos = GFXBlockInfoVER::mut_slice_from_data(dst, self.gfx_num()).context("gfx_block_infos")?;
         pak_header.gfx_block_info_num = gfx_block_infos.len().conv();
 
         dst.align(16);
         let radiosity = self.radiosity();
         pak_header.radiosity_vals_info_offset = dst.offset.conv();
-        let radiosity_vals_infos = RadiosityValsInfoVER::mut_slice_from_data(dst, radiosity.vals_num()).context("radiosity_vals_infos")?;
-        pak_header.radiosity_vals_info_num = radiosity_vals_infos.len().conv();
+        pak_header.radiosity_vals_info_num = counts.radiosity_vals.conv();
+        let radiosity_vals = DumpInfo::<RadiosityValsInfoVER>::ref_from(dst, counts.radiosity_vals).context("radiosity_vals_infos")?;
 
         dst.align(16);
         pak_header.animation_block_info_offset = dst.offset.conv();
         pak_header.animation_block_info_num = counts.animation_blocks.conv();
         let animation_blocks = DumpInfo::<AnimationBlockInfoVER>::ref_from(dst, counts.animation_blocks).context("animation_block_infos")?;
+
+        let texture_data = Vec::with_capacity(textures.len() * 2);
+        let model_data = Vec::with_capacity(models.len() + 1);
 
         let mut dump_infos = DumpInfosVER {
             models,
@@ -1340,24 +1355,31 @@ pub trait DumpObjsVER {
             animations,
             hk_constraints,
             animation_blocks,
+            radiosity_vals,
+            texture_data,
+            model_data,
             offsets: DumpInfo { vals: offsets, ind: 0, offset: 0 },
         };
 
         dst.align(16);
-        for ((key, effect), info) in self.effects().sorted_by_key(|x| x.0).zip(effect_infos) {
+        for (((key, effect), info), type_infos) in self.effects().sorted_by_key(|x| x.0).zip(effect_infos).zip(type_infos) {
             info.key = key.conv();
             info.gamemodemask = effect.gamemodemask().conv();
             let off = dst.offset;
-            effect.dump_into(dst).with_context(|| format!("effect {}", key))?;
+            effect.dump_into(dst, type_infos).with_context(|| format!("effect {}", key))?;
             info.size = (dst.offset - off).conv();
             info.offset = off.conv();
+            *dump_infos.offsets.next() = (effect_info_offset + std::mem::offset_of!(EffectInfoVER, offset)).conv();
+            effect_info_offset += std::mem::size_of::<EffectInfoVER>();
         }
 
         let (normal, terrain, occluder) = self.group_models();
+        let mut model_count = 0;
         for model in normal {
             // TODO (better context)
-            model.dump_into(dst, &mut dump_infos).context("model")?;
+            model.dump_into(dst, &mut dump_infos).with_context(|| format!("model({}) {}", model_count, model.key()))?;
             dst.align(16);
+            model_count += 1;
         }
         let terrain_offset = dst.offset;
         if terrain.len() != 0 {
@@ -1365,13 +1387,16 @@ pub trait DumpObjsVER {
         }
         for model in terrain {
             // TODO (better context)
-            model.dump_terrain_into(dst, &mut dump_infos, terrain_offset).context("model")?; 
+            model.dump_terrain_into(dst, &mut dump_infos, terrain_offset).with_context(|| format!("terrain model({}) {}", model_count, model.key()))?; 
+            model_count += 1;
         }
 
         dst.align(16);
         for (foliage, info) in self.foliages().zip(foliage_infos) {
             foliage.dump_into(dst, info).with_context(|| format!("foliage {}", info.key))?;
             dst.align(16);
+            *dump_infos.offsets.next() = (foliage_info_offset + std::mem::offset_of!(FoliageInfoVER, offset)).conv();
+            foliage_info_offset += std::mem::size_of::<FoliageInfoVER>();
         }
 
         if let Some(model) = occluder {
@@ -1384,9 +1409,11 @@ pub trait DumpObjsVER {
             info.offset = dst.offset.conv();
             gfx.dump_into(dst).with_context(|| format!("gfx {}", key))?;
             dst.align(16);
+            *dump_infos.offsets.next() = (gfx_block_info_offset + std::mem::offset_of!(GFXBlockInfoVER, offset)).conv();
+            gfx_block_info_offset += std::mem::size_of::<GFXBlockInfoVER>();
         }
 
-        radiosity.dump_into(dst, radiosity_vals_infos).context("radiosity")?;
+        radiosity.dump_into(dst, &mut dump_infos).context("radiosity")?;
         dst.align(16);
 
 
@@ -1395,12 +1422,14 @@ pub trait DumpObjsVER {
         Ok(dump_infos)
     }
 
-    fn add_size(&self, mut offset: usize, counts: &mut InfoCounts) -> usize {
+    fn add_size(&self, mut offset: usize, counts: &mut InfoCounts) -> (usize, Vec<TypeInfos>) {
         let mut objs_size = 0;
 
-        for (_, effect) in self.effects().sorted_by_key(|x| x.0) {
-            objs_size += effect.size();
-        }
+        let mut type_infos = self.effects().sorted_by_key(|x| x.0).map(|(_, effect)| {
+            let (size, type_infos) = effect.size();
+            objs_size += size;
+            type_infos
+        }).collect();
 
         let (normal, terrain, occluder) = self.group_models();
 
@@ -1427,7 +1456,7 @@ pub trait DumpObjsVER {
             objs_size = align_offset(objs_size + gfx.len(), 16);
         }
 
-        objs_size = align_offset(self.radiosity().add_size(objs_size), 16);
+        objs_size = align_offset(self.radiosity().add_size(objs_size, counts), 16);
 
         offset = align_offset(offset, 16);
         offset = align_offset(offset + self.obja_num() * std::mem::size_of::<ObjAVER>(), 16);
@@ -1449,17 +1478,19 @@ pub trait DumpObjsVER {
         offset = align_offset(offset + counts.animations * std::mem::size_of::<DumpInfo::<AnimationInfoVER>>(), 16);
         offset = align_offset(offset + counts.hk_constraints * std::mem::size_of::<DumpInfo::<HkConstraintInfoVER>>(), 16);
         offset = align_offset(offset + self.effect_num() * std::mem::size_of::<EffectInfoVER>(), 16);
-        offset = align_offset(offset + self.folage_num() * std::mem::size_of::<FoliageInfoVER>(), 16);
+        offset = align_offset(offset + self.foliage_num() * std::mem::size_of::<FoliageInfoVER>(), 16);
         offset = align_offset(offset + self.pfield_num() * std::mem::size_of::<PFieldInfoVER>(), 16);
         offset = align_offset(offset + self.gfx_num() * std::mem::size_of::<GFXBlockInfoVER>(), 16);
-        offset = align_offset(offset + self.radiosity().vals_num() * std::mem::size_of::<RadiosityValsInfoVER>(), 16);
+        offset = align_offset(offset + counts.radiosity_vals * std::mem::size_of::<RadiosityValsInfoVER>(), 16);
         offset = align_offset(offset + counts.animation_blocks * std::mem::size_of::<DumpInfo::<AnimationBlockInfoVER>>(), 16);
-        offset + objs_size
+        counts.offsets += self.effect_num() + self.gfx_num() + self.foliage_num();
+        (offset + objs_size, type_infos)
     }
 }
 
 #[make_platforms]
-impl DumpObjsVER for ObjsRefVER<'_> {
+impl<'a> DumpObjsVER for ObjsRefVER<'a> {
+    type Data = &'a CompressedDataRefAlt<'a>;
     fn obja_num(&self) -> usize {
         self.objas.len()
     }
@@ -1469,7 +1500,7 @@ impl DumpObjsVER for ObjsRefVER<'_> {
     fn effect_num(&self) -> usize {
         self.effects.len()
     }
-    fn folage_num(&self) -> usize {
+    fn foliage_num(&self) -> usize {
         self.foliages.iter().map(|(_, x)| x.len()).sum::<usize>()
     }
     fn pfield_num(&self) -> usize {
@@ -1487,8 +1518,11 @@ impl DumpObjsVER for ObjsRefVER<'_> {
     fn effects(&self) -> impl Iterator<Item=(u32, &impl DumpGameObjsVER)> {
         self.effects.iter().map(|(k,v)| (*k, v))
     }
-    fn models(&self) -> impl Iterator<Item=(u32, &impl DumpModelVER)> {
+    fn models(&self) -> impl Iterator<Item=(u32, &impl DumpModelVER<Data=Self::Data>)> {
         self.models.iter().map(|(k,v)| (*k, v))
+    }
+    fn textures(&self) -> impl Iterator<Item=(u32, &impl DumpTextureVER<Data=Self::Data>)> {
+        self.textures.iter().map(|(k, v)| (*k, v))
     }
     fn foliages(&self) -> impl Iterator<Item=&impl DumpFoliageVER> {
         self.foliages.iter().flat_map(|(_, x)| x.iter())
@@ -1496,7 +1530,7 @@ impl DumpObjsVER for ObjsRefVER<'_> {
     fn gfxs(&self) -> impl Iterator<Item=(u32, &[u8])> {
         self.gfxs.iter().map(|(k,v)| (*k, &v[..]))
     }
-    fn radiosity(&self) -> &impl DumpRadiosityVER {
+    fn radiosity(&self) -> &impl DumpRadiosityVER<Data=Self::Data> {
         &self.radiosity
     }
 }

@@ -14,11 +14,16 @@ use crate::{
         bin::BinHeader,
         pak::{PakHeader, PakHeaderPc},
     },
-    types::{hash_string, Crc, RefFromData, StringKeys, Strings, OrderedData, BufType, BUF_ALIGN, AlignedBuf, CompressedDataRefAlt},
+    types::{hash_string, Crc, RefFromData, StringKeys, Strings, OrderedData, BufType, BUF_ALIGN, AlignedBuf, CompressedDataRefAlt, DumpCompressedData, DumpSlice, DumpData},
 };
 
 #[make_platforms]
-use crate::level::{bin::BinVER, pak::PakVER};
+use crate::{
+    level::{
+        bin::{BinVER, DumpBinVER},
+        pak::{PakVER, DumpPakVER}
+    }
+};
 
 pub mod bin;
 pub mod model;
@@ -31,6 +36,15 @@ pub mod texture;
 pub struct LevelData {
    pub pak: AlignedBuf,
    pub bin: AlignedBuf
+}
+
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+#[repr(u8)]
+pub enum Version {
+    Pc = 0,
+    Xbox,
+    Ps3,
+    Err
 }
 
 impl LevelData {
@@ -56,6 +70,17 @@ impl LevelData {
             }
         }
         Ok(Self { pak, bin })
+    }
+    pub fn version(&self) -> Version {
+        if self.bin[0] == 6 {
+            Version::Pc
+        } else if self.bin[3] == 6 && self.bin[7] == 2 {
+            Version::Xbox
+        } else if self.bin[3] == 6 && self.bin[7] == 3 {
+            Version::Ps3
+        } else {
+            Version::Err
+        }
     }
 }
 
@@ -84,6 +109,43 @@ impl<'a> LevelRefVER<'a> {
             pak: pak::PakRefVER::from_data(&src.pak[..], &mut data.pak, &bin).context("pak")?,
             bin
         })
+    }
+}
+
+#[make_platforms]
+pub trait DumpLevelVER {
+    fn pak(&self) -> &impl DumpPakVER<Data=impl DumpCompressedData>;
+    fn bin(&self) -> &impl DumpBinVER;
+    fn dump(&self) -> Result<(AlignedBuf, AlignedBuf)> {
+        let t = std::time::Instant::now();
+        let pak = self.pak();
+        let bin = self.bin();
+        let (pak_size, pak_header, block1, block2, animation_data, model_data, texture_data, rad_data)  = pak.size().context("pak preproces")?;
+        println!("pak size in {}", t.elapsed().as_secs_f32());
+        let t = std::time::Instant::now();
+        let mut pak_data = AlignedBuf::with_capacity(pak_size);
+        let mut dump_slice = DumpSlice::from(&mut pak_data[..]);
+        pak.dump(&mut dump_slice, pak_header, block1, block2, animation_data).context("dump pak")?;
+        println!("pak dumped in {}", t.elapsed().as_secs_f32());
+
+        let t = std::time::Instant::now();
+        let bin_size = bin.size(&model_data, &texture_data, rad_data.as_ref());
+        let mut bin_data = AlignedBuf::with_capacity(bin_size);
+        let mut dump_slice = DumpSlice::from(&mut bin_data[..]);
+        bin.dump(&mut dump_slice, &model_data, &texture_data, rad_data.as_ref()).context("dump bin")?;
+        println!("bin dumped in {}", t.elapsed().as_secs_f32());
+
+        Ok((pak_data, bin_data))
+    }
+}
+
+#[make_platforms]
+impl DumpLevelVER for LevelRefVER<'_> {
+    fn pak(&self) -> &impl DumpPakVER<Data=impl DumpCompressedData> {
+        &self.pak
+    }
+    fn bin(&self) -> &impl DumpBinVER {
+        &self.bin
     }
 }
 

@@ -30,24 +30,6 @@ mod impl_ver {
             gameobjs::GameObjsRefVER,
         },
     };
-    #[ffi_export]
-    pub fn lotrc_sub_block_map_get_ver<'a>(map: &'a Map<u32, SubBlockRefVER<'a>>, key: u32) -> *const SubBlockRefVER<'a> {
-        let val = map.get(&key);
-        val.map(|x| x as *const _).unwrap_or(null())
-    }
-    #[ffi_export]
-    pub fn lotrc_sub_block_map_len_ver<'a>(map: &'a Map<u32, SubBlockRefVER<'a>>) -> usize {
-        map.len()
-    }
-    #[ffi_export]
-    /// keys is a caller allocated array for returning keys
-    pub fn lotrc_sub_block_map_keys_ver<'a>(map: &'a Map<u32, SubBlockRefVER<'a>>, keys: *mut u32) {
-        if keys.is_null() { return; }
-        let keys = unsafe { &mut*slice_from_raw_parts_mut(keys, map.len()) };
-        for (src, dst) in map.keys().zip(keys) {
-            *dst = *src;
-        }
-    }
 
     #[ffi_export]
     pub fn lotrc_sub_block_get_type_ver<'a>(sub_block: &'a SubBlockRefVER<'a>) -> SubBlockType {

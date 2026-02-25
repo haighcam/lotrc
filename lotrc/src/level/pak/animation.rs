@@ -6,7 +6,7 @@ use crate::{
 #[cfg(not(feature = "ffi"))]
 use crate::types::GetNative;
 use crate::{
-    types::{Crc, RefFromData, align_offset, DumpData, DumpSlice, OrderedData, OrderedDataStrict, BufType, CompressedDataRefAlt, CompressedDataRef, slice, Map, MapImpl, box_slice, AlignedBuf, CompressedBlock},
+    types::{Crc, RefFromData, align_offset, DumpData, DumpSlice, OrderedData, OrderedDataStrict, BufType, CompressedDataRefAlt, CompressedDataRef, slice, Map, MapImpl, box_slice, AlignedBuf, CompressedBlock, DumpCompressedData, option},
     level::pak::{objs::InfoCounts}
 };
 use anyhow::{anyhow, Context, Result};
@@ -212,6 +212,13 @@ impl<'a> AnimVals1DumpVER<'a> {
     }
 }
 
+#[cfg(feature = "ffi")]
+#[make_platforms]
+pub type AnimVals1RefAltVER<'a> = safer_ffi::boxed::Box<AnimVals1RefVER<'a>>;
+#[cfg(not(feature = "ffi"))]
+#[make_platforms]
+pub type AnimVals1RefAltVER<'a> = AnimVals1RefVER<'a>;
+
 #[make_platforms]
 #[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
 #[repr(C)]
@@ -221,7 +228,7 @@ pub struct Obj1RefVER<'a> {
     pub s1: u16VER,
     pub data: slice<'a, u8>,
     pub vals_a: slice<'a, f32VER>,
-    pub vals: AnimVals1RefVER<'a>,
+    pub vals: AnimVals1RefAltVER<'a>,
     pub size: usize,
 }
 
@@ -261,6 +268,8 @@ impl<'a> Obj1RefVER<'a> {
         } else {
            AnimVals1RefVER::empty(kind).context("vals")?
         };
+        #[cfg(feature = "ffi")]
+        let vals = Box::new(vals).into();
         Ok(Self {
             flags,
             data,
@@ -491,7 +500,11 @@ impl DumpObj1VER for Obj1RefVER<'_> {
         data.write_from(&self.data[..])
     }
     fn write_vals(&self, vals: AnimVals1DumpVER) -> Result<()> {
-        match (&self.vals, vals) {
+        #[cfg(feature = "ffi")]
+        let vals_ref = &*self.vals;
+        #[cfg(not(feature = "ffi"))]
+        let vals_ref = &self.vals;
+        match (vals_ref, vals) {
             (AnimVals1RefVER::Type1(src), AnimVals1DumpVER::Type1(dst)) => dst.write_from(src),
             (AnimVals1RefVER::Type2(src), AnimVals1DumpVER::Type2(dst)) => dst.write_from(src),
             (AnimVals1RefVER::Type3(src), AnimVals1DumpVER::Type3(dst)) => dst.write_from(src),
@@ -885,6 +898,13 @@ impl<'a> RotationQuantizationDumpVER<'a> {
     }
 }
 
+#[cfg(feature = "ffi")]
+#[make_platforms]
+pub type RotationQuantizationRefAltVER<'a> = safer_ffi::boxed::Box<RotationQuantizationRefVER<'a>>;
+#[cfg(not(feature = "ffi"))]
+#[make_platforms]
+pub type RotationQuantizationRefAltVER<'a> = RotationQuantizationRefVER<'a>;
+
 #[make_platforms]
 #[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
 #[repr(C)]
@@ -893,7 +913,7 @@ pub struct Obj2RefVER<'a> {
     pub s2: u8,
     pub s1: u16VER,
     pub data: slice<'a, u8>,
-    pub vals: RotationQuantizationRefVER<'a>,
+    pub vals: RotationQuantizationRefAltVER<'a>,
     pub size: usize
 }
 
@@ -922,6 +942,8 @@ impl<'a> Obj2RefVER<'a> {
         } else {
             RotationQuantizationRefVER::empty(kind).context("vals")?
         };
+        #[cfg(feature = "ffi")]
+        let vals = Box::new(vals).into();
         Ok(Self {
             flags,
             s1,
@@ -1116,7 +1138,11 @@ impl DumpObj2VER for Obj2RefVER<'_> {
         data.write_from(&self.data[..])
     }
     fn write_vals(&self, vals: RotationQuantizationDumpVER) -> Result<()> {
-        match (&self.vals, vals) {
+        #[cfg(feature = "ffi")]
+        let vals_ref = &*self.vals;
+        #[cfg(not(feature = "ffi"))]
+        let vals_ref = &self.vals;
+        match (vals_ref, vals) {
             (RotationQuantizationRefVER::Polar32(src), RotationQuantizationDumpVER::Polar32(dst)) => dst.write_from(src),
             (RotationQuantizationRefVER::ThreeComp40(src), RotationQuantizationDumpVER::ThreeComp40(dst)) => dst.write_from(src),
             (RotationQuantizationRefVER::ThreeComp48(src), RotationQuantizationDumpVER::ThreeComp48(dst)) => dst.write_from(src),
@@ -1213,15 +1239,29 @@ pub struct Flags {
 #[make_platforms]
 #[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
 #[repr(C)]
+pub struct BlockValARefVER<'a> {
+    pub a: Obj1RefVER<'a>,
+    pub b: Obj2RefVER<'a>,
+    pub c: Obj1RefVER<'a>,
+}
+
+#[make_platforms]
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+#[repr(C)]
+pub struct BlockValRefVER<'a> {
+    pub vals_a: box_slice<BlockValARefVER<'a>>,
+    pub vals_b: box_slice<Obj1RefVER<'a>>
+}
+
+#[make_platforms]
+#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+#[repr(C)]
 pub struct BlocksRefVER<'a> {
     pub block_starts: slice<'a, u32VER>,
     pub block_starts2: slice<'a, u32VER>,
     pub obj_c3: slice<'a, u32VER>,
     pub obj_c4: slice<'a, u32VER>,
-    pub blocks: box_slice<(
-        box_slice<(Obj1RefVER<'a>, Obj2RefVER<'a>, Obj1RefVER<'a>)>,
-        box_slice<Obj1RefVER<'a>>,
-    )>,
+    pub blocks: box_slice<BlockValRefVER<'a>>
 }
 
 #[make_platforms]
@@ -1247,7 +1287,7 @@ impl<'a> BlocksRefVER<'a> {
                 off = align_offset(off + b.size, 4);
                 let c = Obj1RefVER::from_data(&src[off..], flag.c, (flag.f >> 6) & 3)?;
                 off = align_offset(off + c.size, 4);
-                vals_a.push((a, b, c));
+                vals_a.push(BlockValARefVER { a, b, c });
             }
             off = (info.block_offset.get() + start.get() + start2.get()) as usize;
             for flag in flags2 {
@@ -1255,7 +1295,10 @@ impl<'a> BlocksRefVER<'a> {
                 off = align_offset(off + d.size, 4);
                 vals_b.push(d);
             }
-            blocks.push((vals_a.into_boxed_slice().into(), vals_b.into_boxed_slice().into()));
+            blocks.push(BlockValRefVER {
+                vals_a: vals_a.into_boxed_slice().into(),
+                vals_b: vals_b.into_boxed_slice().into()
+            });
         }
         Ok(Self {
             block_starts: block_starts.into(),
@@ -1393,7 +1436,7 @@ pub trait DumpBlocksVER {
         &self,
     ) -> impl Iterator<
         Item = (
-            impl Iterator<Item = &(impl DumpObj1VER, impl DumpObj2VER, impl DumpObj1VER)>,
+            impl Iterator<Item = (&impl DumpObj1VER, &impl DumpObj2VER, &impl DumpObj1VER)>,
             impl Iterator<Item = &impl DumpObj1VER>,
         ),
     >;
@@ -1495,10 +1538,10 @@ impl DumpBlocksVER for BlocksRefVER<'_> {
         self.blocks.len()
     }
     fn block1_len(&self) -> usize {
-        self.blocks[0].0.len()
+        self.blocks[0].vals_a.len()
     }
     fn block2_len(&self) -> usize {
-        self.blocks[0].1.len()
+        self.blocks[0].vals_b.len()
     }
     fn obj_c3_len(&self) -> usize {
         self.obj_c3.len()
@@ -1511,13 +1554,13 @@ impl DumpBlocksVER for BlocksRefVER<'_> {
         &self,
     ) -> impl Iterator<
         Item = (
-            impl Iterator<Item = &(impl DumpObj1VER, impl DumpObj2VER, impl DumpObj1VER)>,
+            impl Iterator<Item = (&impl DumpObj1VER, &impl DumpObj2VER, &impl DumpObj1VER)>,
             impl Iterator<Item = &impl DumpObj1VER>,
         ),
     > {
         self.blocks
             .iter()
-            .map(|(vals, vals2)| (vals.iter(), vals2.iter()))
+            .map(|vals| (vals.vals_a.iter().map(|BlockValARefVER { a, b, c }| (a, b, c)), vals.vals_b.iter()))
     }
     fn write_obj_c3(&self, obj_c3: &mut [u32VER]) -> Result<()> {
         obj_c3.write_from(&self.obj_c3[..])
@@ -1549,13 +1592,13 @@ impl DumpBlocksVER for BlocksVER {
         &self,
     ) -> impl Iterator<
         Item = (
-            impl Iterator<Item = &(impl DumpObj1VER, impl DumpObj2VER, impl DumpObj1VER)>,
+            impl Iterator<Item = (&impl DumpObj1VER, &impl DumpObj2VER, &impl DumpObj1VER)>,
             impl Iterator<Item = &impl DumpObj1VER>,
         ),
     > {
         self.blocks
             .iter()
-            .map(|(vals, vals2)| (vals.iter(), vals2.iter()))
+            .map(|(vals, vals2)| (vals.iter().map(|(a,b,c)|(a,b,c)), vals2.iter()))
     }
     fn write_obj_c3(&self, obj_c3: &mut [u32VER]) -> Result<()> {
         obj_c3.write_from(self.obj_c3())
@@ -1588,13 +1631,13 @@ impl DumpBlocksVER for Blocks {
         &self,
     ) -> impl Iterator<
         Item = (
-            impl Iterator<Item = &(impl DumpObj1VER, impl DumpObj2VER, impl DumpObj1VER)>,
+            impl Iterator<Item = (&impl DumpObj1VER, &impl DumpObj2VER, &impl DumpObj1VER)>,
             impl Iterator<Item = &impl DumpObj1VER>,
         ),
     > {
         self.blocks
             .iter()
-            .map(|(vals, vals2)| (vals.iter(), vals2.iter()))
+            .map(|(vals, vals2)| (vals.iter().map(|(a,b,c)|(a,b,c)), vals2.iter()))
     }
     fn write_obj_c3(&self, obj_c3: &mut [u32VER]) -> Result<()> {
         for (src, dst) in self.obj_c3.iter().zip(obj_c3) {
@@ -1697,7 +1740,7 @@ pub struct AnimationRefVER<'a> {
     pub obj5_header: Option<&'a Obj5HeaderVER>,
     pub obj5_a: slice<'a, Obj5ValVER>,
     pub obj5_b: slice<'a, Obj5ValVER>,
-    pub blocks: Option<BlocksRefVER<'a>>,
+    pub blocks: option<BlocksRefVER<'a>>,
     pub size: usize
 }
 
@@ -1747,7 +1790,7 @@ impl<'a> AnimationRefVER<'a> {
             obj5_header,
             obj5_a: obj5_a.into(),
             obj5_b: obj5_b.into(),
-            blocks,
+            blocks: blocks.into(),
             size: info.size.get() as usize
         })
     }
@@ -2222,20 +2265,22 @@ impl AnimationsRawVER {
 #[repr(C)]
 pub struct AnimationsRefVER<'a> {
     pub animations: Map<u32, AnimationRefVER<'a>>,
+    pub block_infos: slice<'a, AnimationBlockInfoVER>,
 }
 
 #[make_platforms]
 impl Default for AnimationsRefVER<'_> {
     fn default() -> Self {
         Self {
-            animations: MapImpl::default().into()
+            animations: MapImpl::default().into(),
+            block_infos: slice::default()
         }
     }
 }
 
 #[make_platforms]
 impl<'a> AnimationsRefVER<'a> {
-    pub fn from_data(anim_infos: &'a [AnimationInfoVER], blocks: &'a [CompressedDataRefAlt<'_>]) -> Result<Self> {
+    pub fn from_data(anim_infos: &'a [AnimationInfoVER], blocks: &'a [CompressedDataRefAlt<'_>], block_infos: &'a [AnimationBlockInfoVER]) -> Result<Self> {
         let mut offsets = vec![0; blocks.len()];
         let mut animations = MapImpl::with_capacity(anim_infos.len());
         for info in anim_infos {
@@ -2252,7 +2297,7 @@ impl<'a> AnimationsRefVER<'a> {
                 }
             }
         }
-        Ok(Self { animations: animations.into() })
+        Ok(Self { animations: animations.into(), block_infos: block_infos.into() })
     }
 }
 
@@ -2349,8 +2394,7 @@ pub trait DumpAnimationsVER {
         counts.animation_blocks = self.block_num()
     }
 
-    fn dump(&self, infos: &mut DumpInfosVER) -> Result<Vec<CompressedBlock>> {
-
+    fn dump<D>(&self, infos: &mut DumpInfosVER<D>) -> Result<Vec<CompressedBlock>> {
         let mut animations = self.animations().collect::<Vec<_>>();
         animations.sort_by_key(|x| x.key());
         
@@ -2395,6 +2439,22 @@ pub trait DumpAnimationsVER {
             }
         }
         Ok(blocks)
+    }
+}
+
+#[make_platforms]
+impl DumpAnimationsVER for AnimationsRefVER<'_> {
+    fn animation_num(&self) -> usize {
+        self.animations.len()
+    }
+    fn block_num(&self) -> usize {
+        self.block_infos.len()
+    }
+    fn animations(&self) -> impl Iterator<Item=&impl DumpAnimationVER> {
+        self.animations.values()
+    }
+    fn write_block_infos(&self, infos: &mut [AnimationBlockInfoVER]) -> Result<()> {
+        infos.write_from(&self.block_infos[..])
     }
 }
 

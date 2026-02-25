@@ -4,12 +4,16 @@ use std::ptr::NonNull;
 
 #[cfg(not(feature = "ffi"))]
 use crate::types::GetNative;
-use crate::types::{Color, RefFromData, Vector2, Vector3, Vector4, OrderedData, OrderedDataStrict, BufType, slice, Map, MapImpl};
+use crate::types::{Color, RefFromData, Vector2, Vector3, Vector4, OrderedData, OrderedDataStrict, BufType, slice, Map, MapImpl, DumpSlice, CompressedDataRefAlt, DumpData};
 use crate::sub_blocks::gameobjs::keys::{INT_KEY, COLOR_KEY, VECTOR2_KEY, VECTOR3_KEY, VECTOR4_KEY};
+use crate::level::pak::objs::InfoCounts;
 
 #[make_platforms]
 use crate::{
-    level::model::{ModelInfoVER, ModelRawVER, ModelRefVER},
+    level::{
+        pak::objs::DumpInfosVER,
+        model::{ModelInfoVER, ModelRawVER, ModelRefVER}
+    },
     types::{ColorVER, Vector2VER, Vector3VER, Vector4VER, u16VER, u32VER, u8VER, },
 };
 use lotrc_proc::{make_platforms, OrderedData};
@@ -981,7 +985,8 @@ pub struct ModelDataRefVER<'a> {
     vbuff_order: slice<'a, u32VER>,
     ibuff_order: slice<'a, u32VER>,
     vertex: Map<u32, VertexBufferRefVER<'a>>,
-    index: Map<u32, IndexBufferRefVER<'a>>
+    index: Map<u32, IndexBufferRefVER<'a>>,
+    data: Option<&'a CompressedDataRefAlt<'a>>
 }
 
 #[make_platforms]
@@ -992,25 +997,33 @@ impl Default for ModelDataRefVER<'_> {
             vbuff_order: slice::default(),
             ibuff_order: slice::default(),
             vertex: MapImpl::default().into(),
-            index: MapImpl::default().into()
+            index: MapImpl::default().into(),
+            data: None
         }
     }
 }
 
 #[make_platforms]
-impl<'a> TryFrom<&ModelRefVER<'a>> for ModelDataRefVER<'a> {
-    type Error = anyhow::Error;
-    fn try_from(val: &ModelRefVER<'a>) -> Result<Self> {
-        if let Some(data) = val.data {
-            let data = data.get();
+impl<'a> ModelDataRefVER<'a> {
+    pub fn from_data(src: &'a [u8], info: &'a ModelInfoVER, model_data: &Map<u32, &'a CompressedDataRefAlt<'a>>) -> Result<Self> {
+        if let Some(model_data) = model_data.get(&info.asset_key.get()) {
+            let data = model_data.get();
+            let infos = BufferInfoVER::slice_from_data(&src[info.buffer_info_offset.get() as usize..], info.mat_num.get() as usize).context("buffer infos")?;
+            let vbuff_order = u32VER::slice_from_data(&src[info.vbuff_offset.get() as usize..], info.vbuff_num.get() as usize).context("vbuff order")?;
+            let ibuff_order = u32VER::slice_from_data(&src[info.ibuff_offset.get() as usize..], info.ibuff_num.get() as usize).context("vbuff order")?;
+            let vbuffs = vbuff_order.iter().map(|x| Ok((x.get(), VBuffInfoVER::from_data(&src[x.get() as usize..]).with_context(|| format!("vbuff info {}", x.get()))?))).collect::<Result<MapImpl<_, _>>>()?;
+            let ibuffs = ibuff_order.iter().map(|x| Ok((x.get(), IBuffInfoVER::from_data(&src[x.get() as usize..]).with_context(|| format!("ibuff info {}", x.get()))?))).collect::<Result<MapImpl<_, _>>>()?;
+            let vertex = vbuffs.iter().map(|(k,info)| Ok((*k, VertexBufferRefVER::from_data(data, info).with_context(|| format!("vertex data {}", k))?))).collect::<Result<MapImpl<_,_>>>()?.into();
+            let index = ibuffs.iter().map(|(k,info)| Ok((*k, IndexBufferRefVER::from_data(data, info).with_context(|| format!("index data {}", k))?))).collect::<Result<MapImpl<_,_>>>()?.into();
             Ok(Self {
-                infos: val.buffer_infos,
-                vbuff_order: val.vbuff_order,
-                ibuff_order: val.ibuff_order,
-                vertex: val.vbuffs.iter().map(|(k,info)| Ok((*k, VertexBufferRefVER::from_data(data, info).with_context(|| format!("vertex data {}", k))?))).collect::<Result<MapImpl<_,_>>>()?.into(),
-                index: val.ibuffs.iter().map(|(k,info)| Ok((*k, IndexBufferRefVER::from_data(data, info).with_context(|| format!("index data {}", k))?))).collect::<Result<MapImpl<_,_>>>()?.into(),
+                infos: infos.into(),
+                vbuff_order: vbuff_order.into(),
+                ibuff_order: ibuff_order.into(),
+                vertex,
+                index,
+                data: Some(model_data) 
             })
-        } else if val.buffer_infos.len() == 0 && val.vbuff_order.len() == 0 && val.ibuff_order.len() == 0 {
+        } else if info.mat_num.get() == 0 && info.vbuff_num.get() == 0 && info.ibuff_num.get() == 0 {
             Ok(Self::default())
         } else {
             Err(anyhow!("missing mesh data"))
@@ -1126,5 +1139,163 @@ impl From<&ModelDataVER> for ModelData {
                 .map(|(_, x)| x.into())
                 .collect(),
         }
+    }
+}
+
+#[make_platforms]
+pub trait DumpVertexBufferVER {
+    fn write_info(&self, info: &mut VBuffInfoVER) -> Result<()>;
+}
+
+#[make_platforms]
+pub trait DumpIndexBufferVER {
+    fn write_info(&self, info: &mut IBuffInfoVER) -> Result<()>;
+}
+
+#[make_platforms]
+pub trait DumpBufferVER {
+    fn write_info(&self, info: &mut BufferInfoVER) -> Result<()>;
+    fn has_vbuff_2(&self) -> bool;
+    fn has_vbuff_3(&self) -> bool;
+}
+
+#[make_platforms]
+pub trait DumpModelDataVER {
+    type Data;
+    fn vbuffs(&self) -> &IndexMap<u32, impl DumpVertexBufferVER>;
+    fn ibuffs(&self) -> &IndexMap<u32, impl DumpIndexBufferVER>;
+    fn buffers(&self) -> impl Iterator<Item=&impl DumpBufferVER>;
+    fn num_buffers(&self) -> usize;
+    fn data(&self) -> Option<Self::Data>;
+    fn add_size(&self, mut offset: usize, counts: &mut InfoCounts) -> (usize, usize) {
+        let vbuff_num = self.vbuffs().len();
+        let ibuff_num = self.ibuffs().len();
+        counts.vbuffs += vbuff_num;
+        counts.ibuffs += ibuff_num;
+
+        for buffer in self.buffers() {
+            counts.buffers += 1;
+            counts.offsets += 2;
+            if buffer.has_vbuff_2() {
+                counts.offsets += 1;
+            }
+            if buffer.has_vbuff_3() {
+                counts.offsets += 2;
+            }
+        }
+
+        counts.offsets += vbuff_num + ibuff_num;
+        offset += (vbuff_num * 4);
+        (offset + (ibuff_num * 4), offset)
+    }
+
+    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfosVER<Self::Data>, info: &mut ModelInfoVER) -> Result<Option<Self::Data>> {
+        let mut buffer_offset = infos.buffers.offset;
+        let buffers = infos.buffers.next_slice(self.num_buffers());
+        let vbuffs = self.vbuffs();
+        let vbuff_offset = infos.vbuffs.offset;
+        let vbuff_infos = infos.vbuffs.next_slice(vbuffs.len());
+        let ibuffs = self.ibuffs();
+        let ibuff_offset = infos.ibuffs.offset;
+        let ibuff_infos = infos.ibuffs.next_slice(ibuffs.len());
+
+        let vbuff_map = vbuffs.keys().enumerate().map(|(i, x)| (x, (vbuff_offset + (i * std::mem::size_of::<VBuffInfoVER>())) as u32)).collect::<IndexMap<_,_>>();
+        let ibuff_map = ibuffs.keys().enumerate().map(|(i, x)| (x, (ibuff_offset + (i * std::mem::size_of::<IBuffInfoVER>())) as u32)).collect::<IndexMap<_,_>>();
+
+        for (info, vbuff) in vbuff_infos.iter_mut().zip(vbuffs.values()) {
+            vbuff.write_info(info).context("write vbuff info")?;
+        }
+
+        for (info, ibuff) in ibuff_infos.iter_mut().zip(ibuffs.values()) {
+            ibuff.write_info(info).context("write ibuff info")?;
+        }
+
+        // mesh data should be dumped in the order of first encountering the vbuff / ibuff
+        for (info, buffer) in buffers.iter_mut().zip(self.buffers()) {
+            buffer.write_info(info).context("write buffer")?;
+            // also need to set v_size, buff size, tri num, etc.
+            info.vbuff_info_offset = vbuff_map.get(&info.vbuff_info_offset.get()).copied().unwrap_or(0).conv();
+            info.vbuff_info_offset_2 = vbuff_map.get(&info.vbuff_info_offset_2.get()).copied().unwrap_or(0).conv();
+            info.vbuff_info_offset_3 = vbuff_map.get(&info.vbuff_info_offset_3.get()).copied().unwrap_or(0).conv();
+            info.ibuff_info_offset = ibuff_map.get(&info.ibuff_info_offset.get()).copied().unwrap_or(0).conv();
+            *infos.offsets.next() = (buffer_offset + std::mem::offset_of!(BufferInfoVER, vbuff_info_offset)).conv();
+            if info.vbuff_info_offset_2.get() != 0 {
+                *infos.offsets.next() = (buffer_offset + std::mem::offset_of!(BufferInfoVER, vbuff_info_offset_2)).conv();
+            }
+            if info.vbuff_info_offset_3.get() != 0 {
+                *infos.offsets.next() = (buffer_offset + std::mem::offset_of!(BufferInfoVER, vbuff_info_offset_3)).conv();
+            }
+            *infos.offsets.next() = (buffer_offset + std::mem::offset_of!(BufferInfoVER, ibuff_info_offset)).conv();
+            buffer_offset += std::mem::size_of::<BufferInfoVER>();
+        }
+
+        info.vbuff_offset = dst.offset.conv();
+        info.vbuff_num = vbuff_map.len().conv();
+        let mut off = dst.offset;
+        let vbuff_order = u32VER::mut_slice_from_data(dst, vbuffs.len()).context("vbuff_order")?;
+        for (dst, src) in vbuff_order.iter_mut().zip(vbuff_map.keys()) {
+            *dst = src.conv();
+            *infos.offsets.next() = off.conv();
+            off += 4;
+        }
+
+        info.ibuff_offset = dst.offset.conv();
+        info.ibuff_num = ibuff_map.len().conv();
+        let mut off = dst.offset;
+        let ibuff_order = u32VER::mut_slice_from_data(dst, ibuffs.len()).context("ibuff_order")?;
+        for (dst, src) in ibuff_order.iter_mut().zip(ibuff_map.keys()) {
+            *dst = src.conv();
+            *infos.offsets.next() = off.conv();
+            off += 4;
+        }
+
+        Ok(self.data())
+    }
+}
+
+#[make_platforms]
+impl DumpVertexBufferVER for VertexBufferRefVER<'_> {
+    fn write_info(&self, info: &mut VBuffInfoVER) -> Result<()> {
+        info.write_from(self.info)
+    }
+}
+
+#[make_platforms]
+impl DumpIndexBufferVER for IndexBufferRefVER<'_> {
+    fn write_info(&self, info: &mut IBuffInfoVER) -> Result<()> {
+        info.write_from(self.info)
+    }
+}
+
+#[make_platforms]
+impl DumpBufferVER for BufferInfoVER {
+    fn write_info(&self, info: &mut BufferInfoVER) -> Result<()> {
+        info.write_from(self)
+    }
+    fn has_vbuff_2(&self) -> bool {
+        self.vbuff_info_offset_2.get() != 0
+    }
+    fn has_vbuff_3(&self) -> bool {
+        self.vbuff_info_offset_3.get() != 0
+    }
+}
+
+#[make_platforms]
+impl<'a> DumpModelDataVER for ModelDataRefVER<'a> {
+    type Data = &'a CompressedDataRefAlt<'a>;
+    fn vbuffs(&self) -> &IndexMap<u32, impl DumpVertexBufferVER> {
+        &self.vertex
+    }
+    fn ibuffs(&self) -> &IndexMap<u32, impl DumpIndexBufferVER> {
+        &self.index
+    }
+    fn buffers(&self) -> impl Iterator<Item=&impl DumpBufferVER> {
+        self.infos.iter()
+    }
+    fn num_buffers(&self) -> usize {
+        self.infos.len()
+    }
+    fn data(&self) -> Option<Self::Data> {
+        self.data.clone()
     }
 }

@@ -6,9 +6,9 @@ use indexmap::IndexMap;
 
 #[cfg(not(feature = "ffi"))]
 use crate::types::GetNative;
-use crate::types::{self, update_crc, Crc, RefFromData, CompressedDataRef, OrderedDataStrict, OrderedData, BufType, AlignedBuf, CompressedDataRefAlt, Map, MapImpl, slice, get_default_ref};
+use crate::types::{self, update_crc, Crc, RefFromData, CompressedDataRef, OrderedDataStrict, OrderedData, BufType, AlignedBuf, CompressedDataRefAlt, Map, MapImpl, slice, get_default_ref, DumpCompressedData, align_offset, DumpData, DumpSlice};
 #[make_platforms]
-use crate::types::{u32VER, CrcVER, StringsRefVER};
+use crate::types::{u32VER, CrcVER, StringsRefVER, DumpStringsVER};
 
 pub struct BinData<'a> {
     pub data: AlignedBuf,
@@ -172,6 +172,7 @@ impl<'a> BinData<'a> {
         .context("asset_handles")?;
         println!("Bin headers in {}", t.elapsed().as_secs_f32());
         
+        let t = std::time::Instant::now();
         let mut raw_data = asset_handles.iter().map(|info| (
             info.key.get(),
             CompressedDataRefAlt::from_data(&self.data[info.offset.get() as usize..], info.size.get() as usize, info.size_comp.get() as usize)
@@ -189,6 +190,7 @@ impl<'a> BinData<'a> {
         }
         self.model_data = model_data.into();
         self.texture_data = texture_data.into();
+        println!("Bin raw data in {}", t.elapsed().as_secs_f32());
 
         Ok(BinRefVER {
             header,
@@ -310,5 +312,135 @@ impl BinVER {
     }
     pub fn texture_data(&self) -> &IndexMap<u32, CompressedDataRef> {
         &self.texture_data
+    }
+}
+
+#[make_platforms]
+pub trait DumpBinVER {
+    fn strings(&self) -> &impl DumpStringsVER;
+    fn dump(&self, dst: &mut DumpSlice, model_data: &[(u32VER, u32VER, Option<impl DumpCompressedData>)], texture_data: &[(u32VER, u32VER, Option<impl DumpCompressedData>)], rad_data: Option<&(u32VER, u32VER, impl DumpCompressedData)>) -> Result<()> {
+        let header = BinHeaderVER::mut_from_data(dst).context("header")?;
+        dst.align(2048);
+        header.constx06 = 0x6u32.conv();
+        if IS_PC {
+            header.version = 1u32.conv();
+        }
+        if IS_XBOX {
+            header.version = 2u32.conv();
+        }
+        if IS_PS3 {
+            header.version = 3u32.conv();
+        }
+
+        let mut model_handles = Vec::with_capacity(model_data.len() + 1);
+        for (key, kind, data) in model_data {
+            let offset = dst.offset.conv();
+            let (size, size_comp) = if let Some(data) = data {
+                data.dump_into(dst).with_context(|| format!("dump model asset {}", key))?;
+                dst.align(2048);
+                if (data.size() == 0) {
+                    (0u32.conv(), 0u32.conv())
+                } else {
+                    (data.size().conv(), data.size_comp().conv())
+                }
+            } else {
+                (0u32.conv(), 0u32.conv())
+            };
+            model_handles.push(AssetHandleVER {
+                key: key.clone(),
+                offset,
+                size,
+                size_comp,
+                kind: kind.clone() 
+            })
+        }
+        let mut texture_handles = Vec::with_capacity(texture_data.len());
+        for (key, kind, data) in texture_data {
+            let offset = dst.offset.conv();
+            let (size, size_comp) = if let Some(data) = data {
+                data.dump_into(dst).with_context(|| format!("dump texture asset {}", key))?;
+                dst.align(2048);
+                if (data.size() == 0) {
+                    (0u32.conv(), 0u32.conv())
+                } else {
+                    (data.size().conv(), data.size_comp().conv())
+                }
+            } else {
+                (0u32.conv(), 0u32.conv())
+            };
+            texture_handles.push(AssetHandleVER {
+                key: key.clone(),
+                offset,
+                size,
+                size_comp,
+                kind: kind.clone() 
+            })
+        }
+        if let Some((key, kind, data)) = rad_data {
+            let offset = dst.offset.conv();
+            data.dump_into(dst).with_context(|| format!("dump radiosity asset {}", key))?;
+            dst.align(2048);
+            let (size, size_comp) = if (data.size() == 0) {
+                (0u32.conv(), 0u32.conv())
+            } else {
+                (data.size().conv(), data.size_comp().conv())
+            };
+            model_handles.push(AssetHandleVER {
+                key: key.clone(),
+                offset,
+                size,
+                size_comp,
+                kind: kind.clone() 
+            })
+        }
+ 
+        header.vdata_num = model_handles.len().conv();
+        header.vdata_num_alt = header.vdata_num;
+        header.texdata_num = texture_data.len().conv();
+        header.asset_handle_offset = dst.offset.conv();
+        let asset_handles = AssetHandleVER::mut_slice_from_data(dst, model_handles.len() + texture_handles.len()).context("asset_handles")?;
+        header.asset_handle_num = asset_handles.len().conv();
+        model_handles.sort_by_key(|x| x.key.get());
+        texture_handles.sort_by_key(|x| x.key.get());
+        (&mut asset_handles[..model_handles.len()]).write_from(&model_handles).context("model asset handles")?;
+        (&mut asset_handles[model_handles.len()..]).write_from(&texture_handles).context("texture asset handles")?;
+
+        let strings = self.strings();
+        let off = dst.offset;
+        header.strings_offset = off.conv();
+        header.strings_num = strings.num_strings().conv();
+        strings.dump_into(dst).context("strings")?;
+        header.strings_size = (dst.offset - off).conv();
+
+        dst.align(2048);
+
+        Ok(())
+    }
+    fn size(&self, model_data: &[(u32VER, u32VER, Option<impl DumpCompressedData>)], texture_data: &[(u32VER, u32VER, Option<impl DumpCompressedData>)], rad_data: Option<&(u32VER, u32VER, impl DumpCompressedData)>) -> usize {
+        let mut size = align_offset(std::mem::size_of::<BinHeaderVER>(), 2048);
+        for (_, _, data) in model_data {
+            if let Some(data) = data {
+                size = align_offset(size + data.size_comp(), 2048);
+            }
+        }
+        for (_, _, data) in texture_data {
+            if let Some(data) = data {
+                size = align_offset(size + data.size_comp(), 2048);
+            }
+        }
+        if let Some((_, _, data)) = rad_data {
+            size = align_offset(size + data.size_comp(), 2048);
+        }
+
+        size += std::mem::size_of::<AssetHandleVER>() * (model_data.len() + texture_data.len() + if rad_data.is_some() { 1 } else { 0 });
+
+        align_offset(size + self.strings().size(), 2048)
+    }
+}
+
+#[make_platforms]
+impl DumpBinVER for BinRefVER<'_> {
+    fn strings(&self) -> &impl DumpStringsVER {
+        &self.strings
     }
 }

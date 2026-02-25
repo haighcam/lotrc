@@ -1,14 +1,14 @@
 #[cfg(not(feature = "ffi"))]
 use crate::types::GetNative;
-use crate::types::{get_str, get_default_ref, hash_string, Crc, DumpData, DumpSlice, RefFromData, Vector3, Vector4, OrderedData, OrderedDataStrict, BufType, slice, box_slice, Map, MapImpl};
+use crate::types::{get_str, get_default_ref, hash_string, Crc, DumpData, DumpSlice, RefFromData, Vector3, Vector4, OrderedData, OrderedDataStrict, BufType, slice, box_slice, Map, MapImpl, align_offset};
 #[make_platforms]
 use crate::{
     level::pak::objs::PFieldInfoVER,
-    sub_blocks::gameobjs::{DumpGameObjsVER, GameObjsVER, GameObjsRefVER},
+    sub_blocks::gameobjs::{DumpGameObjsVER, GameObjsVER, GameObjsRefVER, BaseTypeVER},
     types::{CrcVER, u16VER, u32VER, f32VER, Vector3VER, Vector4VER},
 };
 use anyhow::{anyhow, Context, Result};
-use gameobjs::GameObjs;
+use gameobjs::{GameObjs, BaseType, TypeInfos};
 use indexmap::IndexMap;
 use log::warn;
 use lotrc_proc::{make_platforms, OrderedData};
@@ -247,34 +247,38 @@ impl SubBlock {
 
 #[make_platforms]
 pub trait DumpSubBlockVER {
-    fn size(&self) -> usize;
-    fn dump_into(&self, dst: &mut DumpSlice) -> Result<()>;
+    fn size(&self, type_infos: &mut Option<TypeInfos>) -> usize;
+    fn dump_into(&self, dst: &mut DumpSlice, type_infos: &TypeInfos) -> Result<()>;
 }
 
 #[make_platforms]
 impl DumpSubBlockVER for SubBlockRefVER<'_> {
-    fn size(&self) -> usize {
+    fn size(&self, type_infos: &mut Option<TypeInfos>) -> usize {
         match self {
             Self::LangStrings(val) => DumpLangStringsVER::size(val),
             Self::Data(val) => val.size(),
             Self::Spray(val) => DumpSprayVER::size(val),
             Self::PFields(val) => val.size(),
             Self::Crowd(val) => DumpCrowdVER::size(val),
-            Self::Level(val) => DumpGameObjsVER::size(val),
+            Self::Level(val) => {
+                let (size, infos) = DumpGameObjsVER::size(val);
+                type_infos.replace(infos);
+                size
+            }
             Self::AtlasUV(val) => DumpAtlasUVVER::size(val),
             Self::Lua(val) => val.size(),
             Self::SSA(val) => DumpSSAVER::size(val),
         }
     }
 
-    fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
+    fn dump_into(&self, dst: &mut DumpSlice, type_infos: &TypeInfos) -> Result<()> {
         match self {
             Self::LangStrings(val) => DumpLangStringsVER::dump_into(val, dst),
             Self::Data(val) => val.dump_into(dst),
             Self::Spray(val) => DumpSprayVER::dump_into(val, dst),
             Self::PFields(val) => val.dump_into(dst),
             Self::Crowd(val) => DumpCrowdVER::dump_into(val, dst),
-            Self::Level(val) => DumpGameObjsVER::dump_into(val, dst),
+            Self::Level(val) => DumpGameObjsVER::dump_into(val, dst, type_infos),
             Self::AtlasUV(val) => DumpAtlasUVVER::dump_into(val, dst),
             Self::Lua(val) => val.dump_into(dst),
             Self::SSA(val) => DumpSSAVER::dump_into(val, dst),
@@ -282,60 +286,34 @@ impl DumpSubBlockVER for SubBlockRefVER<'_> {
     }
 }
 
-#[make_platforms]
-impl DumpSubBlockVER for SubBlockVER {
-    fn size(&self) -> usize {
-        match self {
-            Self::LangStrings(val) => DumpLangStringsVER::size(val),
-            Self::Data(val) => val.size(),
-            Self::Spray(val) => DumpSprayVER::size(val),
-            Self::PFields(val) => val.size(),
-            Self::Crowd(val) => DumpCrowdVER::size(val),
-            Self::Level(val) => DumpGameObjsVER::size(val),
-            Self::AtlasUV(val) => DumpAtlasUVVER::size(val),
-            Self::Lua(val) => val.size(),
-            Self::SSA(val) => DumpSSAVER::size(val),
-        }
-    }
-
-    fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
-        match self {
-            Self::LangStrings(val) => DumpLangStringsVER::dump_into(val, dst),
-            Self::Data(val) => val.dump_into(dst),
-            Self::Spray(val) => DumpSprayVER::dump_into(val, dst),
-            Self::PFields(val) => val.dump_into(dst),
-            Self::Crowd(val) => DumpCrowdVER::dump_into(val, dst),
-            Self::Level(val) => DumpGameObjsVER::dump_into(val, dst),
-            Self::AtlasUV(val) => DumpAtlasUVVER::dump_into(val, dst),
-            Self::Lua(val) => val.dump_into(dst),
-            Self::SSA(val) => DumpSSAVER::dump_into(val, dst),
-        }
-    }
-}
 #[make_platforms]
 impl DumpSubBlockVER for SubBlock {
-    fn size(&self) -> usize {
+    fn size(&self, type_infos: &mut Option<TypeInfos>) -> usize {
         match self {
             Self::LangStrings(val) => DumpLangStringsVER::size(val),
             Self::Data(val) => val.size(),
             Self::Spray(val) => DumpSprayVER::size(val),
             Self::PFields(val) => val.size_ver(),
             Self::Crowd(val) => DumpCrowdVER::size(val),
-            Self::Level(val) => DumpGameObjsVER::size(val),
+            Self::Level(val) => {
+                let (size, infos) = DumpGameObjsVER::size(val);
+                type_infos.replace(infos);
+                size
+            }
             Self::AtlasUV(val) => DumpAtlasUVVER::size(val),
             Self::Lua(val) => val.size(),
             Self::SSA(val) => DumpSSAVER::size(val),
         }
     }
 
-    fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
+    fn dump_into(&self, dst: &mut DumpSlice, type_infos: &TypeInfos) -> Result<()> {
         match self {
             Self::LangStrings(val) => DumpLangStringsVER::dump_into(val, dst),
             Self::Data(val) => val.dump_into(dst),
             Self::Spray(val) => DumpSprayVER::dump_into(val, dst),
             Self::PFields(val) => val.dump_into_ver(dst),
             Self::Crowd(val) => DumpCrowdVER::dump_into(val, dst),
-            Self::Level(val) => DumpGameObjsVER::dump_into(val, dst),
+            Self::Level(val) => DumpGameObjsVER::dump_into(val, dst, type_infos),
             Self::AtlasUV(val) => DumpAtlasUVVER::dump_into(val, dst),
             Self::Lua(val) => val.dump_into(dst),
             Self::SSA(val) => DumpSSAVER::dump_into(val, dst),
@@ -516,13 +494,19 @@ pub trait DumpSubBlocksVER {
     fn blocks_num(&self) -> usize;
     fn blocks(&self) -> impl Iterator<Item = &impl DumpSubBlockVER>;
     fn write_names<'a>(&self, names: impl Iterator<Item = &'a mut CrcVER>);
+    
+    fn level_name(&self) -> Result<u32>;
 
-    fn size(&self) -> usize {
-        SubBlocksHeaderVER::size_of()
-            + SubBlocksBlockHeaderVER::size_of() * self.blocks_num()
-            + self.blocks().map(|x| x.size()).sum::<usize>()
+    fn size(&self, type_infos: &mut Option<TypeInfos>) -> usize {
+        let mut size = SubBlocksHeaderVER::size_of()
+            + SubBlocksBlockHeaderVER::size_of() * self.blocks_num();
+        size = align_offset(size, 16);
+        for block in self.blocks() {
+            size = align_offset(size + block.size(type_infos), 16);
+        }
+        size
     }
-    fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
+    fn dump_into(&self, dst: &mut DumpSlice, type_infos: &TypeInfos) -> Result<()> {
         let start = dst.offset;
         let header = SubBlocksHeaderVER::mut_from_data(dst).context("header")?;
         let block_headers = SubBlocksBlockHeaderVER::mut_slice_from_data(dst, self.blocks_num())
@@ -534,7 +518,7 @@ pub trait DumpSubBlocksVER {
             info.offset = (dst.offset - start).conv();
             let start = dst.offset;
             block
-                .dump_into(dst)
+                .dump_into(dst, type_infos)
                 .with_context(|| format!("block {}", i))?;
             info.size = (dst.offset - start).conv();
             dst.align(16);
@@ -557,20 +541,24 @@ impl DumpSubBlocksVER for SubBlocksRefVER<'_> {
             *dst = src.conv();
         }
     }
-}
+    fn level_name(&self) -> Result<u32> {
+        let level = self.blocks
+            .get(&hash_string(b"level", None))
+            .ok_or(anyhow!("level block missing"))
+            .and_then(|x| match x {
+                SubBlockRefVER::Level(val) => Ok(val),
+                _ => Err(anyhow!("level block wrong format"))
+            })?;
+        let field = level.objs.values()
+            .find(|v| v.header.key.get() == hash_string(b"templateLevel", None))
+            .ok_or(anyhow!("templateLevel not found"))?
+            .fields.get(&hash_string(b"name", None))
+            .ok_or(anyhow!("templateLevel missing name field"))?;
+        let name = field
+            .crc()
+            .ok_or(anyhow!("templateObject name field is not a crc"))?.get();
+        Ok(name)
 
-#[make_platforms]
-impl DumpSubBlocksVER for SubBlocksVER {
-    fn blocks_num(&self) -> usize {
-        self.blocks.len()
-    }
-    fn blocks(&self) -> impl Iterator<Item = &impl DumpSubBlockVER> {
-        self.blocks.values()
-    }
-    fn write_names<'a>(&self, names: impl Iterator<Item = &'a mut CrcVER>) {
-        for (src, dst) in self.blocks.keys().zip(names) {
-            *dst = src.conv();
-        }
     }
 }
 
@@ -585,6 +573,25 @@ impl DumpSubBlocksVER for SubBlocks {
     fn write_names<'a>(&self, names: impl Iterator<Item = &'a mut CrcVER>) {
         for (src, dst) in self.blocks.keys().zip(names) {
             *dst = src.conv();
+        }
+    }
+    fn level_name(&self) -> Result<u32> {
+        let level = self.blocks
+            .get(&Crc::new(hash_string(b"level", None)))
+            .ok_or(anyhow!("level block missing"))
+            .and_then(|x| match x {
+                SubBlock::Level(val) => Ok(val),
+                _ => Err(anyhow!("level block wrong format"))
+            })?;
+        let field = level.objs.values()
+            .find(|v| v.key.get() == hash_string(b"templateLevel", None))
+            .ok_or(anyhow!("templateLevel not found"))?
+            .fields.get(&Crc::new(hash_string(b"name", None)))
+            .ok_or(anyhow!("templateLevel missing name field"))?;
+        if let BaseType::Crc(name) = field {
+            Ok(name.get())
+        } else {
+            Err(anyhow!("templateObject name field is not a crc"))
         }
     }
 }

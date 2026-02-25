@@ -92,6 +92,18 @@ struct ObjPs3;
 
 struct ObjXbox;
 
+struct SSAPc;
+
+struct SSAPs3;
+
+struct SSAXbox;
+
+struct SprayPc;
+
+struct SprayPs3;
+
+struct SprayXbox;
+
 struct TypePc;
 
 struct TypePs3;
@@ -453,6 +465,57 @@ struct WeightPs3 {
   u8Ps3 d;
 };
 
+struct SSAValPc {
+  f32Pc t_start;
+  f32Pc t_end;
+  u32Pc unk_2;
+  u32Pc unk_3;
+  u32Pc off;
+};
+
+struct SprayInstancePc {
+  CrcPc key;
+  CrcPc tex1;
+  CrcPc tex2;
+  u32Pc unk_3;
+  u32Pc width;
+  u32Pc height;
+  f32Pc unk_6;
+  f32Pc unk_7;
+  u32Pc size_w;
+  u32Pc size_h;
+  f32Pc scale_w;
+  f32Pc scale_h;
+  u32Pc delay;
+  f32Pc stride_x;
+  f32Pc stride_y;
+  u32Pc unk_15;
+  u32Pc unk_16;
+};
+
+struct SprayValPc {
+  Vector3Pc position;
+  f32Pc scale;
+  u16Pc instance;
+  u16Pc rotation;
+};
+
+struct CrowdItemHeaderPc {
+  CrcPc key;
+  CrcPc key_main;
+  CrcPc key_right;
+  CrcPc key_left;
+  f32Pc unk_4;
+  u32Pc animation_num;
+  u32Pc instance_num;
+};
+
+struct CrowdValPc {
+  Vector3Pc position;
+  f32Pc rotation;
+  f32Pc lod;
+};
+
 struct CrowdHeaderPc {
   u32Pc const0x65;
   u32Pc n;
@@ -463,6 +526,57 @@ struct AtlasUVValPc {
   Vector4Pc vals;
 };
 
+struct SSAValXbox {
+  f32Xbox t_start;
+  f32Xbox t_end;
+  u32Xbox unk_2;
+  u32Xbox unk_3;
+  u32Xbox off;
+};
+
+struct SprayInstanceXbox {
+  CrcXbox key;
+  CrcXbox tex1;
+  CrcXbox tex2;
+  u32Xbox unk_3;
+  u32Xbox width;
+  u32Xbox height;
+  f32Xbox unk_6;
+  f32Xbox unk_7;
+  u32Xbox size_w;
+  u32Xbox size_h;
+  f32Xbox scale_w;
+  f32Xbox scale_h;
+  u32Xbox delay;
+  f32Xbox stride_x;
+  f32Xbox stride_y;
+  u32Xbox unk_15;
+  u32Xbox unk_16;
+};
+
+struct SprayValXbox {
+  Vector3Xbox position;
+  f32Xbox scale;
+  u16Xbox instance;
+  u16Xbox rotation;
+};
+
+struct CrowdItemHeaderXbox {
+  CrcXbox key;
+  CrcXbox key_main;
+  CrcXbox key_right;
+  CrcXbox key_left;
+  f32Xbox unk_4;
+  u32Xbox animation_num;
+  u32Xbox instance_num;
+};
+
+struct CrowdValXbox {
+  Vector3Xbox position;
+  f32Xbox rotation;
+  f32Xbox lod;
+};
+
 struct CrowdHeaderXbox {
   u32Xbox const0x65;
   u32Xbox n;
@@ -471,6 +585,57 @@ struct CrowdHeaderXbox {
 struct AtlasUVValXbox {
   CrcXbox key;
   Vector4Xbox vals;
+};
+
+struct SSAValPs3 {
+  f32Ps3 t_start;
+  f32Ps3 t_end;
+  u32Ps3 unk_2;
+  u32Ps3 unk_3;
+  u32Ps3 off;
+};
+
+struct SprayInstancePs3 {
+  CrcPs3 key;
+  CrcPs3 tex1;
+  CrcPs3 tex2;
+  u32Ps3 unk_3;
+  u32Ps3 width;
+  u32Ps3 height;
+  f32Ps3 unk_6;
+  f32Ps3 unk_7;
+  u32Ps3 size_w;
+  u32Ps3 size_h;
+  f32Ps3 scale_w;
+  f32Ps3 scale_h;
+  u32Ps3 delay;
+  f32Ps3 stride_x;
+  f32Ps3 stride_y;
+  u32Ps3 unk_15;
+  u32Ps3 unk_16;
+};
+
+struct SprayValPs3 {
+  Vector3Ps3 position;
+  f32Ps3 scale;
+  u16Ps3 instance;
+  u16Ps3 rotation;
+};
+
+struct CrowdItemHeaderPs3 {
+  CrcPs3 key;
+  CrcPs3 key_main;
+  CrcPs3 key_right;
+  CrcPs3 key_left;
+  f32Ps3 unk_4;
+  u32Ps3 animation_num;
+  u32Ps3 instance_num;
+};
+
+struct CrowdValPs3 {
+  Vector3Ps3 position;
+  f32Ps3 rotation;
+  f32Ps3 lod;
 };
 
 struct CrowdHeaderPs3 {
@@ -730,6 +895,34 @@ const WeightPs3 *lotrc_basetype_get_weightlist_ps3(const BaseTypePs3 *basetype);
 
 const Matrix4x4Ps3 *lotrc_basetype_get_matrixlist_ps3(const BaseTypePs3 *basetype);
 
+const SSAValPc *lotrc_ssa_get_vals_pc(const SSAPc *ssa);
+
+size_t lotrc_ssa_get_vals_num_pc(const SSAPc *ssa);
+
+const u16Pc *const *lotrc_ssa_get_strings_pc(const SSAPc *ssa);
+
+size_t lotrc_ssa_get_strings_num_pc(const SSAPc *ssa);
+
+void lotrc_ssa_get_strings_sizes_pc(const SSAPc *ssa, size_t *sizes);
+
+const SprayInstancePc *lotrc_spray_get_instances_pc(const SprayPc *spray);
+
+size_t lotrc_spray_get_instances_num_pc(const SprayPc *spray);
+
+const SprayValPc *lotrc_spray_get_vals_pc(const SprayPc *spray);
+
+size_t lotrc_spray_get_vals_num_pc(const SprayPc *spray);
+
+const CrowdItemHeaderPc *lotrc_crowditem_get_header_pc(const CrowdItemPc *crowditem);
+
+const CrcPc *lotrc_crowditem_get_animations_pc(const CrowdItemPc *crowditem);
+
+size_t lotrc_crowditem_get_animations_num_pc(const CrowdItemPc *crowditem);
+
+const CrowdValPc *lotrc_crowditem_get_instances_pc(const CrowdItemPc *crowditem);
+
+size_t lotrc_crowditem_get_instances_num_pc(const CrowdItemPc *crowditem);
+
 const CrowdHeaderPc *lotrc_crowd_get_header_pc(const CrowdPc *crowd);
 
 const u32Pc *lotrc_crowd_get_offs_pc(const CrowdPc *crowd);
@@ -744,6 +937,34 @@ const AtlasUVValPc *lotrc_atlasuv_get_vals_pc(const AtlasUVPc *atlasuv);
 
 size_t lotrc_atlasuv_get_vals_num_pc(const AtlasUVPc *atlasuv);
 
+const SSAValXbox *lotrc_ssa_get_vals_xbox(const SSAXbox *ssa);
+
+size_t lotrc_ssa_get_vals_num_xbox(const SSAXbox *ssa);
+
+const u16Xbox *const *lotrc_ssa_get_strings_xbox(const SSAXbox *ssa);
+
+size_t lotrc_ssa_get_strings_num_xbox(const SSAXbox *ssa);
+
+void lotrc_ssa_get_strings_sizes_xbox(const SSAXbox *ssa, size_t *sizes);
+
+const SprayInstanceXbox *lotrc_spray_get_instances_xbox(const SprayXbox *spray);
+
+size_t lotrc_spray_get_instances_num_xbox(const SprayXbox *spray);
+
+const SprayValXbox *lotrc_spray_get_vals_xbox(const SprayXbox *spray);
+
+size_t lotrc_spray_get_vals_num_xbox(const SprayXbox *spray);
+
+const CrowdItemHeaderXbox *lotrc_crowditem_get_header_xbox(const CrowdItemXbox *crowditem);
+
+const CrcXbox *lotrc_crowditem_get_animations_xbox(const CrowdItemXbox *crowditem);
+
+size_t lotrc_crowditem_get_animations_num_xbox(const CrowdItemXbox *crowditem);
+
+const CrowdValXbox *lotrc_crowditem_get_instances_xbox(const CrowdItemXbox *crowditem);
+
+size_t lotrc_crowditem_get_instances_num_xbox(const CrowdItemXbox *crowditem);
+
 const CrowdHeaderXbox *lotrc_crowd_get_header_xbox(const CrowdXbox *crowd);
 
 const u32Xbox *lotrc_crowd_get_offs_xbox(const CrowdXbox *crowd);
@@ -757,6 +978,34 @@ size_t lotrc_crowd_get_vals_num_xbox(const CrowdXbox *crowd);
 const AtlasUVValXbox *lotrc_atlasuv_get_vals_xbox(const AtlasUVXbox *atlasuv);
 
 size_t lotrc_atlasuv_get_vals_num_xbox(const AtlasUVXbox *atlasuv);
+
+const SSAValPs3 *lotrc_ssa_get_vals_ps3(const SSAPs3 *ssa);
+
+size_t lotrc_ssa_get_vals_num_ps3(const SSAPs3 *ssa);
+
+const u16Ps3 *const *lotrc_ssa_get_strings_ps3(const SSAPs3 *ssa);
+
+size_t lotrc_ssa_get_strings_num_ps3(const SSAPs3 *ssa);
+
+void lotrc_ssa_get_strings_sizes_ps3(const SSAPs3 *ssa, size_t *sizes);
+
+const SprayInstancePs3 *lotrc_spray_get_instances_ps3(const SprayPs3 *spray);
+
+size_t lotrc_spray_get_instances_num_ps3(const SprayPs3 *spray);
+
+const SprayValPs3 *lotrc_spray_get_vals_ps3(const SprayPs3 *spray);
+
+size_t lotrc_spray_get_vals_num_ps3(const SprayPs3 *spray);
+
+const CrowdItemHeaderPs3 *lotrc_crowditem_get_header_ps3(const CrowdItemPs3 *crowditem);
+
+const CrcPs3 *lotrc_crowditem_get_animations_ps3(const CrowdItemPs3 *crowditem);
+
+size_t lotrc_crowditem_get_animations_num_ps3(const CrowdItemPs3 *crowditem);
+
+const CrowdValPs3 *lotrc_crowditem_get_instances_ps3(const CrowdItemPs3 *crowditem);
+
+size_t lotrc_crowditem_get_instances_num_ps3(const CrowdItemPs3 *crowditem);
 
 const CrowdHeaderPs3 *lotrc_crowd_get_header_ps3(const CrowdPs3 *crowd);
 

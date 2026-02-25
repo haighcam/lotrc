@@ -1,6 +1,7 @@
 use clap::Parser;
 //use lotrc::types::{get_str, hash_string};
 use std::path::PathBuf;
+use lotrc::level::DumpLevelPc;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -47,6 +48,7 @@ fn main() {
     let mut level_compressed_data = lotrc::level::LevelCompressedData::default();
     let level = lotrc::level::LevelRefPc::from_data(&level_data, &mut level_compressed_data).unwrap();
     println!("level parsed in {:?}", t.elapsed());
+    let (pak_data, bin_data) = level.dump().unwrap();
 
 /*
     let t = std::time::Instant::now();

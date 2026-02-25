@@ -6,7 +6,7 @@ use zerocopy::transmute_ref;
 #[cfg(not(feature = "ffi"))]
 use crate::types::GetNative;
 use crate::{
-    types::{Crc, DumpData, RefFromData, Vector3, Vector4, DumpSlice, align_offset, hash_string, OrderedData, OrderedDataStrict, BufType, slice, str_ref, box_slice, get_default_ref},
+    types::{Crc, DumpData, RefFromData, Vector3, Vector4, DumpSlice, align_offset, hash_string, OrderedData, OrderedDataStrict, BufType, slice, str_ref, box_slice, get_default_ref, DumpCompressedData},
     level::{
         pak::objs::InfoCounts,
         model::Key2
@@ -331,14 +331,20 @@ impl DumpShapeExtraVER for &ShapeExtra {
 #[make_platforms]
 pub trait DumpShapeVER {
     fn extra(&self) -> Option<impl DumpShapeExtraVER>;
+    fn has_hk_shapes(&self) -> bool;
     fn hk_shapes(&self) -> impl Iterator<Item=impl DumpHkShapeVER>;
     fn write_info(&self, info: &mut ShapeInfoVER) -> Result<()>;
-    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfosVER, extra_off: Option<usize>) -> Result<()> {
+    fn dump_into<D>(&self, dst: &mut DumpSlice, infos: &mut DumpInfosVER<D>, extra_off: Option<usize>) -> Result<()> {
+        let info_offset = infos.shapes.offset;
         let info = infos.shapes.next();
         self.write_info(info).context("info")?;
         if let Some(off) = extra_off {
             info.offset = off.conv();
-            *infos.offsets.next() = (infos.shapes.offset - info.size()).conv();
+            *infos.offsets.next() = (info_offset + std::mem::offset_of!(ShapeInfoVER, offset)).conv();
+        }
+        if self.has_hk_shapes() {
+            info.hk_shape_offset = infos.hk_shapes.offset.conv();
+            *infos.offsets.next() = (info_offset + std::mem::offset_of!(ShapeInfoVER, hk_shape_offset)).conv();
         }
         for (i, shape) in self.hk_shapes().enumerate() {
             shape.dump_into(dst, infos).with_context(|| format!("hk_shape {}", i))?;
@@ -349,6 +355,9 @@ pub trait DumpShapeVER {
         infos.shapes += 1;
         if let Some(extra) = self.extra() {
             offset = extra.add_size(offset);
+            infos.offsets += 1;
+        }
+        if self.has_hk_shapes() {
             infos.offsets += 1;
         }
         for shape in self.hk_shapes() {
@@ -363,6 +372,9 @@ impl DumpShapeVER for ShapeRefVER<'_> {
     fn extra(&self) -> Option<impl DumpShapeExtraVER> {
         self.extra.clone()
     }
+    fn has_hk_shapes(&self) -> bool {
+        !self.hk_shapes.is_empty()    
+    }
     fn hk_shapes(&self) -> impl Iterator<Item=impl DumpHkShapeVER> {
         self.hk_shapes.iter()
     }
@@ -376,6 +388,9 @@ impl DumpShapeVER for ShapeVER {
     fn extra(&self) -> Option<impl DumpShapeExtraVER> {
         ShapeVER::extra(self)
     }
+    fn has_hk_shapes(&self) -> bool {
+        !self.hk_shapes.is_empty()    
+    }
     fn hk_shapes(&self) -> impl Iterator<Item=impl DumpHkShapeVER> {
         self.hk_shapes.iter().map(|x| unsafe { x.as_ref() })
     }
@@ -388,6 +403,9 @@ impl DumpShapeVER for ShapeVER {
 impl DumpShapeVER for Shape {
     fn extra(&self) -> Option<impl DumpShapeExtraVER> {
         self.extra.as_ref()
+    }
+    fn has_hk_shapes(&self) -> bool {
+        !self.hk_shapes.is_empty()    
     }
     fn hk_shapes(&self) -> impl Iterator<Item=impl DumpHkShapeVER> {
         self.hk_shapes.iter()
@@ -879,12 +897,14 @@ pub trait DumpHkShapeVER {
         counts.hk_shapes += 1;
         match self.kind() {
             5 => {
+                counts.offsets += 2;
                 let sizes = self.get_sizes();
                 offset = align_offset(offset, 16);
                 offset += sizes.0 * Vector4VER::size_of();
                 offset += sizes.1 * Vector3VER::size_of();
             }
             6 => {
+                counts.offsets += 3;
                 let sizes = self.get_sizes();
                 offset += sizes.0 * Vector3VER::size_of();
                 offset += sizes.1 * u16VER::size_of();
@@ -896,11 +916,25 @@ pub trait DumpHkShapeVER {
         }
         offset
     }
-    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfosVER) -> Result<()> {
+    fn dump_into<D>(&self, dst: &mut DumpSlice, infos: &mut DumpInfosVER<D>) -> Result<()> {
+        let info_off = infos.hk_shapes.offset;
         let info = infos.hk_shapes.next();
         self.write_info(info).context("write info")?;
         let vals = HkShapeDumpVER::from_bytes(dst, self.get_sizes(), info).context("vals")?;
         self.write_vals(vals).context("write vals")?;
+        match self.kind() {
+            5 => {
+                *infos.offsets.next() = ((info_off + std::mem::offset_of!(ConvexVerticesInfoVER, norms_offset)) as u32).conv();
+                *infos.offsets.next() = ((info_off + std::mem::offset_of!(ConvexVerticesInfoVER, verts_offset)) as u32).conv();
+            }
+            6 => {
+                *infos.offsets.next() = ((info_off + std::mem::offset_of!(BVTreeMeshInfoVER, verts_offset)) as u32).conv();
+                *infos.offsets.next() = ((info_off + std::mem::offset_of!(BVTreeMeshInfoVER, inds_offset)) as u32).conv();
+                *infos.offsets.next() = ((info_off + std::mem::offset_of!(BVTreeMeshInfoVER, tree_offset)) as u32).conv();
+
+            }
+            _ => ()
+        }
         Ok(())
     }
 }
@@ -1348,13 +1382,16 @@ pub trait DumpHkConstraintVER {
     fn write_bone_parents(&self, bone_parents: &mut [i16VER]) -> Result<()>;
     fn write_bone_name_vals<'a>(&self, vals: impl Iterator<Item = &'a mut u32VER>);
     fn write_vals2(&self, vals2: &mut [f32VER]) -> Result<()>;
-    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfosVER, bones_num: u16, bones_offset: u32) -> Result<()> {
+    fn dump_into<D>(&self, dst: &mut DumpSlice, infos: &mut DumpInfosVER<D>, bones_num: u16, bones_offset: u32) -> Result<()> {
+        let info_off = infos.hk_constraints.offset;
         let info = infos.hk_constraints.next();
         self.write_info(info).context("write info")?;
         info.bones_num = bones_num.conv();
         info.bones_offset = bones_offset.conv();
+        *infos.offsets.next() = (info_off + std::mem::offset_of!(HkConstraintInfoVER, bones_offset)).conv();
 
         info.bone_names_offset = dst.offset.conv();
+        *infos.offsets.next() = (info_off + std::mem::offset_of!(HkConstraintInfoVER, bone_names_offset)).conv();
         let mut name_off = dst.offset;
         let name_offsets= u32VER::mut_slice_from_data(dst, self.bone_names_num()).context("name_offsets")?;
         let mut string_off = dst.offset;
@@ -1363,16 +1400,19 @@ pub trait DumpHkConstraintVER {
 
         dst.align(16);
         info.bone_transforms_offset = dst.offset.conv();
+        *infos.offsets.next() = (info_off + std::mem::offset_of!(HkConstraintInfoVER, bone_transforms_offset)).conv();
         let bone_transforms = TRSVER::mut_slice_from_data(dst, self.bone_transforms_num()).context("bone_transforms")?;
         info.bone_transforms_num = bone_transforms.len().conv();
         self.write_bone_transforms(bone_transforms).context("write bone_transforms")?;
 
         info.bone_order_offset = dst.offset.conv();
+        *infos.offsets.next() = (info_off + std::mem::offset_of!(HkConstraintInfoVER, bone_order_offset)).conv();
         let bone_order = Key2VER::mut_slice_from_data(dst, self.bone_order_num()).context("bone_order")?;
         info.bone_order_num = bone_order.len().conv();
         self.write_bone_order(bone_order).context("write bone_order")?;
 
         info.bone_parents_offset = dst.offset.conv();
+        *infos.offsets.next() = (info_off + std::mem::offset_of!(HkConstraintInfoVER, bone_parents_offset)).conv();
         let bone_parents = i16VER::mut_slice_from_data(dst, self.bone_parents_num()).context("bone_parents")?;
         info.bone_parents_num = bone_parents.len().conv();
         self.write_bone_parents(bone_parents).context("write bone_parents")?;
@@ -1393,17 +1433,23 @@ pub trait DumpHkConstraintVER {
             string_off += size_of::<u32VER>() * 2;
         }
 
+
         info.vals2_offset = dst.offset.conv();
         let vals2 = f32VER::mut_slice_from_data(dst, self.vals2_num()).context("vals2")?;
         self.write_vals2(vals2).context("write vals2")?;
         if vals2.len() == 0 {
             info.vals2_offset = 0u32.conv();
+        } else {
+            *infos.offsets.next() = (info_off + std::mem::offset_of!(HkConstraintInfoVER, vals2_offset)).conv();
         }
         Ok(())
     }
     fn add_size(&self, mut offset: usize, infos: &mut InfoCounts) -> usize {
         infos.hk_constraints += 1;
-        infos.offsets += self.bone_names_num() * 2;
+        infos.offsets += self.bone_names_num() * 2 + 5;
+        if self.vals2_num() != 0 {
+            infos.offsets += 1;
+        }
         offset += size_of::<u32VER>() * self.bone_names_num() * 3;
         offset = align_offset(offset, 16) + size_of::<TRSVER>() * self.bone_transforms_num();
         offset += size_of::<Key2VER>() * self.bone_order_num();

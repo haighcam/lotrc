@@ -6,8 +6,9 @@ use std::cell::OnceCell;
 #[cfg(not(feature = "ffi"))]
 use crate::types::{GetNative, AsSlice};
 use crate::sub_blocks;
-use crate::types::{self, decompress_block, update_crc, Crc, RefFromData, OrderedData, OrderedDataStrict, BufType, AlignedBuf, box_slice, hash_string, slice, decompress_block_into, get_default_ref, CompressedDataRefAlt, DumpData, DumpSlice, CompressedBlock, align_offset};
+use crate::types::{self, decompress_block, update_crc, Crc, RefFromData, OrderedData, OrderedDataStrict, BufType, AlignedBuf, box_slice, hash_string, slice, decompress_block_into, get_default_ref, CompressedDataRefAlt, DumpData, DumpSlice, CompressedBlock, align_offset, DumpCompressedData};
 use crate::level::pak::objs::InfoCounts;
+use crate::sub_blocks::gameobjs::TypeInfos;
 #[make_platforms]
 use crate::{
     level::{
@@ -16,6 +17,7 @@ use crate::{
             animation::{AnimationsVER, AnimationsRawVER, AnimationsRefVER, AnimationInfoVER, DumpAnimationsVER}
         },
         bin::{BinVER, BinRefVER},
+        radiosity::DumpRadiosityVER,
     },
     sub_blocks::{SubBlocksRefVER, SubBlockRefVER, DumpSubBlocksVER},
     types::{u32VER, U32VER, I32VER, StringKeysRefVER, StringsRefVER, DumpStringsVER, DumpStringKeysVER}
@@ -314,27 +316,41 @@ pub struct Block1 {
 
 #[make_platforms]
 pub trait DumpBlock1VER {
-    fn objs(&self) -> &impl DumpObjsVER; 
+    type Data;
+    fn objs(&self) -> &impl DumpObjsVER<Data=Self::Data>; 
     fn sub_blocks(&self) -> &impl DumpSubBlocksVER;
     fn string_keys(&self) -> &impl DumpStringKeysVER;
-    fn dump<'a>(&self, dst: &mut DumpSlice<'a>, offsets: &'a mut [u32VER], counts: &InfoCounts, pak_header: &mut PakHeaderVER) -> Result<DumpInfosVER<'a>> {
-        let infos = self.objs().dump_into(dst, offsets, counts, pak_header).context("objs")?; 
+    fn dump<'a>(&self, dst: &mut DumpSlice<'a>, offsets: &'a mut [u32VER], counts: &InfoCounts, pak_header: &mut PakHeaderVER, type_infos: (&TypeInfos, &[TypeInfos])) -> Result<DumpInfosVER<'a, Self::Data>> {
+        let t = std::time::Instant::now();
+        let infos = self.objs().dump_into(dst, offsets, counts, pak_header, type_infos.1).context("objs")?; 
+        println!("objs dumped in {}", t.elapsed().as_secs_f32());
         pak_header.sub_blocks1_offset = dst.offset.conv();
-        self.sub_blocks().dump_into(dst).context("sub_blocks")?;
+        self.sub_blocks().dump_into(dst, type_infos.0).context("sub_blocks")?;
+        println!("sub_blocks1 dumped in {}", t.elapsed().as_secs_f32());
         // TODO: generate string keys based solely on the LangString sub_blocks to make those
         // easier to deal with
         pak_header.string_keys_offset = dst.offset.conv();
         self.string_keys().dump_into(dst).context("string_keys")?;
+        println!("string keys dumped in {}", t.elapsed().as_secs_f32());
         Ok(infos)
     }
-    fn size(&self, counts: &mut InfoCounts) -> usize {
-        self.objs().add_size(0, counts) + self.sub_blocks().size() + self.string_keys().size()
+    fn size(&self, counts: &mut InfoCounts) -> (usize, (TypeInfos, Vec<TypeInfos>)) {
+        let t = std::time::Instant::now();
+        let (mut size, obj_infos) = self.objs().add_size(0, counts);
+        println!("objs size in {}", t.elapsed().as_secs_f32());
+        let mut infos = None;
+        size += self.sub_blocks().size(&mut infos);
+        println!("sub_blocks1 size in {}", t.elapsed().as_secs_f32());
+        size += self.string_keys().size();
+        println!("string keys size in {}", t.elapsed().as_secs_f32());
+        (size, (infos.expect("sub_blocks1 level block missing"), obj_infos))
     }
 }
 
 #[make_platforms]
-impl DumpBlock1VER for Block1RefVER<'_> {
-    fn objs(&self) -> &impl DumpObjsVER {
+impl<'a> DumpBlock1VER for Block1RefVER<'a> {
+    type Data = &'a CompressedDataRefAlt<'a>;
+    fn objs(&self) -> &impl DumpObjsVER<Data=Self::Data> {
         &self.objs
     }
     fn sub_blocks(&self) -> &impl DumpSubBlocksVER {
@@ -444,12 +460,14 @@ pub struct Block2 {
 pub trait DumpBlock2VER {
     fn sub_blocks(&self) -> &impl DumpSubBlocksVER;
     fn dump<'a>(&self, dst: &mut DumpSlice<'a>, offset_num: usize) -> Result<&'a mut [u32VER]> {
-        self.sub_blocks().dump_into(dst).context("sub_blocks")?;
+        let type_infos = Default::default();
+        self.sub_blocks().dump_into(dst, &type_infos).context("sub_blocks")?;
         let offsets = u32VER::mut_slice_from_data(dst, offset_num).context("offsets")?;
         Ok(offsets)
     }
     fn size(&self, offset_num: usize) -> usize {
-        self.sub_blocks().size() + offset_num * std::mem::size_of::<u32VER>()
+        let mut type_infos = None;
+        self.sub_blocks().size(&mut type_infos) + offset_num * std::mem::size_of::<u32VER>()
     }
 }
 
@@ -535,7 +553,7 @@ impl<'a> PakRefVER<'a> {
 
         //let animations = AnimationsRefVER::from_data(animation_infos, &self.animations[..]).context("animations")?;
         let t = std::time::Instant::now();
-        let animations = AnimationsRefVER::from_data(block1.objs.animation_infos.as_slice(), &data.animations[..]).context("animations")?;
+        let animations = AnimationsRefVER::from_data(block1.objs.animation_infos.as_slice(), &data.animations[..], block1.objs.animation_block_infos.as_slice()).context("animations")?;
         println!("Pak animations parsed in {}", t.elapsed().as_secs_f32());
         Ok(PakRefVER {
             header,
@@ -715,9 +733,10 @@ impl PakVER {
 
 #[make_platforms]
 pub trait DumpPakVER {
+    type Data;
     fn vals_a_num(&self) -> usize;
     fn write_vals_a(&self, vals_a: &mut [BlockAValVER]) -> Result<()>;
-    fn block1(&self) -> &impl DumpBlock1VER;
+    fn block1(&self) -> &impl DumpBlock1VER<Data=Self::Data>;
     fn block2(&self) -> &impl DumpBlock2VER;
     fn animations(&self) -> &impl DumpAnimationsVER;
     fn strings(&self) -> &impl DumpStringsVER;
@@ -751,9 +770,8 @@ pub trait DumpPakVER {
         dst.align(2048);
         Ok(())
     }
-    fn size(&self) -> Result<(usize, PakHeaderVER, CompressedBlock, CompressedBlock, Vec<CompressedBlock>)> {
-        // to get the size we need to dump block1, block2 and all animations
-        // compress them and compute the sizes
+    fn size(&self) -> Result<(usize, PakHeaderVER, CompressedBlock, CompressedBlock, Vec<CompressedBlock>, Vec<(u32VER, u32VER, Option<Self::Data>)>, Vec<(u32VER, u32VER, Option<Self::Data>)>, Option<(u32VER, u32VER, Self::Data)>)> {
+        let t = std::time::Instant::now();
         let mut size = std::mem::size_of::<PakHeaderVER>();
 
         let mut header = PakHeaderVER::default();
@@ -763,24 +781,34 @@ pub trait DumpPakVER {
         let animations = self.animations();
         let mut counts = InfoCounts::default();
 
+
         animations.info_counts(&mut counts);
-        let mut block1_data = CompressedBlock::with_capacity(block1.size(&mut counts));
+        println!("animation counts in {}", t.elapsed().as_secs_f32());
+        let (block1_size, type_infos) = block1.size(&mut counts);
+        let mut block1_data = CompressedBlock::with_capacity(block1_size);
+        println!("block1 size in {}", t.elapsed().as_secs_f32());
         let mut block2_data = CompressedBlock::with_capacity(block2.size(counts.offsets));
+        println!("block2 size in {}", t.elapsed().as_secs_f32());
         let offsets = {
             let mut dst = block2_data.dump_slice();
             block2.dump(&mut dst, counts.offsets).context("block2")
         }?;
+        println!("dumped block2 in {}", t.elapsed().as_secs_f32());
         
         let mut infos = {
             let mut dst = block1_data.dump_slice();
-            block1.dump(&mut dst, offsets, &counts, &mut header).context("block1")
+            block1.dump(&mut dst, offsets, &counts, &mut header, (&type_infos.0, &type_infos.1)).context("block1")
         }?;
+        println!("dumped block1 in {}", t.elapsed().as_secs_f32());
 
         let mut animation_blocks = animations.dump(&mut infos).context("animations")?;
+        println!("dumped animations in {}", t.elapsed().as_secs_f32());
         
         animation_blocks.par_iter_mut()
             .try_for_each(|x| x.compress())
             .context("compressed data")?;
+        println!("compressed animations in {}", t.elapsed().as_secs_f32());
+
         
         for (block, info) in animation_blocks.iter().zip(infos.animation_blocks.take()) {
             size = align_offset(size, 4096) + block.compressed.len();
@@ -788,10 +816,22 @@ pub trait DumpPakVER {
             info.size_comp = block.compressed.len().conv(); 
         }
         
+        let model_data = infos.model_data;
+        let texture_data = infos.texture_data;
+        let radiosity = block1.objs().radiosity();
+        let rad_data = if let Some(data) = radiosity.data() {
+            let radiosity_name = hash_string(b"_radiosity", Some(block1.sub_blocks().level_name()?));
+            Some((radiosity_name.into(), radiosity.usage(), data))
+        } else {
+            None
+        };
+        println!("dumped radiosity in {}", t.elapsed().as_secs_f32());
+        
         rayon::iter::once(&mut block1_data)
             .chain(rayon::iter::once(&mut block2_data))
             .try_for_each(|x| x.compress())
             .context("compressed blocks")?;
+        println!("compressed blocks in {}", t.elapsed().as_secs_f32());
         size = align_offset(size, 4096) + block1_data.compressed.len();
         header.block1_offset = size.conv();
         header.block1_size = block1_data.data.len().conv();
@@ -804,7 +844,30 @@ pub trait DumpPakVER {
 
         size = align_offset(size, 4096) + self.strings().size() + self.vals_a_num() * std::mem::size_of::<BlockAValVER>();
         size = align_offset(size, 2048);
+        println!("misc sizes in {}", t.elapsed().as_secs_f32());
          
-        Ok((size, header, block1_data, block2_data, animation_blocks))
+        Ok((size, header, block1_data, block2_data, animation_blocks, model_data, texture_data, rad_data))
+    }
+}
+#[make_platforms]
+impl<'a> DumpPakVER for PakRefVER<'a> {
+    type Data = &'a CompressedDataRefAlt<'a>;
+    fn vals_a_num(&self) -> usize {
+        self.vals_a.len()
+    }
+    fn write_vals_a(&self, vals_a: &mut [BlockAValVER]) -> Result<()> {
+        vals_a.write_from(&self.vals_a[..])
+    }
+    fn block1(&self) -> &impl DumpBlock1VER<Data=Self::Data> {
+        &self.block1
+    }
+    fn block2(&self) -> &impl DumpBlock2VER {
+        &self.block2
+    }
+    fn animations(&self) -> &impl DumpAnimationsVER {
+        &self.animations
+    }
+    fn strings(&self) -> &impl DumpStringsVER {
+        &self.strings
     }
 }

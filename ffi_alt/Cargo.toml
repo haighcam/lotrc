@@ -3,6 +3,10 @@ name = "ffi_alt"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "lotrc_ffi"
+crate-type = ["lib", "cdylib"]
+
 [features]
 default = []
 headers = ["safer-ffi/headers"]
@@ -15,3 +19,4 @@ required-features = ["headers"]
 safer-ffi = { workspace = true, features = ["proc_macros"] }
 lotrc = { workspace = true, features = ["ffi"] }
 anyhow = { workspace = true }
+paste = "1.0.15"
