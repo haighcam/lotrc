@@ -323,9 +323,11 @@ pub const fn hash_string(string: &[u8], mask: Option<u32>) -> u32 {
 }
 
 lazy_static::lazy_static! {
-    pub static ref STRING_LOOKUP: Mutex<HashMap<u32, String>> = {
+    pub static ref STRING_LOOKUP: Mutex<(IndexMap<u32, String>, usize)> = {
         const CONQUEST_STRINGS: &str = include_str!("../res/conquest_strings.txt");
-        Mutex::new(CONQUEST_STRINGS.replace("\r\n", "\n").split('\n').map(|x| (hash_string(x.as_bytes(), None), String::from(x))).collect())
+        let strings = IndexMap::from_iter(CONQUEST_STRINGS.replace("\r\n", "\n").split('\n').map(|x| (hash_string(x.as_bytes(), None), String::from(x))));
+        let n = strings.len();
+        Mutex::new((strings, n))
     };
 
     pub static ref ANIMATION_EVENTS: HashMap<Crc, Vec<u32>> = {
@@ -333,6 +335,8 @@ lazy_static::lazy_static! {
             Crc::Str(k), val.into_iter().map(|x| hash_string(x.as_bytes(), None)).collect()
         )).collect()
     };
+
+    pub static ref ADDED_CRCS: Mutex<HashMap<u32, String>> = Mutex::new(HashMap::new());
 
     pub static ref DECOMP_LUA: Mutex<bool> = Mutex::new(false);
 
@@ -433,20 +437,37 @@ pub fn alt_objs(val: Option<bool>) -> bool {
 
 #[pyfunction]
 pub fn crc_string(val: u32) -> Option<String> {
-    STRING_LOOKUP.lock().unwrap().get(&val).cloned()
+    STRING_LOOKUP.lock().ok().and_then(|x| x.0.get(&val).cloned())
+}
+
+#[pyfunction]
+/// takes a newline sperated list of strings
+pub fn load_strings(strings: &str) -> anyhow::Result<()> {
+    let mut string_lookup = STRING_LOOKUP.lock().map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let old_len = string_lookup.0.len();
+    let n = string_lookup.1;
+    string_lookup.0.extend(strings.replace("\r\n", "\n").split("\n").map(|x| (hash_string(x.as_bytes(), None), String::from(x))));
+    let diff = string_lookup.0.len() - old_len;
+    if n != old_len {
+        for i in 0..diff {
+            string_lookup.0.swap_indices(n + i, diff + i);
+        }
+    }
+    string_lookup.1 += diff;
+    Ok(())
 }
 
 pub fn update_strings(vals: &[String]) {
     let mut strings = STRING_LOOKUP.lock().unwrap();
     let new_strings: Vec<_> = vals.iter().filter_map(|x| {
         let key = hash_string(x.as_bytes(), None);
-        if strings.contains_key(&key) {
+        if strings.0.contains_key(&key) {
             None
         } else {
             Some((key, x.clone()))
         }
     }).collect();
-    strings.extend(new_strings);
+    strings.0.extend(new_strings);
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -495,7 +516,7 @@ impl Crc {
     }
 
     pub fn from_key(val: u32) -> Self {
-        match STRING_LOOKUP.lock().ok().and_then(|m| m.get(&val).map(|x| x.clone())) {
+        match STRING_LOOKUP.lock().ok().and_then(|m| m.0.get(&val).map(|x| x.clone())) {
             Some(str) => Self::Str(str),
             None => Self::Key(val)
         }
@@ -505,6 +526,12 @@ impl Crc {
         if val.starts_with("0x") {
             Self::from_key(u32::from_str_radix(&val[2..], 16).unwrap())
         } else {
+            /*
+            if let Some(string_lookup) = STRING_LOOKUP.lock().ok() {
+                string_lookup.0.entry(hash_string(val, )).or_insert_with(|| val.to_string())
+            }
+            */
+            update_strings(&[val.to_string()]);
             Self::Str(val.into())
         }
     }
@@ -550,10 +577,30 @@ impl<O: ByteOrder> From<U32<O>> for Crc {
 
 impl<O: ByteOrder> From<Crc> for U32<O> {
     fn from(value: Crc) -> Self {
-        match value {
-            Crc::Str(val) => hash_string(val.as_bytes(), None),
-            Crc::Key(val) => val,
-        }.into()
+        let val = match &value {
+            Crc::Str(val) => {
+                hash_string(val.as_bytes(), None)
+            },
+            Crc::Key(val) => {
+                *val
+            },
+        };
+        // when dumping tack crc values to update debug strings accordingly
+        if let Some(string_lookup) = STRING_LOOKUP.lock().ok() {
+            match string_lookup.0.get_full(&val) {
+                Some((ind, _, string)) if ind >= string_lookup.1 => {
+                    ADDED_CRCS.lock().ok().map(|mut x| x.insert(val, string.clone()));
+                },
+                None => match value {
+                    Crc::Str(string) => {
+                        ADDED_CRCS.lock().ok().map(|mut x| x.insert(val, string));
+                    },
+                    _ => ()
+                },
+                _ => ()
+            }
+        }
+        val.into()
     }
 }
 

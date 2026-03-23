@@ -294,6 +294,10 @@ impl Level {
 
         bar.as_ref().map(|x| { x.inc(1); x.set_message("textures") });
         sub_bar.as_ref().map(|x| { x.set_length(self.textures.len() as u64); x.reset() });
+        
+        if let Some(mut added) = types::ADDED_CRCS.lock().ok() {
+            added.clear();
+        }
 
         let mut texture_data = vec![];
         let mut seen_textures = HashSet::new();
@@ -793,10 +797,21 @@ impl Level {
         pak_data.extend(data);
 
         sub_bar.as_ref().map(|x| { x.inc(1); x.set_message("strings")});
+
+        let mut strings = self.pak_strings.clone();
+        if let Some(mut added) = types::ADDED_CRCS.lock().ok() {
+            for string in &strings.strings {
+                added.remove(&hash_string(string.as_bytes(), None));
+            }
+            for (_, string) in added.drain() {
+                strings.strings.push(string);
+            }
+        }
+
         pak_data.extend(vec![0u8; ((pak_data.len() + 4095) & 0xfffff000)-pak_data.len()]);
-        let data = dump_bytes!(O, self.pak_strings);
+        let data = dump_bytes!(O, strings);
         pak_header.strings_offset = pak_data.len() as u32;
-        pak_header.strings_num = self.pak_strings.strings.len() as u32;
+        pak_header.strings_num = strings.strings.len() as u32;
         pak_header.strings_size = data.len() as u32;
         pak_data.extend(data);
 
@@ -810,6 +825,10 @@ impl Level {
         info!("pak in {:?}", time.elapsed());
         bar.as_ref().map(|x| { x.inc(1); x.set_message("bin") }); 
         sub_bar.as_ref().map(|x| { x.set_length((model_data.len() + texture_data.len() + 2 + rad_data.is_some().then_some(1).unwrap_or(0)) as u64); x.reset() });
+
+        if let Some(mut added) = types::ADDED_CRCS.lock().ok() {
+            added.clear();
+        }
 
         // bin_data
         let mut bin_header = self.bin_header.clone();
@@ -888,10 +907,21 @@ impl Level {
         bin_data.extend(dump_bytes!(O, asset_handles));
 
         sub_bar.as_ref().map(|x| { x.inc(1); x.set_message("strings")});
-        let data = dump_bytes!(O, self.bin_strings);
+
+        strings = self.bin_strings.clone();
+        if let Some(mut added) = types::ADDED_CRCS.lock().ok() {
+            for string in &strings.strings {
+                added.remove(&hash_string(string.as_bytes(), None));
+            }
+            for (_, string) in added.drain() {
+                strings.strings.push(string)
+            }
+        }
+
+        let data = dump_bytes!(O, strings);
         bin_header.strings_offset = bin_data.len() as u32;
         bin_header.strings_size = data.len() as u32;
-        bin_header.strings_num = self.bin_strings.strings.len() as u32;
+        bin_header.strings_num = strings.strings.len() as u32;
         bin_data.extend(data);
         
         sub_bar.as_ref().map(|x| { x.inc(1); x.set_message("header")});

@@ -1960,40 +1960,40 @@ impl VertexBuffer {
                 let mut p = 8;
                 for _ in (0..(((s + 15) & 0xFFFF0) - s)).step_by(4) {
                     vals.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Pad(p)));
-                    s += 4;
+                    //s += 4;
                     p += 1;
                 }
             }
         } else {
             if fmt1 & 1 != 0 {
                 vals.push(VertexData::new(BaseTypes::VECTOR3_KEY, VertexUsage::Position));
-                s += 12;
+                //s += 12;
             }
             if fmt1 & 0x400 != 0 {
                 vals.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::BlendWeight));
-                s += 4;
+                //s += 4;
             }
             if fmt1 & 0x800 != 0 {
                 vals.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::BlendIndices));
-                s += 4;
+                //s += 4;
             }
             if fmt1 & 2 != 0 {
                 vals.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Normal));
-                s += 4;
+                //s += 4;
             }
             if fmt1 & 0x100 != 0 {
                 vals.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Color(0)));
-                s += 4;
+                //s += 4;
             }
             if fmt1 & 0x200 != 0 {
                 vals.push(VertexData::new(BaseTypes::COLOR_KEY, VertexUsage::Color(1)));
-                s += 4;
+                //s += 4;
             }
             let n = (fmt1 >> 2) & 0xf;
             if n <= 2 {
                 for i in 0..n {
                     vals.push(VertexData::new(BaseTypes::VECTOR2_KEY, VertexUsage::TextureCoord(i as usize)));
-                    s += 8;
+                    //s += 8;
                 }
             }
             if fmt1 & 0x40 != 0 {

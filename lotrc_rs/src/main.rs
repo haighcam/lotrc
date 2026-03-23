@@ -254,6 +254,11 @@ fn main() -> Result<()> {
     if unluac.is_file() {
         args.unluac = args.unluac.or(Some(unluac.to_string_lossy().to_string()))
     }
+    let extra_strings = exe_dir.join("conquest_strings.txt");
+    if extra_strings.is_file() {
+        let data = fs::read_to_string(extra_strings)?;
+        lotrc::types::load_strings(data.as_str())?;
+    }
 
     *DECOMP_LUA.lock().unwrap() = args.lua_decomp;
     *RECOMP_LUA.lock().unwrap() = args.lua_recomp;
