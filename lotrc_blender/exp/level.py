@@ -58,19 +58,19 @@ def dump_level_block(level):
     blender_objs = list(level.level_col.children)
     while blender_objs != []:
         blender_obj = blender_objs.pop(0)
-        if (fields := blender_obj.get('lotrc')) is None:
+        if '__lotrc__' not in blender_obj:
             continue
-        kind = fields['__type__']
+        kind = blender_obj['__type__']
         skip = ['Transform', 'WorldTransform', 'RoadMeshes', 'RoadMatrices']
 
         ty = level.types[kind]
         dump_fields = {
-            key: BASE_TYPES[kind.lower()].from_json(fields[key]) 
+            key: BASE_TYPES[kind.lower()].from_json(blender_obj[key]) 
             if key not in skip else None
             for key, (kind, _) in ty.items()
         } 
         dump_fields['__type__'] = kind
-        dump_fields['__layer__'] = lotrc.types.BaseTypes.Int.from_json(fields['__layer__'])[0]
+        dump_fields['__layer__'] = lotrc.types.BaseTypes.Int.from_json(blender_obj['__layer__'])[0]
         guid = dump_fields['GUID'][0]
 
         if kind in ['Road', 'CPSpline']:

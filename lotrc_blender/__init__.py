@@ -25,10 +25,10 @@ class LotrcProps(bpy.types.PropertyGroup):
     load_filepath: bpy.props.StringProperty(subtype="FILE_PATH")
     dump_filepath: bpy.props.StringProperty(subtype="FILE_PATH")
     selected_model: bpy.props.StringProperty(default="All Models")
-    models_collision: bpy.props.BoolProperty(default=True)
-    models_only_lod1: bpy.props.BoolProperty(default=False)
-    models_skeleton: bpy.props.BoolProperty(default=True)
-    models_hk_skeleton: bpy.props.BoolProperty(default=True)
+    models_collision: bpy.props.BoolProperty(default=False)
+    models_only_lod1: bpy.props.BoolProperty(default=True)
+    models_skeleton: bpy.props.BoolProperty(default=False)
+    models_hk_skeleton: bpy.props.BoolProperty(default=False)
     selected_texture: bpy.props.StringProperty(default="All Textures")
     object_value: bpy.props.StringProperty(
         update=value_update
