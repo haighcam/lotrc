@@ -1537,10 +1537,10 @@ impl SubBlock {
         }
     }
 
-    pub fn from_file(reader: Reader, key: &Crc) -> Result<Self> {
+    pub fn from_file(reader: Reader, key: &Crc, keys: &StringKeys) -> Result<Self> {
         Ok(match key.key() {
             LangStrings::KEY_POLISH | LangStrings::KEY_GERMAN | LangStrings::KEY_FRENCH | LangStrings::KEY_SPANISH | LangStrings::KEY_RUSSIAN | LangStrings::KEY_SWEDISH | LangStrings::KEY_ENGLISH | LangStrings::KEY_ITALIAN | LangStrings::KEY_NORWEGIAN => 
-                SubBlock::LangStrings(LangStrings::from_file(reader)?),
+                SubBlock::LangStrings(LangStrings::from_file(reader, keys)?),
             Spray::KEY => SubBlock::Spray(Spray::from_file(reader)?),
             Crowd::KEY => SubBlock::Crowd(Crowd::from_file(reader)?),
             PFields::KEY => SubBlock::PFields(PFields::from_file(reader)?),
@@ -1683,12 +1683,12 @@ impl SubBlocks {
         Ok(())
     }
 
-    pub fn from_file(reader: Reader, prog: Option<&ProgressBar>) -> Result<Self> {
+    pub fn from_file(reader: Reader, string_keys: &StringKeys, prog: Option<&ProgressBar>) -> Result<Self> {
         let keys = from_slice::<Vec<Crc>>(&reader.join("index.json").read()?).context(format!("{}/index.json", reader.path().display()))?;
         prog.map(|x| x.set_length(keys.len() as u64));
         let blocks = keys.into_iter().map(|key| {
             prog.as_ref().map(|x| { x.inc(1); x.set_message(key.to_string())});
-            let block = SubBlock::from_file(reader.join(key.str().unwrap()), &key)?;
+            let block = SubBlock::from_file(reader.join(key.str().unwrap()), &key, string_keys)?;
             Ok((key, block))
         }).collect::<Result<_>>()?;
         prog.map(|x| x.finish());
@@ -1846,10 +1846,13 @@ impl LangStrings {
         Ok(())
     }
 
-    pub fn from_file(reader: Reader) -> Result<Self> {
+    pub fn from_file(reader: Reader, keys: &StringKeys) -> Result<Self> {
         let name = reader.path().display().to_string();
-        let vals = from_slice::<IndexMap<Crc, String>>(&reader.with_extension("json").read()?).context(format!("{}.json", name))?;
-        let strings: Vec<_> = vals.into_iter().map(|(_, val)| val).collect();
+        let unordered_vals = from_slice::<HashMap<Crc, String>>(&reader.with_extension("json").read()?).context(format!("{}.json", name))?;
+        let mut strings = Vec::with_capacity(keys.vals.len());
+        for key in &keys.vals {
+            strings.push(unordered_vals.get(key).cloned().unwrap_or_default());
+        }
         Ok(Self { strings })
     }
 }

@@ -67,7 +67,7 @@ impl Level {
         self.to_file(Writer::new(path, zip)?, None)
     }
 
-    fn dump_pc(&self, path: String) -> Result<()> {
+    fn dump_pc(&mut self, path: String) -> Result<()> {
         self.dump::<PC, _>(path, None)
     }
 }
@@ -90,7 +90,7 @@ impl Level {
         })
     }
 
-    pub fn dump<O: Version + 'static, P: AsRef<Path>>(&self, path: P, mp: Option<&MultiProgress>) -> Result<()> {
+    pub fn dump<O: Version + 'static, P: AsRef<Path>>(&mut self, path: P, mp: Option<&MultiProgress>) -> Result<()> {
         let path = path.as_ref();
         info!("Dumping level data {:?}", path);
         let (pak, bin, _infos) = self.to_data::<O>(mp)?;
@@ -280,7 +280,7 @@ impl Level {
         })
     }
     
-    pub fn to_data<O: Version + 'static>(&self, mp: Option<&MultiProgress>) -> Result<(Vec<u8>, Vec<u8>, DumpInfos)> {
+    pub fn to_data<O: Version + 'static>(&mut self, mp: Option<&MultiProgress>) -> Result<(Vec<u8>, Vec<u8>, DumpInfos)> {
         let time = Instant::now();
         info!("compressing level");
 
@@ -605,6 +605,16 @@ impl Level {
         info!("block1 objs in {:?}", time.elapsed());
         bar.as_ref().map(|x| { x.inc(1); x.set_message("block1") }); 
         sub_bar.as_ref().map(|x| { x.set_length(0); x.reset() });
+
+        // update the order of langstrings and string keys
+        let mut order = (0..self.string_keys.vals.len()).collect::<Vec<_>>();
+        order.sort_by_key(|i| self.string_keys.vals[*i].key());
+        self.string_keys.vals = order.iter().map(|i| self.string_keys.vals[*i].clone()).collect();
+        for block in self.sub_blocks2.blocks.values_mut() {
+            if let SubBlock::LangStrings(val) = block {
+                val.strings = order.iter().map(|i| val.strings[*i].clone()).collect();
+            }
+        }
 
         block1.extend(vec![0u8; ((block1.len() + 15) & 0xFFFFFFF0) - block1.len()]);
         //block1.extend(vec![0u8; ((block1.len() + 511) & 0xFFFFFE00) - block1.len()]);
@@ -1227,12 +1237,12 @@ impl Level {
 
         bar.as_ref().map(|x| { x.inc(1); x.set_message("sub_blocks1") }); 
         sub_bar.as_ref().map(|x| { x.set_length(0); x.reset() });
-        let sub_blocks1 = types::SubBlocks::from_file(reader.join("sub_blocks1"), sub_bar.as_ref())?;
+        let sub_blocks1 = types::SubBlocks::from_file(reader.join("sub_blocks1"), &string_keys, sub_bar.as_ref())?;
         info!("sub_blocks1 in {:?}", time.elapsed());
 
         bar.as_ref().map(|x| { x.inc(1); x.set_message("sub_blocks2") }); 
         sub_bar.as_ref().map(|x| { x.set_length(0); x.reset() });
-        let sub_blocks2 = types::SubBlocks::from_file(reader.join("sub_blocks2"), sub_bar.as_ref())?;
+        let sub_blocks2 = types::SubBlocks::from_file(reader.join("sub_blocks2"), &string_keys, sub_bar.as_ref())?;
         info!("sub_blocks2 in {:?}", time.elapsed());
 
         bar.as_ref().map(|x| x.finish_and_clear());

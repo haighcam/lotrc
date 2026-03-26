@@ -5,7 +5,7 @@ use lotrc_proc::{OrderedData, basicpymethods, PyMethods};
 use anyhow::{Result, Context};
 use pyo3::prelude::*;
 use super::{
-    types::{self, Crc, OrderedData, Version, PC, XBOX, from_bytes, dump_bytes, AsData},
+    types::{self, Crc, OrderedData, Version, PC, XBOX, from_bytes, dump_bytes, AsData, SubBlock},
     read_write::{Reader, Writer, PathStuff},
 };
 
@@ -133,7 +133,7 @@ impl LevelInfo {
         self.to_file(Writer::new(path, zip)?)
     }
 
-    fn dump_pc(&self, path: String) -> Result<()> {
+    fn dump_pc(&mut self, path: String) -> Result<()> {
         self.dump::<PC, _>(path)
     }
 }
@@ -151,7 +151,7 @@ impl LevelInfo {
         }
     }
 
-    pub fn dump<O: Version + 'static, P: AsRef<Path>>(&self, path: P) -> Result<()> {
+    pub fn dump<O: Version + 'static, P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         let path = path.as_ref().with_extension("dat");
         path.parent().map(fs::create_dir_all);
         fs::write(&path, self.to_data::<O>()).context(path.display().to_string())?;
@@ -179,7 +179,7 @@ impl LevelInfo {
         })
     }
 
-    pub fn to_data<O: Version + 'static>(&self) -> Vec<u8> {
+    pub fn to_data<O: Version + 'static>(&mut self) -> Vec<u8> {
         let mut header = self.header.clone();
         header.gamemodes_offset = 0x13c;
         header.gamemodes_num = self.gamemodes.len() as u32;
@@ -193,6 +193,16 @@ impl LevelInfo {
         header.strings_size = self.strings.size::<O>() as u32;
         header.strings_num = self.strings.len() as u32;
         header.size2048 = (header.strings_offset + 2047) & 0xFFFFF800;
+
+        // sort land strings and string keys
+        let mut order = (0..self.string_keys.vals.len()).collect::<Vec<_>>();
+        order.sort_by_key(|i| self.string_keys.vals[*i].key());
+        self.string_keys.vals = order.iter().map(|i| self.string_keys.vals[*i].clone()).collect();
+        for block in self.locale_strings.blocks.values_mut() {
+            if let SubBlock::LangStrings(val) = block {
+                val.strings = order.iter().map(|i| val.strings[*i].clone()).collect();
+            }
+        }
 
         let mut data = dump_bytes!(O, header);
         data.extend(self.extra.clone());
@@ -216,7 +226,7 @@ impl LevelInfo {
         let mut val = serde_json::from_slice::<Self>(&reader.join("index.json").read()?).context("index.json")?;
         val.strings = types::Strings::from_file(reader.join("debug_strings"))?;
         val.string_keys = types::StringKeys::from_file(reader.join("string_keys"))?;
-        val.locale_strings = types::SubBlocks::from_file(reader.join("locale_strings"), None)?;
+        val.locale_strings = types::SubBlocks::from_file(reader.join("locale_strings"), &val.string_keys, None)?;
         Ok(val)
     }
 }

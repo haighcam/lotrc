@@ -135,7 +135,7 @@ fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parse
             }
         } else if src.file_name().unwrap() == "level_info.dat" {
             parsed.insert(src.clone());
-            let level_info = LevelInfo::parse(src)?;
+            let mut level_info = LevelInfo::parse(src)?;
             match args {
                 Commands { compile: true, .. } => level_info.dump::<PC, _>(dest.join(name))?,
                 _ => level_info.to_file(Writer::new(dest.join(name), *ZIP.lock().unwrap())?)?,
@@ -175,14 +175,14 @@ fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parse
                 let reader = reader?;
                 let name = name.clone();
                 if reader.join("index.json").is_file() {
-                    let level_info = LevelInfo::from_file(reader)?;
+                    let mut level_info = LevelInfo::from_file(reader)?;
                     match args {
                         Commands { dump: true, .. } => level_info.to_file(Writer::new(dest.join(name), *ZIP.lock().unwrap())?)?,
                         _ => level_info.dump::<PC, _>(dest.join(name))?,
                     }
                     true
                 } else if reader.join("pak_header.json").is_file() {
-                    let level = LevelAlt::from_file(reader, mp)?;
+                    let mut level = LevelAlt::from_file(reader, mp)?;
                     match args {
                         Commands { dump: true, .. } => level.to_file(Writer::new(dest.join(name), *ZIP.lock().unwrap())?, mp.cloned())?,
                         _ => level.dump::<PC, _>(dest.join(name), mp)?
