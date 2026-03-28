@@ -1,6 +1,6 @@
 schema_version = "1.0.0"
 id = "lotrc_blender"
-version = "0.3.2"
+version = "0.3.3"
 name = "Lord of the Rings Conquest"
 tagline = "Adds support for importing Lord of the Rings Conquest files"
 maintainer = "Developer name <email@address.com>"
