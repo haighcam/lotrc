@@ -5,8 +5,9 @@ use lotrc_proc::{OrderedData, basicpymethods, PyMethods};
 use anyhow::{Result, Context};
 use pyo3::prelude::*;
 use super::{
-    types::{self, Crc, OrderedData, Version, PC, XBOX, from_bytes, dump_bytes, AsData, SubBlock},
+    types::{self, Crc, OrderedData, Version, PC, XBOX, from_bytes, dump_bytes, AsData, SubBlock, hash_string},
     read_write::{Reader, Writer, PathStuff},
+    to_bytes
 };
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -189,10 +190,10 @@ impl LevelInfo {
         header.string_keys_size = self.string_keys.size::<O>() as u32;
         header.locale_strings_offset = header.string_keys_offset + header.string_keys_size;
         header.locale_strings_size = self.locale_strings.size::<O>() as u32;
-        header.strings_offset = header.locale_strings_offset + header.locale_strings_size;
-        header.strings_size = self.strings.size::<O>() as u32;
-        header.strings_num = self.strings.len() as u32;
-        header.size2048 = (header.strings_offset + 2047) & 0xFFFFF800;
+        
+        if let Some(mut added) = types::ADDED_CRCS.lock().ok() {
+            added.clear();
+        }
 
         // sort land strings and string keys
         let mut order = (0..self.string_keys.vals.len()).collect::<Vec<_>>();
@@ -210,7 +211,23 @@ impl LevelInfo {
         data.extend(dump_bytes!(O, self.levels));
         data.extend(dump_bytes!(O, self.string_keys));
         data.extend(dump_bytes!(O, self.locale_strings, None.into()));
+        
+        let mut strings = self.strings.clone();
+        if let Some(mut added) = types::ADDED_CRCS.lock().ok() {
+            for string in &strings.strings {
+                added.remove(&hash_string(string.as_bytes(), None));
+            }
+            for (_, string) in added.drain() {
+                strings.strings.push(string);
+            }
+        }
+
+        header.strings_offset = header.locale_strings_offset + header.locale_strings_size;
+        header.strings_size = self.strings.size::<O>() as u32;
+        header.strings_num = self.strings.len() as u32;
+        header.size2048 = (header.strings_offset + 2047) & 0xFFFFF800;
         data.extend(dump_bytes!(O, self.strings));
+        to_bytes!(O, header, &mut data).expect("Couldn't update header information");
         data
     }
 
