@@ -1,3 +1,4 @@
+#[cfg(feature = "python")]
 use pyo3::prelude::*;
 
 pub mod audio;
@@ -14,6 +15,7 @@ pub mod types;
 
 pub use flate2::Compression;
 
+#[cfg(feature = "python")]
 #[pymodule]
 mod lotrc {
     use pyo3::prelude::*;
@@ -21,17 +23,13 @@ mod lotrc {
     #[pymodule]
     mod audio {
         #[pymodule_export]
-        use crate::audio::{
-            Header, Obj1, Obj2, AudioTable
-        };
+        use crate::audio::{AudioTable, Header, Obj1, Obj2};
     }
 
     #[pymodule]
     mod bin {
         #[pymodule_export]
-        use crate::bin::{
-            Header, Radiosity, Tex, AssetHandle
-        };
+        use crate::bin::{AssetHandle, Header, Radiosity, Tex};
     }
 
     #[pymodule]
@@ -49,32 +47,31 @@ mod lotrc {
     #[pymodule]
     mod level_info {
         #[pymodule_export]
-        use crate::level_info::{
-            Header, GamemodeVal, LevelVal, LevelInfo
-        };
+        use crate::level_info::{GamemodeVal, Header, LevelInfo, LevelVal};
     }
 
     #[pymodule]
     mod pak_alt {
         #[pymodule_export]
         use crate::pak_alt::{
-            Shape, ShapeExtra, HkShape, Animation, Mat, HkConstraint, Model, HkShapeInfo, TRS, 
-            HkShape0, Box, Sphere, Capsule, Cylinder, ConvexVertices, BVTreeMesh, ConvexVerticesInfo, BVTreeMeshInfo,
-            ShapeExtraInfo, Radiosity, RadiosityVal, Block, BlockHeader1, BlockHeader2, BlockValA, BlockValB,
-            AnimationEvent
+            Animation, AnimationEvent, BVTreeMesh, BVTreeMeshInfo, Block, BlockHeader1,
+            BlockHeader2, BlockValA, BlockValB, Box, Capsule, ConvexVertices, ConvexVerticesInfo,
+            Cylinder, HkConstraint, HkShape, HkShape0, HkShapeInfo, Mat, Model, Radiosity,
+            RadiosityVal, Shape, ShapeExtra, ShapeExtraInfo, Sphere, TRS,
         };
     }
 
     #[pymodule]
     mod pak {
-        use pyo3::prelude::*;
         #[pymodule_export]
         use crate::pak::{
-            Shape, HkShape, Animation, Mat1, HkConstraint, Model, HkShapeInfo, AnimationInfo, AnimationBlockInfo,
-            HkConstraintInfo, HkConstraintData, ModelInfo, Mat2, Mat3, Mat4, VBuffInfo, IBuffInfo, Header,
-            ObjA, Obj0, LodMeshes, BufferInfo, MatBase, MatExtra, ShapeInfo, TextureInfo, EffectInfo, PFieldInfo, 
-            GFXBlockInfo, FoliageInfo, RadiosityValsInfo, BlockAVal, VertexTypes, IndexBuffer, BoundingBox,
+            Animation, AnimationBlockInfo, AnimationInfo, BlockAVal, BoundingBox, BufferInfo,
+            EffectInfo, FoliageInfo, GFXBlockInfo, Header, HkConstraint, HkConstraintData,
+            HkConstraintInfo, HkShape, HkShapeInfo, IBuffInfo, IndexBuffer, LodMeshes, Mat1, Mat2,
+            Mat3, Mat4, MatBase, MatExtra, Model, ModelInfo, Obj0, ObjA, PFieldInfo,
+            RadiosityValsInfo, Shape, ShapeInfo, TextureInfo, VBuffInfo, VertexTypes,
         };
+        use pyo3::prelude::*;
 
         #[pymodule]
         mod model {
@@ -92,32 +89,30 @@ mod lotrc {
         mod animation {
             #[pymodule_export]
             use crate::pak::animation::{
-                HkaSplineSkeletalAnimationObj1Types, RotationQuantization,
-                HkaSplineSkeletalAnimationObj1, HkaSplineSkeletalAnimationObj2,
-                RotationPolar32, RotationThreeComp40, RotationThreeComp48,
-                RotationThreeComp24, RotationStraight16, RotationUncompressed,
-                HkaSplineSkeletalAnimationFlags, HkaSplineSkeletalAnimation, Obj5Header, Obj3,
+                HkaSplineSkeletalAnimation, HkaSplineSkeletalAnimationFlags,
+                HkaSplineSkeletalAnimationObj1, HkaSplineSkeletalAnimationObj1Types,
+                HkaSplineSkeletalAnimationObj2, Obj3, Obj5Header, RotationPolar32,
+                RotationQuantization, RotationStraight16, RotationThreeComp24, RotationThreeComp40,
+                RotationThreeComp48, RotationUncompressed,
             };
         }
     }
-    
+
     #[pymodule]
     mod shader {
         #[pymodule_export]
-        use crate::shader::{
-            Header, ShaderHeader, Shaders
-        };
+        use crate::shader::{Header, ShaderHeader, Shaders};
     }
 
     #[pymodule]
     mod types {
         #[pymodule_export]
         use crate::types::{
-            BaseTypes, SubBlock, Spray, GameObjs, Lua, SSA, SubBlocksHeader,
-            SubBlocksBlockHeader, SSAVal, GameObjsHeader, GameObjsTypeHeader, 
-            GameObjsTypeField, GameObjsObjHeader, GameObj, SprayInstance, SprayVal, 
-            CrowdItem, CrowdHeader, CrowdVal, AtlasUVVal, hash_string, crc_string,
-            decomp_lua, recomp_lua, unluac, compression, anim_tables, zip_, gltf
+            anim_tables, compression, crc_string, decomp_lua, gltf, hash_string, recomp_lua,
+            unluac, zip_, AtlasUVVal, BaseTypes, CrowdHeader, CrowdItem, CrowdVal, GameObj,
+            GameObjs, GameObjsHeader, GameObjsObjHeader, GameObjsTypeField, GameObjsTypeHeader,
+            Lua, SSAVal, Spray, SprayInstance, SprayVal, SubBlock, SubBlocksBlockHeader,
+            SubBlocksHeader, SSA,
         };
     }
 }

@@ -1,6 +1,7 @@
 #!/bin/bash
 
-cargo build --release
+cargo build --release -p lotrc_rs
+cargo build --release -p lotrc --features python
 cp target/release/lotrc_rs ./lotrc_rs.bin
 cp target/release/liblotrc.so ./lotrc.so
 rm lotrc_blender_linux.zip

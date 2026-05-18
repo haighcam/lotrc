@@ -1,7 +1,9 @@
 #!/bin/bash
 
-cargo xwin build --target x86_64-pc-windows-msvc --release
-cargo +nightly xwin build -Z build-std --target x86_64-win7-windows-msvc --release
+cargo xwin build --target x86_64-pc-windows-msvc --release -p lotrc_rs
+cargo xwin build --target x86_64-pc-windows-msvc --release -p lotrc --features python
+cargo +nightly xwin build -Z build-std --target x86_64-win7-windows-msvc --release -p lotrc_rs
+cargo +nightly xwin build -Z build-std --target x86_64-win7-windows-msvc --release -p lotrc --features python
 
 cp target/x86_64-pc-windows-msvc/release/lotrc_rs.exe ./lotrc_rs.exe
 cp target/x86_64-win7-windows-msvc/release/lotrc_rs.exe ./lotrc_rs_win7.exe

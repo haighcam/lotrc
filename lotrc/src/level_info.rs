@@ -1,19 +1,26 @@
-use std::{fs, path::Path};
-use log::warn;
-use serde::{Serialize, Deserialize};
-use lotrc_proc::{OrderedData, basicpymethods, PyMethods};
-use anyhow::{Result, Context};
-use pyo3::prelude::*;
 use super::{
-    types::{self, Crc, OrderedData, Version, PC, XBOX, from_bytes, dump_bytes, AsData, SubBlock, hash_string},
-    read_write::{Reader, Writer, PathStuff},
-    to_bytes
+    read_write::{PathStuff, Reader, Writer},
+    to_bytes,
+    types::{
+        self, dump_bytes, from_bytes, hash_string, AsData, Crc, OrderedData, SubBlock, Version, PC,
+        XBOX, XBOXPROTO,
+    },
 };
+use anyhow::{Context, Result};
+use log::warn;
+use lotrc_proc::OrderedData;
+#[cfg(feature = "python")]
+use lotrc_proc::{basicpymethods, PyMethods};
+#[cfg(feature = "python")]
+use pyo3::prelude::*;
+use serde::{Deserialize, Serialize};
+use std::{fs, path::Path};
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Name(String);
 
-impl <'py> IntoPyObject<'py> for Name {
+#[cfg(feature = "python")]
+impl<'py> IntoPyObject<'py> for Name {
     type Target = <String as IntoPyObject<'py>>::Target;
     type Output = <String as IntoPyObject<'py>>::Output;
     type Error = <String as IntoPyObject<'py>>::Error;
@@ -23,7 +30,8 @@ impl <'py> IntoPyObject<'py> for Name {
     }
 }
 
-impl <'py> FromPyObject<'py> for Name {
+#[cfg(feature = "python")]
+impl<'py> FromPyObject<'py> for Name {
     fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
         Ok(Self(String::extract_bound(ob)?))
     }
@@ -55,13 +63,17 @@ impl OrderedData for Name {
     type PC = [u8; 32];
     type XBOX = [u8; 32];
     type PS3 = [u8; 32];
+    type XBOXPROTO = [u8; 32];
+    type XBOXPROTO2 = [u8; 32];
 }
 
-#[basicpymethods]
-#[pyclass(module="level_info", get_all, set_all)]
-#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
+#[cfg_attr(feature = "python", basicpymethods)]
+#[cfg_attr(feature = "python", pyclass(module = "level_info", get_all, set_all))]
+#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", derive(PyMethods))]
 pub struct Header {
     pub constx04: u32,
+    #[ordered_data(skipXBOXPROTO)]
     pub dlc: u32,
     pub strings_offset: u32,
     pub strings_size: u32,
@@ -77,20 +89,23 @@ pub struct Header {
     pub size2048: u32,
 }
 
-#[basicpymethods]
-#[pyclass(module="level_info", get_all, set_all)]
-#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
+#[cfg_attr(feature = "python", basicpymethods)]
+#[cfg_attr(feature = "python", pyclass(module = "level_info", get_all, set_all))]
+#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", derive(PyMethods))]
 pub struct LevelVal {
     pub name: Name,
     pub key_name: Crc,
     pub key_description: Crc,
+    #[ordered_data(skipXBOXPROTO)]
     pub dlc: u32,
     pub gamemodes: u32,
 }
 
-#[basicpymethods]
-#[pyclass(module="level_info", get_all, set_all)]
-#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
+#[cfg_attr(feature = "python", basicpymethods)]
+#[cfg_attr(feature = "python", pyclass(module = "level_info", get_all, set_all))]
+#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", derive(PyMethods))]
 pub struct GamemodeVal {
     pub key: Crc,
     pub key_name: Crc,
@@ -98,9 +113,10 @@ pub struct GamemodeVal {
 }
 
 use serde_with::serde_as;
-#[pyclass(module="level_info", set_all, get_all)]
+#[cfg_attr(feature = "python", pyclass(module = "level_info", set_all, get_all))]
 #[serde_as]
-#[derive(Default, Debug, Serialize, Deserialize, PyMethods)]
+#[derive(Default, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", derive(PyMethods))]
 pub struct LevelInfo {
     header: Header,
     #[serde(skip)]
@@ -112,9 +128,10 @@ pub struct LevelInfo {
     levels: Vec<LevelVal>,
     gamemodes: Vec<GamemodeVal>,
     #[serde_as(as = "serde_with::hex::Hex")]
-    extra: Vec<u8>
+    extra: Vec<u8>,
 }
 
+#[cfg(feature = "python")]
 #[basicpymethods(no_bytes)]
 #[pymethods]
 impl LevelInfo {
@@ -146,6 +163,8 @@ impl LevelInfo {
             Self::from_data::<PC>(&data[..])
         } else if data[3] == 4 {
             Self::from_data::<XBOX>(&data[..])
+        } else if data[3] == 2 {
+            Self::from_data::<XBOXPROTO>(&data[..])
         } else {
             warn!("Invalid level_info data");
             Ok(Default::default())
@@ -153,7 +172,7 @@ impl LevelInfo {
     }
 
     pub fn dump<O: Version + 'static, P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        let path = path.as_ref().with_extension("dat");
+        let path = path.as_ref().with_file_name("level_info.dat");
         path.parent().map(fs::create_dir_all);
         fs::write(&path, self.to_data::<O>()).context(path.display().to_string())?;
         Ok(())
@@ -161,12 +180,34 @@ impl LevelInfo {
 
     pub fn from_data<O: Version + 'static>(data: &[u8]) -> Result<Self> {
         let header: Header = from_bytes!(O, data)?;
-        let strings = from_bytes!(O, types::Strings, &data[header.strings_offset as usize..], header.strings_num as usize)?;
+        let strings = from_bytes!(
+            O,
+            types::Strings,
+            &data[header.strings_offset as usize..],
+            header.strings_num as usize
+        )?;
         types::update_strings(&strings.strings);
-        let string_keys = from_bytes!(O, types::StringKeys, &data[header.string_keys_offset as usize..])?;
-        let locale_strings = from_bytes!(O, types::SubBlocks, &data[header.locale_strings_offset as usize..], None.into())?;
-        let gamemodes = from_bytes!(O, &data[header.gamemodes_offset as usize..], header.gamemodes_num as usize)?;
-        let levels = from_bytes!(O, &data[header.levels_offset as usize..], header.levels_num as usize)?;
+        let string_keys = from_bytes!(
+            O,
+            types::StringKeys,
+            &data[header.string_keys_offset as usize..]
+        )?;
+        let locale_strings = from_bytes!(
+            O,
+            types::SubBlocks,
+            &data[header.locale_strings_offset as usize..],
+            None.into()
+        )?;
+        let gamemodes = from_bytes!(
+            O,
+            &data[header.gamemodes_offset as usize..],
+            header.gamemodes_num as usize
+        )?;
+        let levels = from_bytes!(
+            O,
+            &data[header.levels_offset as usize..],
+            header.levels_num as usize
+        )?;
         let extra = data[0x38..0x13c].to_vec();
 
         Ok(Self {
@@ -176,21 +217,24 @@ impl LevelInfo {
             locale_strings,
             gamemodes,
             levels,
-            extra
+            extra,
         })
     }
 
     pub fn to_data<O: Version + 'static>(&mut self) -> Vec<u8> {
         let mut header = self.header.clone();
+        header.constx04 = 0x4;
         header.gamemodes_offset = 0x13c;
         header.gamemodes_num = self.gamemodes.len() as u32;
-        header.levels_offset = header.gamemodes_offset + header.gamemodes_num * O::size::<GamemodeVal>() as u32;
+        header.levels_offset =
+            header.gamemodes_offset + header.gamemodes_num * O::size::<GamemodeVal>() as u32;
         header.levels_num = self.levels.len() as u32;
-        header.string_keys_offset = header.levels_offset + header.levels_num * O::size::<LevelVal>() as u32;
+        header.string_keys_offset =
+            header.levels_offset + header.levels_num * O::size::<LevelVal>() as u32;
         header.string_keys_size = self.string_keys.size::<O>() as u32;
         header.locale_strings_offset = header.string_keys_offset + header.string_keys_size;
         header.locale_strings_size = self.locale_strings.size::<O>() as u32;
-        
+
         if let Some(mut added) = types::ADDED_CRCS.lock().ok() {
             added.clear();
         }
@@ -198,7 +242,10 @@ impl LevelInfo {
         // sort land strings and string keys
         let mut order = (0..self.string_keys.vals.len()).collect::<Vec<_>>();
         order.sort_by_key(|i| self.string_keys.vals[*i].key());
-        self.string_keys.vals = order.iter().map(|i| self.string_keys.vals[*i].clone()).collect();
+        self.string_keys.vals = order
+            .iter()
+            .map(|i| self.string_keys.vals[*i].clone())
+            .collect();
         for block in self.locale_strings.blocks.values_mut() {
             if let SubBlock::LangStrings(val) = block {
                 val.strings = order.iter().map(|i| val.strings[*i].clone()).collect();
@@ -211,7 +258,7 @@ impl LevelInfo {
         data.extend(dump_bytes!(O, self.levels));
         data.extend(dump_bytes!(O, self.string_keys));
         data.extend(dump_bytes!(O, self.locale_strings, None.into()));
-        
+
         let mut strings = self.strings.clone();
         if let Some(mut added) = types::ADDED_CRCS.lock().ok() {
             for string in &strings.strings {
@@ -232,18 +279,23 @@ impl LevelInfo {
     }
 
     pub fn to_file(&self, writer: Writer) -> Result<()> {
-        writer.join("index.json").write(&serde_json::to_vec_pretty(self)?)?;
+        writer
+            .join("index.json")
+            .write(&serde_json::to_vec_pretty(self)?)?;
         self.strings.to_file(writer.join("debug_strings"))?;
         self.string_keys.to_file(writer.join("string_keys"))?;
-        self.locale_strings.to_file(writer.join("locale_strings"), &self.string_keys, None)?;
+        self.locale_strings
+            .to_file(writer.join("locale_strings"), &self.string_keys, None)?;
         Ok(())
     }
 
     pub fn from_file(reader: Reader) -> Result<Self> {
-        let mut val = serde_json::from_slice::<Self>(&reader.join("index.json").read()?).context("index.json")?;
+        let mut val = serde_json::from_slice::<Self>(&reader.join("index.json").read()?)
+            .context("index.json")?;
         val.strings = types::Strings::from_file(reader.join("debug_strings"))?;
         val.string_keys = types::StringKeys::from_file(reader.join("string_keys"))?;
-        val.locale_strings = types::SubBlocks::from_file(reader.join("locale_strings"), &val.string_keys, None)?;
+        val.locale_strings =
+            types::SubBlocks::from_file(reader.join("locale_strings"), &val.string_keys, None)?;
         Ok(val)
     }
 }

@@ -1,39 +1,54 @@
-use serde::{Serialize, Deserialize};
-use gltf::{
-    json::{Root, Index, Accessor},
-    accessor::{DataType, Dimensions},
-};
 use anyhow::Result;
-use pyo3::prelude::*;
-
-use lotrc_proc::{OrderedData, basicpymethods, PyMethods};
-use crate::{
-    types::{Crc, Vector4, Vector3 , Version, PC, from_bytes, dump_bytes, AsData, NoArgs},
-    pak::*,
-    pak_alt::{DumpInfos, GltfAsset, GltfData}
+use gltf::{
+    accessor::{DataType, Dimensions},
+    json::{Accessor, Index, Root},
 };
+#[cfg(feature = "python")]
+use pyo3::prelude::*;
+use serde::{Deserialize, Serialize};
 
-#[basicpymethods(no_bytes)]
-#[pyclass(module="pak_alt", get_all, set_all)]
-#[derive(Default, Debug, Clone, Serialize, Deserialize, PyMethods)]
+use crate::{
+    pak::*,
+    pak_alt::{DumpInfos, GltfAsset, GltfData},
+    types::{dump_bytes, from_bytes, AsData, Crc, NoArgs, Vector3, Vector4, Version, PC},
+};
+use lotrc_proc::OrderedData;
+#[cfg(feature = "python")]
+use lotrc_proc::{basicpymethods, PyMethods};
+
+#[cfg_attr(feature = "python", basicpymethods(no_bytes))]
+#[cfg_attr(feature = "python", pyclass(module = "pak_alt", get_all, set_all))]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", derive(PyMethods))]
 pub struct Shape {
     pub info: ShapeInfo,
     pub extra: Option<ShapeExtra>,
     pub hk_shapes: Vec<HkShape>,
 }
 
-impl <'a> AsData<'_, 'a> for Shape {
+impl<'a> AsData<'_, 'a> for Shape {
     type InArgs = usize;
     type OutArgs = (usize, Option<u32>, &'a mut DumpInfos);
 
     fn from_bytes<O: Version>(data: &[u8], offset: Self::InArgs) -> Result<Self> {
         let info: ShapeInfo = from_bytes!(O, &data[offset..])?;
-        let extra = if info.kind == 0 {
+        // kind of sketchy to skip these for proto, but they don't seem to have the same format
+        // TODO: should be revisited once there is a better understanding of terrain shapes
+        let extra = if info.kind == 0 && !O::xbox_proto() {
             Some(from_bytes!(O, ShapeExtra, data, info.offset as usize)?)
-        } else { None };
-        let hk_shapes = (0..info.hk_shape_num as usize).map(|i| 
-            from_bytes!(O, HkShape, data, info.hk_shape_offset as usize  + i * O::size::<HkShape0>())
-        ).collect::<Result<Vec<_>>>()?;
+        } else {
+            None
+        };
+        let hk_shapes = (0..info.hk_shape_num as usize)
+            .map(|i| {
+                from_bytes!(
+                    O,
+                    HkShape,
+                    data,
+                    info.hk_shape_offset as usize + i * O::size::<HkShape0>()
+                )
+            })
+            .collect::<Result<Vec<_>>>()?;
         Ok(Self {
             info,
             extra,
@@ -45,9 +60,13 @@ impl <'a> AsData<'_, 'a> for Shape {
         let mut info = self.info.clone();
         if let Some(extra_offset) = extra_offset {
             info.offset = extra_offset;
-            infos.block2_offsets.push(infos.header.shape_info_offset + (infos.shape.len() * V::size::<ShapeInfo>()) as u32);
+            infos.block2_offsets.push(
+                infos.header.shape_info_offset
+                    + (infos.shape.len() * V::size::<ShapeInfo>()) as u32,
+            );
         }
-        info.hk_shape_offset = infos.header.hk_shape_info_offset + (infos.hk_shape.len() * V::size::<HkShape0>()) as u32;
+        info.hk_shape_offset = infos.header.hk_shape_info_offset
+            + (infos.hk_shape.len() * V::size::<HkShape0>()) as u32;
         let mut data = vec![];
         for hk_shape in &self.hk_shapes {
             let vals = dump_bytes!(V, hk_shape, offset, infos);
@@ -69,7 +88,11 @@ impl Shape {
         ShapeGltf {
             info: self.info.clone(),
             extra: self.extra.as_ref().map(|x| x.to_gltf(root, bin)),
-            hk_shapes: self.hk_shapes.iter().map(|x| x.to_gltf(root, bin)).collect()
+            hk_shapes: self
+                .hk_shapes
+                .iter()
+                .map(|x| x.to_gltf(root, bin))
+                .collect(),
         }
     }
 }
@@ -86,24 +109,30 @@ impl ShapeGltf {
         Shape {
             info: self.info,
             extra: self.extra.map(|x| x.parse(root, bin)),
-            hk_shapes: self.hk_shapes.into_iter().map(|x| x.parse(root, bin)).collect(),
+            hk_shapes: self
+                .hk_shapes
+                .into_iter()
+                .map(|x| x.parse(root, bin))
+                .collect(),
         }
     }
 }
 
-#[basicpymethods]
-#[pyclass(module="pak_alt", get_all, set_all)]
-#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
+#[cfg_attr(feature = "python", basicpymethods)]
+#[cfg_attr(feature = "python", pyclass(module = "pak_alt", get_all, set_all))]
+#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", derive(PyMethods))]
 pub struct ShapeExtraInfo {
-    pub size: u32,
+    pub size: i32,
     pub scale: f32,
     pub a: f32,
     pub b: f32,
 }
 
-#[basicpymethods]
-#[pyclass(module="pak_alt", set_all, get_all)]
-#[derive(Default, Debug, Clone, Serialize, Deserialize, PyMethods)]
+#[cfg_attr(feature = "python", basicpymethods)]
+#[cfg_attr(feature = "python", pyclass(module = "pak_alt", set_all, get_all))]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", derive(PyMethods))]
 pub struct ShapeExtra {
     pub info: ShapeExtraInfo,
     pub offs: Vec<u32>,
@@ -116,16 +145,31 @@ impl AsData<'_, '_> for ShapeExtra {
 
     fn from_bytes<O: Version>(data: &[u8], mut offset: Self::InArgs) -> Result<Self> {
         let info: ShapeExtraInfo = from_bytes!(O, &data[offset..])?;
-        offset += O::size::<ShapeExtraInfo>();
-        let offs: Vec<u32> = from_bytes!(O, &data[offset..], info.size as usize)?;
-        offset += offs.size::<O>();
-        let mut off = offset + *offs.last().unwrap() as usize;
-        while (data[off] != 0) || (data[off+1] != 0) { off += 1; }
-        Ok(Self { info, offs, data: data[offset..off].to_vec() })
+        let (offs, off) = if info.size > 0 {
+            offset += O::size::<ShapeExtraInfo>();
+            let offs: Vec<u32> = from_bytes!(O, &data[offset..], info.size as usize)?;
+            offset += offs.size::<O>();
+            let mut off = offset + *offs.last().unwrap() as usize;
+            while (data[off] != 0) || (data[off + 1] != 0) {
+                off += 1;
+            }
+            (offs, off)
+        } else {
+            (vec![], offset)
+        };
+        Ok(Self {
+            info,
+            offs,
+            data: data[offset..off].to_vec(),
+        })
     }
 
     fn dump_bytes<O: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
-        dump_bytes!(O, self.info).into_iter().chain(dump_bytes!(O, self.offs)).chain(self.data.clone()).collect()
+        dump_bytes!(O, self.info)
+            .into_iter()
+            .chain(dump_bytes!(O, self.offs))
+            .chain(self.data.clone())
+            .collect()
     }
 
     fn size<V: Version>(&self) -> usize {
@@ -136,20 +180,22 @@ impl AsData<'_, '_> for ShapeExtra {
 impl ShapeExtra {
     pub fn to_gltf(&self, root: &mut gltf::json::Root, bin: &mut Vec<u8>) -> ShapeExtraGltf {
         let info = self.info.clone();
-        let offs = GltfAsset { 
+        let offs = GltfAsset {
             data: dump_bytes!(PC, self.offs),
             count: self.offs.len(),
             ty: DataType::U32,
             dim: Dimensions::Scalar,
             ..Default::default()
-        }.to_gltf(root, bin);
-        let data = GltfAsset { 
+        }
+        .to_gltf(root, bin);
+        let data = GltfAsset {
             data: self.data.clone(),
             count: self.data.len(),
             ty: DataType::U8,
             dim: Dimensions::Scalar,
             ..Default::default()
-        }.to_gltf(root, bin);
+        }
+        .to_gltf(root, bin);
         ShapeExtraGltf { info, offs, data }
     }
 }
@@ -172,13 +218,14 @@ impl ShapeExtraGltf {
     }
 }
 
-#[basicpymethods]
-#[pyclass(module="pak_alt", get_all, set_all)]
-#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
+#[cfg_attr(feature = "python", basicpymethods)]
+#[cfg_attr(feature = "python", pyclass(module = "pak_alt", get_all, set_all))]
+#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", derive(PyMethods))]
 pub struct HkShape0 {
     pub unk_0: Vector4,
     pub unk_4: Vector4,
-    #[serde(skip, default="HkShape::t0")]
+    #[serde(skip, default = "HkShape::t0")]
     pub kind: u32,
     pub unk_9: u32,
     pub unk_10: u32,
@@ -194,13 +241,14 @@ pub struct HkShape0 {
 }
 
 // BoxShape / ConvexTransformShape / ConvexTranslateShape
-#[basicpymethods]
-#[pyclass(module="pak_alt", get_all, set_all)]
-#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
+#[cfg_attr(feature = "python", basicpymethods)]
+#[cfg_attr(feature = "python", pyclass(module = "pak_alt", get_all, set_all))]
+#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", derive(PyMethods))]
 pub struct Box {
     pub translation: Vector4,
     pub rotation: Vector4,
-    #[serde(skip, default="HkShape::t1")]
+    #[serde(skip, default = "HkShape::t1")]
     pub kind: u32,
     pub key: Crc,
     pub half_extents: Vector3,
@@ -214,13 +262,14 @@ pub struct Box {
 }
 
 // SphereShape / ConvexTranslateShape
-#[basicpymethods]
-#[pyclass(module="pak_alt", get_all, set_all)]
-#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
+#[cfg_attr(feature = "python", basicpymethods)]
+#[cfg_attr(feature = "python", pyclass(module = "pak_alt", get_all, set_all))]
+#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", derive(PyMethods))]
 pub struct Sphere {
     pub translation: Vector4,
     pub rotation: Vector4,
-    #[serde(skip, default="HkShape::t2")]
+    #[serde(skip, default = "HkShape::t2")]
     pub kind: u32,
     pub key: Crc,
     pub radius: f32,
@@ -236,13 +285,14 @@ pub struct Sphere {
 }
 
 // CapsuleShape
-#[basicpymethods]
-#[pyclass(module="pak_alt", get_all, set_all)]
-#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
+#[cfg_attr(feature = "python", basicpymethods)]
+#[cfg_attr(feature = "python", pyclass(module = "pak_alt", get_all, set_all))]
+#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", derive(PyMethods))]
 pub struct Capsule {
     pub translation: Vector4,
     pub rotation: Vector4,
-    #[serde(skip, default="HkShape::t3")]
+    #[serde(skip, default = "HkShape::t3")]
     pub kind: u32,
     pub key: Crc,
     pub point1: Vector3,
@@ -254,13 +304,14 @@ pub struct Capsule {
 }
 
 // CylinderShape
-#[basicpymethods]
-#[pyclass(module="pak_alt", get_all, set_all)]
-#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
+#[cfg_attr(feature = "python", basicpymethods)]
+#[cfg_attr(feature = "python", pyclass(module = "pak_alt", get_all, set_all))]
+#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", derive(PyMethods))]
 pub struct Cylinder {
     pub translation: Vector4,
     pub rotation: Vector4,
-    #[serde(skip, default="HkShape::t4")]
+    #[serde(skip, default = "HkShape::t4")]
     pub kind: u32,
     pub key: Crc,
     pub point1: Vector3,
@@ -272,13 +323,14 @@ pub struct Cylinder {
 }
 
 // ConvexVerticesShape
-#[basicpymethods]
-#[pyclass(module="pak_alt", get_all, set_all)]
-#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
+#[cfg_attr(feature = "python", basicpymethods)]
+#[cfg_attr(feature = "python", pyclass(module = "pak_alt", get_all, set_all))]
+#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", derive(PyMethods))]
 pub struct ConvexVerticesInfo {
     pub translation: Vector4,
     pub rotation: Vector4,
-    #[serde(skip, default="HkShape::t5")]
+    #[serde(skip, default = "HkShape::t5")]
     pub kind: u32,
     pub key: Crc,
     #[serde(skip)]
@@ -298,13 +350,14 @@ pub struct ConvexVerticesInfo {
 }
 
 // ExtendedMeshShape / MoppBVTreeShape
-#[basicpymethods]
-#[pyclass(module="pak_alt", get_all, set_all)]
-#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
+#[cfg_attr(feature = "python", basicpymethods)]
+#[cfg_attr(feature = "python", pyclass(module = "pak_alt", get_all, set_all))]
+#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", derive(PyMethods))]
 pub struct BVTreeMeshInfo {
     pub translation: Vector4,
     pub rotation: Vector4,
-    #[serde(skip, default="HkShape::t6")]
+    #[serde(skip, default = "HkShape::t6")]
     pub kind: u32,
     pub key: Crc,
     /// triangles min bound - 0.05
@@ -320,38 +373,49 @@ pub struct BVTreeMeshInfo {
     #[serde(skip)]
     pub verts_offset: u32, // vec3 f32 verts offset
     #[serde(skip)]
-    pub tri_num: u32,  // tri_num
+    pub tri_num: u32, // tri_num
     #[serde(skip)]
     pub inds_offset: u32, // vec3 u16 , inds offset
 }
 
-#[basicpymethods(no_bytes)]
-#[pyclass(module="pak_alt", set_all, get_all)]
-#[derive(Default, Debug, Clone, Serialize, Deserialize, PyMethods)]
+#[cfg_attr(feature = "python", basicpymethods(no_bytes))]
+#[cfg_attr(feature = "python", pyclass(module = "pak_alt", set_all, get_all))]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", derive(PyMethods))]
 pub struct ConvexVertices {
     pub norms: Vec<Vector4>,
     pub verts: Vec<Vector3>,
     pub verts_extra: usize,
 }
 
-impl <'a, 'b> AsData<'a, 'b> for ConvexVertices {
+impl<'a, 'b> AsData<'a, 'b> for ConvexVertices {
     type InArgs = &'a ConvexVerticesInfo;
     type OutArgs = (usize, &'b mut ConvexVerticesInfo);
 
     fn from_bytes<O: Version>(data: &[u8], info: Self::InArgs) -> Result<Self> {
-        let norms = from_bytes!(O, &data[info.norms_offset as usize..], info.norm_num as usize)?;
+        let norms = from_bytes!(
+            O,
+            &data[info.norms_offset as usize..],
+            info.norm_num as usize
+        )?;
         let mut vert_num = info.vert_num as usize; // sketchy stuff to account for data that was not otherwise captured, is it needed?
-        while (info.verts_offset as usize + vert_num * 12) % 16 != 0 { vert_num += 1; }
+        while (info.verts_offset as usize + vert_num * 12) % 16 != 0 {
+            vert_num += 1;
+        }
         let verts = from_bytes!(O, &data[info.verts_offset as usize..], vert_num)?;
         let verts_extra = vert_num - info.vert_num as usize;
-        Ok(Self { norms, verts, verts_extra })
+        Ok(Self {
+            norms,
+            verts,
+            verts_extra,
+        })
     }
 
     fn dump_bytes<O: Version>(&self, (mut offset, info): Self::OutArgs) -> Vec<u8> {
         let mut data = vec![];
 
         let off: usize = (offset + 15) & 0xFFFFFFF0;
-        data.extend(vec![0u8; off-offset]);
+        data.extend(vec![0u8; off - offset]);
         offset = off;
 
         info.norm_num = self.norms.len() as u32;
@@ -375,9 +439,10 @@ impl <'a, 'b> AsData<'a, 'b> for ConvexVertices {
 
 use serde_with::serde_as;
 #[serde_as]
-#[basicpymethods(no_bytes)]
-#[pyclass(module="pak_alt", set_all, get_all)]
-#[derive(Default, Debug, Clone, Serialize, Deserialize, PyMethods)]
+#[cfg_attr(feature = "python", basicpymethods(no_bytes))]
+#[cfg_attr(feature = "python", pyclass(module = "pak_alt", set_all, get_all))]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", derive(PyMethods))]
 pub struct BVTreeMesh {
     #[serde_as(as = "serde_with::hex::Hex")]
     pub tree: Vec<u8>,
@@ -385,14 +450,26 @@ pub struct BVTreeMesh {
     pub inds: Vec<u16>,
 }
 
-impl <'a, 'b> AsData<'a, 'b> for BVTreeMesh {
+impl<'a, 'b> AsData<'a, 'b> for BVTreeMesh {
     type InArgs = &'a BVTreeMeshInfo;
     type OutArgs = (usize, &'b mut BVTreeMeshInfo);
 
     fn from_bytes<O: Version>(data: &[u8], info: Self::InArgs) -> Result<Self> {
-        let tree = from_bytes!(O, &data[info.tree_offset as usize..], info.tree_size as usize)?;
-        let verts = from_bytes!(O, &data[info.verts_offset as usize..], info.vert_num as usize)?;
-        let inds = from_bytes!(O, &data[info.inds_offset as usize..], info.tri_num as usize * 3)?;
+        let tree = from_bytes!(
+            O,
+            &data[info.tree_offset as usize..],
+            info.tree_size as usize
+        )?;
+        let verts = from_bytes!(
+            O,
+            &data[info.verts_offset as usize..],
+            info.vert_num as usize
+        )?;
+        let inds = from_bytes!(
+            O,
+            &data[info.inds_offset as usize..],
+            info.tri_num as usize * 3
+        )?;
         Ok(Self { tree, verts, inds })
     }
 
@@ -412,7 +489,7 @@ impl <'a, 'b> AsData<'a, 'b> for BVTreeMesh {
         data.extend(vals);
 
         let off: usize = (offset + 3) & 0xFFFFFFFC;
-        data.extend(vec![0u8; off-offset]);
+        data.extend(vec![0u8; off - offset]);
         offset = off;
 
         info.tree_size = self.tree.len() as u32;
@@ -422,7 +499,7 @@ impl <'a, 'b> AsData<'a, 'b> for BVTreeMesh {
         data.extend(vals);
 
         let off: usize = (offset + 3) & 0xFFFFFFFC;
-        data.extend(vec![0u8; off-offset]);
+        data.extend(vec![0u8; off - offset]);
         data
     }
 
@@ -431,9 +508,10 @@ impl <'a, 'b> AsData<'a, 'b> for BVTreeMesh {
     }
 }
 
-#[basicpymethods]
-#[derive(Debug, Clone, Serialize, Deserialize, PyMethods)]
-#[pyclass(module="pak_alt", get_all, set_all)]
+#[cfg_attr(feature = "python", basicpymethods)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", derive(PyMethods))]
+#[cfg_attr(feature = "python", pyclass(module = "pak_alt", get_all, set_all))]
 pub enum HkShapeInfo {
     HkShape0(HkShape0),
     Box(Box),
@@ -441,7 +519,7 @@ pub enum HkShapeInfo {
     Capsule(Capsule),
     Cylinder(Cylinder),
     ConvexVertices(ConvexVerticesInfo),
-    BVTreeMesh(BVTreeMeshInfo)
+    BVTreeMesh(BVTreeMeshInfo),
 }
 
 impl AsData<'_, '_> for HkShapeInfo {
@@ -487,23 +565,40 @@ impl AsData<'_, '_> for HkShapeInfo {
     }
 }
 
-#[basicpymethods(no_bytes)]
-#[pyclass(module="pak_alt")]
-#[derive(Debug, Clone, Serialize, Deserialize, PyMethods)]
+#[cfg_attr(feature = "python", basicpymethods(no_bytes))]
+#[cfg_attr(feature = "python", pyclass(module = "pak_alt"))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", derive(PyMethods))]
 pub enum HkShape {
-    HkShape0 { info: HkShape0 },
-    Box { info: Box },
-    Sphere { info: Sphere },
-    Capsule { info: Capsule },
-    Cylinder { info: Cylinder },
-    ConvexVertices { info: ConvexVerticesInfo, shape: ConvexVertices },
-    BVTreeMesh { info: BVTreeMeshInfo, shape: BVTreeMesh },
+    HkShape0 {
+        info: HkShape0,
+    },
+    Box {
+        info: Box,
+    },
+    Sphere {
+        info: Sphere,
+    },
+    Capsule {
+        info: Capsule,
+    },
+    Cylinder {
+        info: Cylinder,
+    },
+    ConvexVertices {
+        info: ConvexVerticesInfo,
+        shape: ConvexVertices,
+    },
+    BVTreeMesh {
+        info: BVTreeMeshInfo,
+        shape: BVTreeMesh,
+    },
 }
 
-impl <'a> AsData<'_, 'a> for HkShape {
+impl<'a> AsData<'_, 'a> for HkShape {
     type InArgs = usize;
     type OutArgs = (usize, &'a mut DumpInfos);
-    
+
     fn from_bytes<V: Version>(data: &[u8], offset: Self::InArgs) -> Result<Self> {
         Ok(match from_bytes!(V, HkShapeInfo, &data[offset..])? {
             HkShapeInfo::HkShape0(info) => Self::HkShape0 { info },
@@ -514,7 +609,7 @@ impl <'a> AsData<'_, 'a> for HkShape {
             HkShapeInfo::ConvexVertices(info) => {
                 let shape = from_bytes!(V, ConvexVertices, data, &info)?;
                 Self::ConvexVertices { info, shape }
-            },
+            }
             HkShapeInfo::BVTreeMesh(info) => {
                 let shape = from_bytes!(V, BVTreeMesh, data, &info)?;
                 Self::BVTreeMesh { info, shape }
@@ -533,30 +628,44 @@ impl <'a> AsData<'_, 'a> for HkShape {
                 let mut info = info.clone();
                 let data = dump_bytes!(V, shape, offset, &mut info);
                 (HkShapeInfo::ConvexVertices(info), data)
-            },
+            }
             Self::BVTreeMesh { info, shape } => {
                 let mut info = info.clone();
                 let data = dump_bytes!(V, shape, offset, &mut info);
                 (HkShapeInfo::BVTreeMesh(info), data)
-            },
+            }
         };
         infos.hk_shape.push(info);
         data
     }
-    
+
     fn size<V: Version>(&self) -> usize {
         panic!("not implemented")
     }
 }
 
 impl HkShape {
-    fn t0() -> u32 { 0 }
-    fn t1() -> u32 { 1 }
-    fn t2() -> u32 { 2 }
-    fn t3() -> u32 { 3 }
-    fn t4() -> u32 { 4 }
-    fn t5() -> u32 { 5 }
-    fn t6() -> u32 { 6 }
+    fn t0() -> u32 {
+        0
+    }
+    fn t1() -> u32 {
+        1
+    }
+    fn t2() -> u32 {
+        2
+    }
+    fn t3() -> u32 {
+        3
+    }
+    fn t4() -> u32 {
+        4
+    }
+    fn t5() -> u32 {
+        5
+    }
+    fn t6() -> u32 {
+        6
+    }
 
     pub fn to_gltf(&self, root: &mut gltf::json::Root, bin: &mut Vec<u8>) -> HkShapeGltf {
         match self {
@@ -565,50 +674,76 @@ impl HkShape {
             Self::Sphere { info } => HkShapeGltf::Sphere(info.clone()),
             Self::Capsule { info } => HkShapeGltf::Capsule(info.clone()),
             Self::Cylinder { info } => HkShapeGltf::Cylinder(info.clone()),
-            Self::ConvexVertices { info, shape: ConvexVertices { norms, verts, verts_extra } } => {
+            Self::ConvexVertices {
+                info,
+                shape:
+                    ConvexVertices {
+                        norms,
+                        verts,
+                        verts_extra,
+                    },
+            } => {
                 let info = info.clone();
                 let verts_extra = *verts_extra;
-                let norms = GltfAsset { 
+                let norms = GltfAsset {
                     data: dump_bytes!(PC, norms),
                     count: norms.len(),
                     ty: DataType::F32,
                     dim: Dimensions::Vec4,
                     ..Default::default()
-                }.to_gltf(root, bin);
-                let verts = GltfAsset { 
+                }
+                .to_gltf(root, bin);
+                let verts = GltfAsset {
                     data: dump_bytes!(PC, verts),
                     count: verts.len(),
                     ty: DataType::F32,
                     dim: Dimensions::Vec3,
                     ..Default::default()
-                }.to_gltf(root, bin);
-                HkShapeGltf::ConvexVertices { info, norms, verts, verts_extra }
-            },
-            Self::BVTreeMesh { info, shape: BVTreeMesh { tree, verts, inds } } => {
+                }
+                .to_gltf(root, bin);
+                HkShapeGltf::ConvexVertices {
+                    info,
+                    norms,
+                    verts,
+                    verts_extra,
+                }
+            }
+            Self::BVTreeMesh {
+                info,
+                shape: BVTreeMesh { tree, verts, inds },
+            } => {
                 let info = info.clone();
-                let tree = GltfAsset { 
+                let tree = GltfAsset {
                     data: tree.clone(),
                     count: tree.len(),
                     ty: DataType::U8,
                     dim: Dimensions::Scalar,
                     ..Default::default()
-                }.to_gltf(root, bin);
-                let verts = GltfAsset { 
+                }
+                .to_gltf(root, bin);
+                let verts = GltfAsset {
                     data: dump_bytes!(PC, verts),
                     count: verts.len(),
                     ty: DataType::F32,
                     dim: Dimensions::Vec3,
                     ..Default::default()
-                }.to_gltf(root, bin);
-                let inds = GltfAsset { 
+                }
+                .to_gltf(root, bin);
+                let inds = GltfAsset {
                     data: dump_bytes!(PC, inds),
                     count: inds.len() / 3,
                     ty: DataType::U16,
                     dim: Dimensions::Vec3,
                     ..Default::default()
-                }.to_gltf(root, bin);
+                }
+                .to_gltf(root, bin);
 
-                HkShapeGltf::BVTreeMesh { info, tree, verts, inds }
+                HkShapeGltf::BVTreeMesh {
+                    info,
+                    tree,
+                    verts,
+                    inds,
+                }
             }
         }
     }
@@ -645,19 +780,64 @@ impl HkShapeGltf {
             Self::Sphere(info) => HkShape::Sphere { info },
             Self::Capsule(info) => HkShape::Capsule { info },
             Self::Cylinder(info) => HkShape::Cylinder { info },
-            Self::ConvexVertices { info, norms, verts, verts_extra } => {
+            Self::ConvexVertices {
+                info,
+                norms,
+                verts,
+                verts_extra,
+            } => {
                 let norms = GltfData::from_buffer(norms, root, bin).f32().unwrap();
                 let verts = GltfData::from_buffer(verts, root, bin).f32().unwrap();
-                let norms = norms.as_slice().chunks_exact(4).map(|x| Vector4 { x: x[0], y: x[1], z: x[2], w: x[3] }).collect();
-                let verts = verts.as_slice().chunks_exact(3).map(|x| Vector3 { x: x[0], y: x[1], z: x[2] }).collect();
-                HkShape::ConvexVertices { info, shape: ConvexVertices { norms, verts, verts_extra } }
-            },
-            Self::BVTreeMesh { info, tree, verts, inds } => {
+                let norms = norms
+                    .as_slice()
+                    .chunks_exact(4)
+                    .map(|x| Vector4 {
+                        x: x[0],
+                        y: x[1],
+                        z: x[2],
+                        w: x[3],
+                    })
+                    .collect();
+                let verts = verts
+                    .as_slice()
+                    .chunks_exact(3)
+                    .map(|x| Vector3 {
+                        x: x[0],
+                        y: x[1],
+                        z: x[2],
+                    })
+                    .collect();
+                HkShape::ConvexVertices {
+                    info,
+                    shape: ConvexVertices {
+                        norms,
+                        verts,
+                        verts_extra,
+                    },
+                }
+            }
+            Self::BVTreeMesh {
+                info,
+                tree,
+                verts,
+                inds,
+            } => {
                 let tree = GltfData::from_buffer(tree, root, bin).u8().unwrap();
                 let verts = GltfData::from_buffer(verts, root, bin).f32().unwrap();
                 let inds = GltfData::from_buffer(inds, root, bin).u16().unwrap();
-                let verts = verts.as_slice().chunks_exact(3).map(|x| Vector3 { x: x[0], y: x[1], z: x[2] }).collect();
-                HkShape::BVTreeMesh { info, shape: BVTreeMesh { tree, verts, inds } }
+                let verts = verts
+                    .as_slice()
+                    .chunks_exact(3)
+                    .map(|x| Vector3 {
+                        x: x[0],
+                        y: x[1],
+                        z: x[2],
+                    })
+                    .collect();
+                HkShape::BVTreeMesh {
+                    info,
+                    shape: BVTreeMesh { tree, verts, inds },
+                }
             }
         }
     }

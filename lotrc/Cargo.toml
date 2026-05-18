@@ -1,16 +1,19 @@
 [package]
 name = "lotrc"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 
 [lib]
 name = "lotrc"
 crate-type = ["cdylib", "rlib"]
 
+[features]
+python = ["dep:pyo3"]
+
 [dependencies]
 lotrc_proc = { path = "../lotrc_proc" }
 
-pyo3 = { version = "0.23.1", features = ["extension-module", "anyhow", "indexmap", "abi3-py39", "generate-import-lib"] }
+pyo3 = { version = "0.23.1", features = ["extension-module", "anyhow", "indexmap", "abi3-py39", "generate-import-lib"], optional = true }
 zerocopy = { version = "0.8.10", features = ["derive"] }
 mlua = { version = "0.10.1", features = ["lua51", "vendored", "send"] }
 flate2 = { version = "1.0.35", features = ["zlib-ng"], default-features = false }

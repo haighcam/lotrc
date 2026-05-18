@@ -1,16 +1,20 @@
-use std::fs;
-use serde::{Serialize, Deserialize};
-use std::path::Path;
-use log::info;
 use anyhow::Result;
+use log::info;
+#[cfg(feature = "python")]
 use pyo3::prelude::*;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::Path;
 
-use lotrc_proc::{OrderedData, basicpymethods, PyMethods};
-use super::types::{Crc, Version, PC, XBOX, from_bytes, dump_bytes, AsData, NoArgs};
+use super::types::{dump_bytes, from_bytes, AsData, Crc, NoArgs, Version, PC, XBOX};
+use lotrc_proc::OrderedData;
+#[cfg(feature = "python")]
+use lotrc_proc::{basicpymethods, PyMethods};
 
-#[basicpymethods]
-#[pyclass(module="audio", get_all, set_all)]
-#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
+#[cfg_attr(feature = "python", basicpymethods)]
+#[cfg_attr(feature = "python", pyclass(module = "audio", get_all, set_all))]
+#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", derive(PyMethods))]
 pub struct Header {
     pub const0x2: u32,
     pub n1: u32,
@@ -22,25 +26,28 @@ pub struct Header {
     pub n7: u32,
 }
 
-#[basicpymethods]
-#[pyclass(module="audio", get_all, set_all)]
-#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
+#[cfg_attr(feature = "python", basicpymethods)]
+#[cfg_attr(feature = "python", pyclass(module = "audio", get_all, set_all))]
+#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", derive(PyMethods))]
 pub struct Obj1 {
     pub key: Crc,
     pub val: u32,
 }
 
-#[basicpymethods]
-#[pyclass(module="audio", get_all, set_all)]
-#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize, PyMethods)]
+#[cfg_attr(feature = "python", basicpymethods)]
+#[cfg_attr(feature = "python", pyclass(module = "audio", get_all, set_all))]
+#[derive(Debug, Default, Clone, OrderedData, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", derive(PyMethods))]
 pub struct Obj2 {
     pub unk_0: u32,
     pub unk_1: u32,
     pub n: u32,
 }
 
-#[pyclass(module="audio", get_all, set_all)]
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PyMethods)]
+#[cfg_attr(feature = "python", pyclass(module = "audio", get_all, set_all))]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", derive(PyMethods))]
 pub struct AudioTable {
     #[serde(skip)]
     pub header: Header,
@@ -54,6 +61,7 @@ pub struct AudioTable {
     pub extra: Vec<Crc>,
 }
 
+#[cfg(feature = "python")]
 #[basicpymethods]
 #[pymethods]
 impl AudioTable {
@@ -120,28 +128,41 @@ impl AsData<'_, '_> for AudioTable {
             obj5s,
             obj6s,
             obj7s,
-            extra
+            extra,
         })
     }
 
     fn dump_bytes<O: Version>(&self, _args: Self::OutArgs) -> Vec<u8> {
-        dump_bytes!(O, self.header).into_iter()
-        .chain(dump_bytes!(O, self.obj1s))
-        .chain(self.obj2s.iter().flat_map(|(obj, objs)| dump_bytes!(O, obj).into_iter().chain(dump_bytes!(O, objs))))
-        .chain(self.obj3s.iter().flat_map(|(obj, objs)| dump_bytes!(O, obj).into_iter().chain(dump_bytes!(O, objs))))
-        .chain(dump_bytes!(O, self.obj4s))
-        .chain(dump_bytes!(O, self.obj5s))
-        .chain(dump_bytes!(O, self.obj6s))
-        .chain(dump_bytes!(O, self.obj7s))
-        .chain(dump_bytes!(O, self.extra))
-        .collect()
+        dump_bytes!(O, self.header)
+            .into_iter()
+            .chain(dump_bytes!(O, self.obj1s))
+            .chain(self.obj2s.iter().flat_map(|(obj, objs)| {
+                dump_bytes!(O, obj).into_iter().chain(dump_bytes!(O, objs))
+            }))
+            .chain(self.obj3s.iter().flat_map(|(obj, objs)| {
+                dump_bytes!(O, obj).into_iter().chain(dump_bytes!(O, objs))
+            }))
+            .chain(dump_bytes!(O, self.obj4s))
+            .chain(dump_bytes!(O, self.obj5s))
+            .chain(dump_bytes!(O, self.obj6s))
+            .chain(dump_bytes!(O, self.obj7s))
+            .chain(dump_bytes!(O, self.extra))
+            .collect()
     }
 
     fn size<V: Version>(&self) -> usize {
         self.header.size::<V>()
-+ self.obj1s.size::<V>()
-            + self.obj2s.iter().map(|(obj, objs)| obj.size::<V>() + objs.size::<V>()).sum::<usize>()
-            + self.obj3s.iter().map(|(obj, objs)| obj.size::<V>() + objs.size::<V>()).sum::<usize>()
+            + self.obj1s.size::<V>()
+            + self
+                .obj2s
+                .iter()
+                .map(|(obj, objs)| obj.size::<V>() + objs.size::<V>())
+                .sum::<usize>()
+            + self
+                .obj3s
+                .iter()
+                .map(|(obj, objs)| obj.size::<V>() + objs.size::<V>())
+                .sum::<usize>()
             + self.obj4s.size::<V>()
             + self.obj5s.size::<V>()
             + self.obj6s.size::<V>()
@@ -153,7 +174,10 @@ impl AsData<'_, '_> for AudioTable {
 impl AudioTable {
     pub fn parse<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
-        info!("Parsing audio table {}", path.file_stem().unwrap().to_str().unwrap());   
+        info!(
+            "Parsing audio table {}",
+            path.file_stem().unwrap().to_str().unwrap()
+        );
         let data = fs::read(path).unwrap();
         if data[0] == 2 {
             from_bytes!(PC, &data[..])
@@ -173,11 +197,16 @@ impl AudioTable {
         if let Some(path) = path.as_ref().parent() {
             fs::create_dir_all(path).ok();
         }
-        fs::write(path.as_ref().with_extension("audio.json"), serde_json::to_string_pretty(&self).unwrap()).unwrap();
+        fs::write(
+            path.as_ref().with_extension("audio.json"),
+            serde_json::to_string_pretty(&self).unwrap(),
+        )
+        .unwrap();
     }
 
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let mut val = serde_json::from_slice::<Self>(&fs::read(path.as_ref().with_extension("json"))?)?;
+        let mut val =
+            serde_json::from_slice::<Self>(&fs::read(path.as_ref().with_extension("json"))?)?;
         val.header = Header {
             const0x2: 2,
             n1: val.obj1s.len() as u32,
@@ -186,7 +215,7 @@ impl AudioTable {
             n4: val.obj4s.len() as u32,
             n5: val.obj5s.len() as u32,
             n6: val.obj6s.len() as u32,
-            n7: val.obj7s.len() as u32
+            n7: val.obj7s.len() as u32,
         };
         Ok(val)
     }

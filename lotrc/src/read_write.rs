@@ -1,10 +1,10 @@
-use std::io::{Read, Write};
-use std::sync::{Arc, Mutex};
-use std::path::{Path, PathBuf};
-use std::fs;
+use anyhow::{Context, Result};
 use itertools::Itertools;
-use zip::{ZipArchive, ZipWriter, write::SimpleFileOptions};
-use anyhow::{Result, Context};
+use std::fs;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use zip::{write::SimpleFileOptions, ZipArchive, ZipWriter};
 
 fn format_path(path: &Path) -> String {
     path.iter().map(|x| x.to_str().unwrap()).join("/")
@@ -13,7 +13,7 @@ fn format_path(path: &Path) -> String {
 pub trait PathStuff: Sized {
     fn path(&self) -> &Path;
     fn full_path(&self) -> PathBuf;
-    fn with_path<P: AsRef<Path>>(&self, path: P) -> Self; 
+    fn with_path<P: AsRef<Path>>(&self, path: P) -> Self;
 
     fn name(&self) -> &str {
         self.path().file_stem().unwrap().to_str().unwrap()
@@ -38,14 +38,14 @@ pub trait PathStuff: Sized {
 
 pub enum Reader {
     File(PathBuf),
-    Zip(Arc<Mutex<ZipArchive<fs::File>>>, PathBuf, PathBuf)
+    Zip(Arc<Mutex<ZipArchive<fs::File>>>, PathBuf, PathBuf),
 }
 
 impl std::fmt::Debug for Reader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::File(val) => val.fmt(f),
-            Self::Zip(_, val, _) => val.fmt(f)
+            Self::Zip(_, val, _) => val.fmt(f),
         }
     }
 }
@@ -82,22 +82,26 @@ impl Reader {
                 path.as_ref().into(),
             )
         } else {
-            Self::File(
-                path.as_ref().into()
-            )
+            Self::File(path.as_ref().into())
         })
     }
 
     pub fn is_file(&self) -> bool {
         match self {
             Self::File(path) => path.is_file(),
-            Self::Zip(zip, path, _) => zip.lock().unwrap().index_for_name(&format_path(path)).is_some()
+            Self::Zip(zip, path, _) => zip
+                .lock()
+                .unwrap()
+                .index_for_name(&format_path(path))
+                .is_some(),
         }
     }
 
     pub fn read(&self) -> Result<Vec<u8>> {
         Ok(match self {
-            Self::File(path) => fs::read(path).with_context(|| format!("{:?}", path.as_os_str()))?,
+            Self::File(path) => {
+                fs::read(path).with_context(|| format!("{:?}", path.as_os_str()))?
+            }
             Self::Zip(zip, path, _) => {
                 let mut zip = zip.lock().unwrap();
                 let name = format_path(path);
@@ -115,18 +119,27 @@ impl IntoIterator for Reader {
     type IntoIter = std::vec::IntoIter<Self>;
     fn into_iter(self) -> Self::IntoIter {
         let out: Vec<_> = match self {
-            Self::File(path) => if path.is_dir() {
-                fs::read_dir(path)
-                    .unwrap()
-                    .filter_map(|x| x.ok().map(|x| Self::File(x.path())))
-                    .collect()
-            } else {
-                vec![]
-            },
-            Self::Zip(zip, path, base) => zip.lock().unwrap().file_names().filter_map(|x| {
-                let child = PathBuf::from(x);
-                child.starts_with(&path).then_some(Self::Zip(zip.clone(), child, base.clone()))
-            }).collect()
+            Self::File(path) => {
+                if path.is_dir() {
+                    fs::read_dir(path)
+                        .unwrap()
+                        .filter_map(|x| x.ok().map(|x| Self::File(x.path())))
+                        .collect()
+                } else {
+                    vec![]
+                }
+            }
+            Self::Zip(zip, path, base) => zip
+                .lock()
+                .unwrap()
+                .file_names()
+                .filter_map(|x| {
+                    let child = PathBuf::from(x);
+                    child
+                        .starts_with(&path)
+                        .then_some(Self::Zip(zip.clone(), child, base.clone()))
+                })
+                .collect(),
         };
         out.into_iter()
     }
@@ -134,7 +147,7 @@ impl IntoIterator for Reader {
 
 pub enum Writer {
     File(PathBuf),
-    Zip(Arc<Mutex<ZipWriter<fs::File>>>, PathBuf, PathBuf)
+    Zip(Arc<Mutex<ZipWriter<fs::File>>>, PathBuf, PathBuf),
 }
 
 impl PathStuff for Writer {
@@ -163,14 +176,14 @@ impl Writer {
         Ok(if zip {
             fs::create_dir_all(path.as_ref().parent().unwrap())?;
             Self::Zip(
-                Arc::new(Mutex::new(ZipWriter::new(fs::File::create(path.as_ref().with_extension("zip"))?))),
+                Arc::new(Mutex::new(ZipWriter::new(fs::File::create(
+                    path.as_ref().with_extension("zip"),
+                )?))),
                 PathBuf::new(),
-                path.as_ref().with_extension("zip").into()
+                path.as_ref().with_extension("zip").into(),
             )
         } else {
-            Self::File(
-                path.as_ref().into()
-            )
+            Self::File(path.as_ref().into())
         })
     }
 
@@ -179,11 +192,12 @@ impl Writer {
             Self::File(path) => {
                 fs::create_dir_all(path.parent().unwrap())?;
                 fs::write(path, contents).with_context(|| format!("{:?}", path.as_os_str()))?;
-            },
+            }
             Self::Zip(zip, path, _) => {
                 let mut zip = zip.lock().unwrap();
                 let name = format_path(path);
-                zip.start_file(&name, SimpleFileOptions::default()).with_context(||name.clone())?;
+                zip.start_file(&name, SimpleFileOptions::default())
+                    .with_context(|| name.clone())?;
                 zip.write_all(contents).with_context(|| name.clone())?;
                 zip.flush()?;
             }
@@ -191,4 +205,3 @@ impl Writer {
         Ok(())
     }
 }
-

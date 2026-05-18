@@ -1,19 +1,24 @@
-use std::{
-    collections::{HashSet, VecDeque}, fs, path::{Path, PathBuf}, io::Read,
-};
-use log::error;
-use clap::{Parser, Args};
 use anyhow::Result;
+use clap::{Args, Parser};
 use indicatif::MultiProgress;
+use log::error;
+use std::{
+    collections::{HashSet, VecDeque},
+    fs,
+    io::Read,
+    path::{Path, PathBuf},
+};
 
 use lotrc::{
-    audio::AudioTable, 
+    audio::AudioTable,
     level::Level,
     level_alt::Level as LevelAlt,
     level_info::LevelInfo,
-    read_write::{Reader, Writer, PathStuff},
+    read_write::{PathStuff, Reader, Writer},
     shader::Shaders,
-    types::{PC, Crc, DECOMP_LUA, RECOMP_LUA, ZIP, ANIM_TABLES, GLTF, COMPRESSION, UNLUAC, ALT_OBJS},
+    types::{
+        Crc, ALT_OBJS, ANIM_TABLES, COMPRESSION, DECOMP_LUA, GLTF, PC, RECOMP_LUA, UNLUAC, ZIP,
+    },
 };
 
 fn v3_styling() -> clap::builder::styling::Styles {
@@ -56,11 +61,11 @@ struct CliArgs {
     unluac: Option<String>,
 
     /// Don't dump animation tables
-    #[arg(short='a', long)]
+    #[arg(short = 'a', long)]
     no_anim_table: bool,
 
-    /// Dump to zip files instead of folders 
-    #[arg(short='z', long)]
+    /// Dump to zip files instead of folders
+    #[arg(short = 'z', long)]
     zip: bool,
 
     /// Dump models as gltfs
@@ -85,7 +90,7 @@ impl CliArgs {
             no_anim_table: self.no_anim_table || other.no_anim_table,
             zip: self.zip || other.zip,
             gltf: self.gltf || other.gltf,
-            alt_objs: self.alt_objs || other.alt_objs
+            alt_objs: self.alt_objs || other.alt_objs,
         }
     }
 }
@@ -102,10 +107,10 @@ struct Commands {
     dump: bool,
 
     /// Convert input strings into CRCs
-    #[arg(short='k', long)]
+    #[arg(short = 'k', long)]
     hash: bool,
 
-    #[arg(long, hide=true)]
+    #[arg(long, hide = true)]
     alt_comp: bool,
 }
 
@@ -119,7 +124,13 @@ impl Commands {
     }
 }
 
-fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parsed: &mut HashSet<PathBuf>, mp: Option<&MultiProgress>) -> Result<()> {
+fn parse<A: AsRef<Path>, B: AsRef<Path>>(
+    src: A,
+    dest: B,
+    args: &Commands,
+    parsed: &mut HashSet<PathBuf>,
+    mp: Option<&MultiProgress>,
+) -> Result<()> {
     let mut q = VecDeque::from(vec![(PathBuf::new(), src.as_ref().to_path_buf())]);
     let dest = dest.as_ref();
     while let Some((name, src)) = q.pop_front() {
@@ -129,20 +140,36 @@ fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parse
         if src.with_extension("PAK").is_file() && !parsed.contains(&src.with_extension("PAK")) {
             parsed.insert(src.with_extension("PAK"));
             match args {
-                Commands { compile: true, .. } => Level::parse(src)?.dump::<PC, _>(dest.join(name))?,
-                Commands { alt_comp: true, .. } => LevelAlt::parse(src, mp)?.dump::<PC, _>(dest.join(name), mp)?,
-                _ => LevelAlt::parse(src, mp)?.to_file(Writer::new(dest.join(name), *ZIP.lock().unwrap())?, mp.cloned())?,
+                Commands { compile: true, .. } => {
+                    Level::parse(src)?.dump::<PC, _>(dest.join(name))?
+                }
+                Commands { alt_comp: true, .. } => {
+                    LevelAlt::parse(src, mp)?.dump::<PC, _>(dest.join(name), mp)?
+                }
+                _ => LevelAlt::parse(src, mp)?.to_file(
+                    Writer::new(dest.join(name), *ZIP.lock().unwrap())?,
+                    mp.cloned(),
+                )?,
             }
-        } else if src.file_name().unwrap() == "level_info.dat" {
+        } else if src
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .ends_with("_info.dat")
+        {
             parsed.insert(src.clone());
             let mut level_info = LevelInfo::parse(src)?;
             match args {
                 Commands { compile: true, .. } => level_info.dump::<PC, _>(dest.join(name))?,
                 _ => level_info.to_file(Writer::new(dest.join(name), *ZIP.lock().unwrap())?)?,
             }
-        } else if !src.with_extension("PAK").is_file() && src.with_extension("bin").is_file() && ext == "bin" {
+        } else if !src.with_extension("PAK").is_file()
+            && src.with_extension("bin").is_file()
+            && ext == "bin"
+        {
             parsed.insert(src.with_extension("bin"));
-            let mut vals = vec![0;4];
+            let mut vals = vec![0; 4];
             {
                 let mut f = fs::File::open(&src)?;
                 f.read_exact(&mut vals)?;
@@ -170,28 +197,36 @@ fn parse<A: AsRef<Path>, B: AsRef<Path>>(src: A, dest: B, args: &Commands, parse
                 _ => table.dump::<PC, _>(dest.join(name)),
             }
         } else if {
-            if let Some(reader) = (ext == "zip").then(|| Reader::new(&src, true))
-                .or(src.is_dir().then(|| Reader::new(&src, false))) {
+            if let Some(reader) = (ext == "zip")
+                .then(|| Reader::new(&src, true))
+                .or(src.is_dir().then(|| Reader::new(&src, false)))
+            {
                 let reader = reader?;
                 let name = name.clone();
                 if reader.join("index.json").is_file() {
                     let mut level_info = LevelInfo::from_file(reader)?;
                     match args {
-                        Commands { dump: true, .. } => level_info.to_file(Writer::new(dest.join(name), *ZIP.lock().unwrap())?)?,
+                        Commands { dump: true, .. } => level_info
+                            .to_file(Writer::new(dest.join(name), *ZIP.lock().unwrap())?)?,
                         _ => level_info.dump::<PC, _>(dest.join(name))?,
                     }
                     true
                 } else if reader.join("pak_header.json").is_file() {
                     let mut level = LevelAlt::from_file(reader, mp)?;
                     match args {
-                        Commands { dump: true, .. } => level.to_file(Writer::new(dest.join(name), *ZIP.lock().unwrap())?, mp.cloned())?,
-                        _ => level.dump::<PC, _>(dest.join(name), mp)?
+                        Commands { dump: true, .. } => level.to_file(
+                            Writer::new(dest.join(name), *ZIP.lock().unwrap())?,
+                            mp.cloned(),
+                        )?,
+                        _ => level.dump::<PC, _>(dest.join(name), mp)?,
                     }
                     true
                 } else if reader.join("vertex_headers.json").is_file() {
                     let shaders = Shaders::from_file(reader)?;
                     match args {
-                        Commands { dump: true, .. } => shaders.to_file(Writer::new(dest.join(name), *ZIP.lock().unwrap())?)?,
+                        Commands { dump: true, .. } => {
+                            shaders.to_file(Writer::new(dest.join(name), *ZIP.lock().unwrap())?)?
+                        }
                         _ => shaders.dump::<PC, _>(dest.join(name))?,
                     }
                     true
@@ -219,9 +254,9 @@ fn main() -> Result<()> {
     let logger = pretty_env_logger::formatted_builder()
         .filter_level(log::LevelFilter::Info)
         .format(|buf, record| {
-            use std::io::Write;
             use pretty_env_logger::env_logger::fmt::Color;
-        
+            use std::io::Write;
+
             let mut style = buf.style();
             let level = match record.level() {
                 log::Level::Trace => style.set_color(Color::Magenta).value("TRACE"),
@@ -236,19 +271,30 @@ fn main() -> Result<()> {
 
     let level = logger.filter();
     let multi = indicatif::MultiProgress::new();
-    indicatif_log_bridge::LogWrapper::new(multi.clone(), logger).try_init().unwrap();
+    indicatif_log_bridge::LogWrapper::new(multi.clone(), logger)
+        .try_init()
+        .unwrap();
     log::set_max_level(level);
 
-    let exe_dir = std::env::current_exe().unwrap().parent().unwrap().to_owned();
+    let exe_dir = std::env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_owned();
     let mut args = CliArgs::parse_from(wild::args_os());
-    for arg_file in args.input.clone().iter()
+    for arg_file in args
+        .input
+        .clone()
+        .iter()
         .filter(|x| x.ends_with(".arg"))
         .map(|x| PathBuf::from(x))
         .chain(std::iter::once(exe_dir.join("args.txt")))
-        .filter(|x| x.is_file()) {
-
+        .filter(|x| x.is_file())
+    {
         let data = fs::read_to_string(arg_file)?;
-        args = args.combine(CliArgs::parse_from(std::iter::once("").chain(data.as_str().split_whitespace())));
+        args = args.combine(CliArgs::parse_from(
+            std::iter::once("").chain(data.as_str().split_whitespace()),
+        ));
     }
     let unluac = exe_dir.join("unluac.jar");
     if unluac.is_file() {
@@ -278,14 +324,20 @@ fn main() -> Result<()> {
 
     if args.command.hash {
         for input in args.input {
-            let val =  Crc::from_string(&input).key();
+            let val = Crc::from_string(&input).key();
             println!("{}: {}, 0X{:0X}", input, val, val);
         }
     } else {
         let output: PathBuf = args.output.map(|x| x.into()).unwrap_or(exe_dir);
         let mut parsed = HashSet::new();
         for input in args.input {
-            parse(input, output.clone(), &args.command, &mut parsed, Some(&multi))?;
+            parse(
+                input,
+                output.clone(),
+                &args.command,
+                &mut parsed,
+                Some(&multi),
+            )?;
         }
     }
     Ok(())
