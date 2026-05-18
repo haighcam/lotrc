@@ -715,8 +715,11 @@ pub struct AnimationBlockInfo {
     #[serde(alias = "unk_1")]
     pub guid: u32,
     pub key_name: Crc,
+    #[ordered_data(skipXBOXPROTO)]
     pub offset: u32,
+    #[ordered_data(skipXBOXPROTO)]
     pub size: u32,
+    #[ordered_data(skipXBOXPROTO)]
     pub size_comp: u32,
     #[ordered_data(skipXBOXPROTO, skipXBOXPROTO2)]
     pub unk_6: u32,
