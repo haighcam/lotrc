@@ -2505,6 +2505,7 @@ pub struct StringKeysHeader {
     pub z2: u32,
     pub z3: u32,
     pub z4: u32,
+    #[ordered_data(skipXBOXPROTO)]
     pub z5: u32,
 }
 
