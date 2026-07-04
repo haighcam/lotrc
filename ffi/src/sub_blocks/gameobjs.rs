@@ -33,10 +33,14 @@ pub mod ref_impl_ver {
     use lotrc::{
         sub_blocks::gameobjs::{
             GameObjsVER, ObjVER, TypeVER, GameObjsHeaderVER, BaseTypeVER, ObjHeaderVER,
-            TypeHeaderVER, TypeFieldVER
+            TypeHeaderVER, TypeFieldVER, BaseTypeRefVER
         },
         types::{CrcVER, u32VER, ColorVER, Vector2VER, Vector3VER, Vector4VER, Matrix4x4VER, f32VER, i32VER, WeightVER}
     };
+    #[unsafe(no_mangle)]
+    pub extern "C" fn lotrc_basetypes_test_ver(basetypes: &BaseTypeRefVER) {
+        
+    }
 
     #[unsafe(no_mangle)]
     pub extern "C" fn lotrc_gameobjs_get_header_ver(gameobjs: *const GameObjsVER) -> *const GameObjsHeaderVER {

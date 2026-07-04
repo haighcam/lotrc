@@ -4,12 +4,14 @@ members = [
     "lotrc",
     "lotrc_rs",
     "lotrc_proc",
-    "ffi", "ffi_alt",
+    "ffi",
+    "gen_ffi"
 ]
 
 [profile.release]
 #strip = true
 lto = true
+
 
 [workspace.dependencies]
 lotrc_proc = { path = "lotrc_proc" }
@@ -19,3 +21,4 @@ indexmap = "2.6.0"
 zerocopy = "0.8.10"
 anyhow = "1.0.86"
 safer-ffi = "0.1.13"
+cbindgen = "0.29.2"

@@ -22,33 +22,229 @@
 #define LodInfo_LOD3 256
 
 enum Version {
-  Version_Pc,
+  Version_Pc = 0,
   Version_Xbox,
   Version_Ps3,
+  Version_Err,
 };
 typedef uint8_t Version;
 
-typedef struct DumpInfosPc DumpInfosPc;
+/**
+ * Owned
+ */
+typedef struct OwnedAlignedBuf OwnedAlignedBuf;
 
-typedef struct DumpInfosPs3 DumpInfosPs3;
+/**
+ * Owned
+ */
+typedef struct OwnedDumpInfosPc OwnedDumpInfosPc;
 
-typedef struct DumpInfosXbox DumpInfosXbox;
+/**
+ * Owned
+ */
+typedef struct OwnedDumpInfosPs3 OwnedDumpInfosPs3;
 
-typedef struct DumpSlice DumpSlice;
+/**
+ * Owned
+ */
+typedef struct OwnedDumpInfosXbox OwnedDumpInfosXbox;
 
-typedef struct InfoCounts InfoCounts;
+/**
+ * Owned
+ */
+typedef struct OwnedInfoCounts OwnedInfoCounts;
+
+/**
+ * Owned
+ */
+typedef struct OwnedLevelCompressedData OwnedLevelCompressedData;
+
+/**
+ * Owned
+ */
+typedef struct OwnedLevelData OwnedLevelData;
+
+/**
+ * Owned
+ */
+typedef struct OwnedLevelRefPc OwnedLevelRefPc;
+
+/**
+ * Owned
+ */
+typedef struct OwnedLevelRefPs3 OwnedLevelRefPs3;
+
+/**
+ * Owned
+ */
+typedef struct OwnedLevelRefXbox OwnedLevelRefXbox;
+
+/**
+ * Owned
+ */
+typedef struct OwnedVecCompressedData OwnedVecCompressedData;
+
+typedef struct slice_AnimationBlockInfoPc slice_AnimationBlockInfoPc;
+
+typedef struct slice_AnimationBlockInfoPs3 slice_AnimationBlockInfoPs3;
+
+typedef struct slice_AnimationBlockInfoXbox slice_AnimationBlockInfoXbox;
+
+typedef struct slice_AnimationInfoPc slice_AnimationInfoPc;
+
+typedef struct slice_AnimationInfoPs3 slice_AnimationInfoPs3;
+
+typedef struct slice_AnimationInfoXbox slice_AnimationInfoXbox;
+
+typedef struct slice_BufferInfoPc slice_BufferInfoPc;
+
+typedef struct slice_BufferInfoPs3 slice_BufferInfoPs3;
+
+typedef struct slice_BufferInfoXbox slice_BufferInfoXbox;
+
+typedef struct slice_EffectInfoPc slice_EffectInfoPc;
+
+typedef struct slice_EffectInfoPs3 slice_EffectInfoPs3;
+
+typedef struct slice_EffectInfoXbox slice_EffectInfoXbox;
+
+typedef struct slice_FoliageInfoPc slice_FoliageInfoPc;
+
+typedef struct slice_FoliageInfoPs3 slice_FoliageInfoPs3;
+
+typedef struct slice_FoliageInfoXbox slice_FoliageInfoXbox;
+
+typedef struct slice_GFXBlockInfoPc slice_GFXBlockInfoPc;
+
+typedef struct slice_GFXBlockInfoPs3 slice_GFXBlockInfoPs3;
+
+typedef struct slice_GFXBlockInfoXbox slice_GFXBlockInfoXbox;
+
+typedef struct slice_HkConstraintDataPc slice_HkConstraintDataPc;
+
+typedef struct slice_HkConstraintDataPs3 slice_HkConstraintDataPs3;
+
+typedef struct slice_HkConstraintDataXbox slice_HkConstraintDataXbox;
+
+typedef struct slice_HkConstraintInfoPc slice_HkConstraintInfoPc;
+
+typedef struct slice_HkConstraintInfoPs3 slice_HkConstraintInfoPs3;
+
+typedef struct slice_HkConstraintInfoXbox slice_HkConstraintInfoXbox;
+
+typedef struct slice_HkShapeInfoPc slice_HkShapeInfoPc;
+
+typedef struct slice_HkShapeInfoPs3 slice_HkShapeInfoPs3;
+
+typedef struct slice_HkShapeInfoXbox slice_HkShapeInfoXbox;
+
+typedef struct slice_IBuffInfoPc slice_IBuffInfoPc;
+
+typedef struct slice_IBuffInfoPs3 slice_IBuffInfoPs3;
+
+typedef struct slice_IBuffInfoXbox slice_IBuffInfoXbox;
+
+typedef struct slice_Mat1Pc slice_Mat1Pc;
+
+typedef struct slice_Mat1Ps3 slice_Mat1Ps3;
+
+typedef struct slice_Mat1Xbox slice_Mat1Xbox;
+
+typedef struct slice_Mat2Pc slice_Mat2Pc;
+
+typedef struct slice_Mat2Ps3 slice_Mat2Ps3;
+
+typedef struct slice_Mat2Xbox slice_Mat2Xbox;
+
+typedef struct slice_Mat3Pc slice_Mat3Pc;
+
+typedef struct slice_Mat3Ps3 slice_Mat3Ps3;
+
+typedef struct slice_Mat3Xbox slice_Mat3Xbox;
+
+typedef struct slice_Mat4Pc slice_Mat4Pc;
+
+typedef struct slice_Mat4Ps3 slice_Mat4Ps3;
+
+typedef struct slice_Mat4Xbox slice_Mat4Xbox;
+
+typedef struct slice_MatExtraPc slice_MatExtraPc;
+
+typedef struct slice_MatExtraPs3 slice_MatExtraPs3;
+
+typedef struct slice_MatExtraXbox slice_MatExtraXbox;
+
+typedef struct slice_ModelInfoPc slice_ModelInfoPc;
+
+typedef struct slice_ModelInfoPs3 slice_ModelInfoPs3;
+
+typedef struct slice_ModelInfoXbox slice_ModelInfoXbox;
+
+typedef struct slice_Obj0Pc slice_Obj0Pc;
+
+typedef struct slice_Obj0Ps3 slice_Obj0Ps3;
+
+typedef struct slice_Obj0Xbox slice_Obj0Xbox;
+
+typedef struct slice_ObjAPc slice_ObjAPc;
+
+typedef struct slice_ObjAPs3 slice_ObjAPs3;
+
+typedef struct slice_ObjAXbox slice_ObjAXbox;
+
+typedef struct slice_PFieldInfoPc slice_PFieldInfoPc;
+
+typedef struct slice_PFieldInfoPs3 slice_PFieldInfoPs3;
+
+typedef struct slice_PFieldInfoXbox slice_PFieldInfoXbox;
+
+typedef struct slice_RadiosityValsInfoPc slice_RadiosityValsInfoPc;
+
+typedef struct slice_RadiosityValsInfoPs3 slice_RadiosityValsInfoPs3;
+
+typedef struct slice_RadiosityValsInfoXbox slice_RadiosityValsInfoXbox;
+
+typedef struct slice_ShapeInfoPc slice_ShapeInfoPc;
+
+typedef struct slice_ShapeInfoPs3 slice_ShapeInfoPs3;
+
+typedef struct slice_ShapeInfoXbox slice_ShapeInfoXbox;
+
+typedef struct slice_TextureInfoPc slice_TextureInfoPc;
+
+typedef struct slice_TextureInfoPs3 slice_TextureInfoPs3;
+
+typedef struct slice_TextureInfoXbox slice_TextureInfoXbox;
+
+typedef struct slice_VBuffInfoPc slice_VBuffInfoPc;
+
+typedef struct slice_VBuffInfoPs3 slice_VBuffInfoPs3;
+
+typedef struct slice_VBuffInfoXbox slice_VBuffInfoXbox;
+
+typedef struct slice_VertexUsage slice_VertexUsage;
+
+typedef struct slice_u32 slice_u32;
+
+typedef struct slice_u32Pc slice_u32Pc;
+
+typedef struct slice_u32Ps3 slice_u32Ps3;
+
+typedef struct slice_u32Xbox slice_u32Xbox;
+
+typedef struct slice_u8 slice_u8;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_AlignmentHelper {
+typedef struct slice_AlignmentHelper {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_AlignmentHelper;
+} slice_AlignmentHelper;
 
 typedef struct AlignedBuf {
-  struct owned_slice_AlignmentHelper data;
+  struct slice_AlignmentHelper data;
   uintptr_t size;
 } AlignedBuf;
 
@@ -61,13 +257,13 @@ typedef struct LevelData {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_u8 {
+typedef struct ref_slice_u8 {
   uint64_t align;
   uint8_t pad[8];
-} slice_u8;
+} ref_slice_u8;
 
 typedef struct CompressedDataRef {
-  struct slice_u8 data;
+  struct ref_slice_u8 data;
   struct AlignedBuf data_decomp;
 } CompressedDataRef;
 
@@ -75,15 +271,15 @@ typedef struct CompressedDataRef {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_CompressedDataRef {
+typedef struct slice_CompressedDataRef {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_CompressedDataRef;
+} slice_CompressedDataRef;
 
 typedef struct PakCompressedData {
   struct CompressedDataRef block1;
   struct CompressedDataRef block2;
-  struct owned_slice_CompressedDataRef animations;
+  struct slice_CompressedDataRef animations;
 } PakCompressedData;
 
 /**
@@ -237,244 +433,244 @@ typedef struct PakHeaderPc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_string {
+typedef struct slice_string {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_string;
+} slice_string;
 
-typedef struct owned_slice_string StringsRefPc;
-
-/**
- * This is a proxy struct for correct size and alignment only
- * don't construct this directly and use the provided methods to access
- */
-typedef struct slice_ObjAPc {
-  uint64_t align;
-  uint8_t pad[8];
-} slice_ObjAPc;
+typedef struct slice_string StringsRefPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Obj0Pc {
+typedef struct ref_slice_ObjAPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_Obj0Pc;
+} ref_slice_ObjAPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_ModelInfoPc {
+typedef struct ref_slice_Obj0Pc {
   uint64_t align;
   uint8_t pad[8];
-} slice_ModelInfoPc;
+} ref_slice_Obj0Pc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_BufferInfoPc {
+typedef struct ref_slice_ModelInfoPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_BufferInfoPc;
+} ref_slice_ModelInfoPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Mat1Pc {
+typedef struct ref_slice_BufferInfoPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_Mat1Pc;
+} ref_slice_BufferInfoPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Mat2Pc {
+typedef struct ref_slice_Mat1Pc {
   uint64_t align;
   uint8_t pad[8];
-} slice_Mat2Pc;
+} ref_slice_Mat1Pc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Mat3Pc {
+typedef struct ref_slice_Mat2Pc {
   uint64_t align;
   uint8_t pad[8];
-} slice_Mat3Pc;
+} ref_slice_Mat2Pc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Mat4Pc {
+typedef struct ref_slice_Mat3Pc {
   uint64_t align;
   uint8_t pad[8];
-} slice_Mat4Pc;
+} ref_slice_Mat3Pc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_MatExtraPc {
+typedef struct ref_slice_Mat4Pc {
   uint64_t align;
   uint8_t pad[8];
-} slice_MatExtraPc;
+} ref_slice_Mat4Pc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_ShapeInfoPc {
+typedef struct ref_slice_MatExtraPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_ShapeInfoPc;
+} ref_slice_MatExtraPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_HkShapeInfoPc {
+typedef struct ref_slice_ShapeInfoPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_HkShapeInfoPc;
+} ref_slice_ShapeInfoPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_HkConstraintDataPc {
+typedef struct ref_slice_HkShapeInfoPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_HkConstraintDataPc;
+} ref_slice_HkShapeInfoPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_VBuffInfoPc {
+typedef struct ref_slice_HkConstraintDataPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_VBuffInfoPc;
+} ref_slice_HkConstraintDataPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_IBuffInfoPc {
+typedef struct ref_slice_VBuffInfoPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_IBuffInfoPc;
+} ref_slice_VBuffInfoPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_TextureInfoPc {
+typedef struct ref_slice_IBuffInfoPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_TextureInfoPc;
+} ref_slice_IBuffInfoPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_AnimationInfoPc {
+typedef struct ref_slice_TextureInfoPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_AnimationInfoPc;
+} ref_slice_TextureInfoPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_HkConstraintInfoPc {
+typedef struct ref_slice_AnimationInfoPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_HkConstraintInfoPc;
+} ref_slice_AnimationInfoPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_EffectInfoPc {
+typedef struct ref_slice_HkConstraintInfoPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_EffectInfoPc;
+} ref_slice_HkConstraintInfoPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_PFieldInfoPc {
+typedef struct ref_slice_EffectInfoPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_PFieldInfoPc;
+} ref_slice_EffectInfoPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_GFXBlockInfoPc {
+typedef struct ref_slice_PFieldInfoPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_GFXBlockInfoPc;
+} ref_slice_PFieldInfoPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_AnimationBlockInfoPc {
+typedef struct ref_slice_GFXBlockInfoPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_AnimationBlockInfoPc;
+} ref_slice_GFXBlockInfoPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_FoliageInfoPc {
+typedef struct ref_slice_AnimationBlockInfoPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_FoliageInfoPc;
+} ref_slice_AnimationBlockInfoPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_RadiosityValsInfoPc {
+typedef struct ref_slice_FoliageInfoPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_RadiosityValsInfoPc;
+} ref_slice_FoliageInfoPc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct ref_slice_RadiosityValsInfoPc {
+  uint64_t align;
+  uint8_t pad[8];
+} ref_slice_RadiosityValsInfoPc;
 
 typedef struct InfosRefPc {
-  struct slice_ObjAPc objas;
-  struct slice_Obj0Pc obj0s;
-  struct slice_ModelInfoPc models;
-  struct slice_BufferInfoPc buffers;
-  struct slice_Mat1Pc mat1s;
-  struct slice_Mat2Pc mat2s;
-  struct slice_Mat3Pc mat3s;
-  struct slice_Mat4Pc mat4s;
-  struct slice_MatExtraPc mat_extras;
-  struct slice_ShapeInfoPc shapes;
-  struct slice_HkShapeInfoPc hk_shapes;
-  struct slice_HkConstraintDataPc hk_constraint_datas;
-  struct slice_VBuffInfoPc vbuffs;
-  struct slice_IBuffInfoPc ibuffs;
-  struct slice_TextureInfoPc textures;
-  struct slice_AnimationInfoPc animations;
-  struct slice_HkConstraintInfoPc hk_constraints;
-  struct slice_EffectInfoPc effects;
-  struct slice_PFieldInfoPc pfields;
-  struct slice_GFXBlockInfoPc gfxs;
-  struct slice_AnimationBlockInfoPc animation_blocks;
-  struct slice_FoliageInfoPc foliages;
-  struct slice_RadiosityValsInfoPc radiosity_vals;
+  struct ref_slice_ObjAPc objas;
+  struct ref_slice_Obj0Pc obj0s;
+  struct ref_slice_ModelInfoPc models;
+  struct ref_slice_BufferInfoPc buffers;
+  struct ref_slice_Mat1Pc mat1s;
+  struct ref_slice_Mat2Pc mat2s;
+  struct ref_slice_Mat3Pc mat3s;
+  struct ref_slice_Mat4Pc mat4s;
+  struct ref_slice_MatExtraPc mat_extras;
+  struct ref_slice_ShapeInfoPc shapes;
+  struct ref_slice_HkShapeInfoPc hk_shapes;
+  struct ref_slice_HkConstraintDataPc hk_constraint_datas;
+  struct ref_slice_VBuffInfoPc vbuffs;
+  struct ref_slice_IBuffInfoPc ibuffs;
+  struct ref_slice_TextureInfoPc textures;
+  struct ref_slice_AnimationInfoPc animations;
+  struct ref_slice_HkConstraintInfoPc hk_constraints;
+  struct ref_slice_EffectInfoPc effects;
+  struct ref_slice_PFieldInfoPc pfields;
+  struct ref_slice_GFXBlockInfoPc gfxs;
+  struct ref_slice_AnimationBlockInfoPc animation_blocks;
+  struct ref_slice_FoliageInfoPc foliages;
+  struct ref_slice_RadiosityValsInfoPc radiosity_vals;
 } InfosRefPc;
 
 /**
@@ -508,19 +704,19 @@ typedef struct IndexMap_u32__EffectRefPc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct IndexMap_u32__owned_slice_FoliageRefPc {
+typedef struct IndexMap_u32__slice_FoliageRefPc {
   uint64_t align;
   uint8_t pad[64];
-} IndexMap_u32__owned_slice_FoliageRefPc;
+} IndexMap_u32__slice_FoliageRefPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct IndexMap_u32__slice_u8 {
+typedef struct IndexMap_u32__ref_slice_u8 {
   uint64_t align;
   uint8_t pad[64];
-} IndexMap_u32__slice_u8;
+} IndexMap_u32__ref_slice_u8;
 
 /**
  * This is a proxy struct for correct size and alignment only
@@ -542,8 +738,8 @@ typedef struct ObjsRefPc {
   struct IndexMap_u32__TextureRefPc textures;
   struct IndexMap_u32__ModelRefPc models;
   struct IndexMap_u32__EffectRefPc effects;
-  struct IndexMap_u32__owned_slice_FoliageRefPc foliages;
-  struct IndexMap_u32__slice_u8 gfxs;
+  struct IndexMap_u32__slice_FoliageRefPc foliages;
+  struct IndexMap_u32__ref_slice_u8 gfxs;
   struct RadiosityRefPc radiosity;
 } ObjsRefPc;
 
@@ -561,14 +757,14 @@ typedef struct SubBlocksHeaderPc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_SubBlocksBlockHeaderPc {
+typedef struct ref_slice_SubBlocksBlockHeaderPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_SubBlocksBlockHeaderPc;
+} ref_slice_SubBlocksBlockHeaderPc;
 
 typedef struct SubBlocksInfoRefPc {
   const struct SubBlocksHeaderPc *header;
-  struct slice_SubBlocksBlockHeaderPc block_headers;
+  struct ref_slice_SubBlocksBlockHeaderPc block_headers;
 } SubBlocksInfoRefPc;
 
 /**
@@ -675,24 +871,24 @@ typedef struct StringKeysHeaderPc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_StringKeysValPc {
+typedef struct ref_slice_StringKeysValPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_StringKeysValPc;
+} ref_slice_StringKeysValPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_u32Pc {
+typedef struct ref_slice_u32Pc {
   uint64_t align;
   uint8_t pad[8];
-} slice_u32Pc;
+} ref_slice_u32Pc;
 
 typedef struct StringKeysRefPc {
   const struct StringKeysHeaderPc *header;
-  struct slice_StringKeysValPc vals;
-  struct slice_u32Pc pad;
+  struct ref_slice_StringKeysValPc vals;
+  struct ref_slice_u32Pc pad;
 } StringKeysRefPc;
 
 typedef struct Block1RefPc {
@@ -748,7 +944,7 @@ typedef struct SubBlocks2RefPc {
 
 typedef struct Block2RefPc {
   struct SubBlocks2RefPc sub_blocks;
-  struct slice_u32Pc offsets;
+  struct ref_slice_u32Pc offsets;
 } Block2RefPc;
 
 /**
@@ -762,17 +958,26 @@ typedef struct IndexMap_u32__AnimationRefPc {
 
 typedef struct AnimationsRefPc {
   struct IndexMap_u32__AnimationRefPc animations;
-  struct slice_AnimationBlockInfoPc block_infos;
+  struct ref_slice_AnimationBlockInfoPc block_infos;
 } AnimationsRefPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_BlockAValPc {
+typedef struct ref_slice_BlockAValPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_BlockAValPc;
+} ref_slice_BlockAValPc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct ref_slice_CompressedDataRef {
+  uint64_t align;
+  uint8_t pad[8];
+} ref_slice_CompressedDataRef;
 
 typedef struct PakRefPc {
   const struct PakHeaderPc *header;
@@ -780,7 +985,8 @@ typedef struct PakRefPc {
   struct Block1RefPc block1;
   struct Block2RefPc block2;
   struct AnimationsRefPc animations;
-  struct slice_BlockAValPc vals_a;
+  struct ref_slice_BlockAValPc vals_a;
+  struct ref_slice_CompressedDataRef animation_data;
 } PakRefPc;
 
 /**
@@ -836,10 +1042,10 @@ typedef struct BinHeaderPc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_AssetHandlePc {
+typedef struct ref_slice_AssetHandlePc {
   uint64_t align;
   uint8_t pad[8];
-} slice_AssetHandlePc;
+} ref_slice_AssetHandlePc;
 
 /**
  * This is a proxy struct for correct size and alignment only
@@ -853,7 +1059,7 @@ typedef struct IndexMap_u32_______CompressedDataRef {
 typedef struct BinRefPc {
   const struct BinHeaderPc *header;
   StringsRefPc strings;
-  struct slice_AssetHandlePc asset_handles;
+  struct ref_slice_AssetHandlePc asset_handles;
   struct IndexMap_u32_______CompressedDataRef model_data;
   struct IndexMap_u32_______CompressedDataRef texture_data;
 } BinRefPc;
@@ -991,239 +1197,239 @@ typedef struct PakHeaderXbox {
   u32Xbox block2_offsets_offset;
 } PakHeaderXbox;
 
-typedef struct owned_slice_string StringsRefXbox;
+typedef struct slice_string StringsRefXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_ObjAXbox {
+typedef struct ref_slice_ObjAXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_ObjAXbox;
+} ref_slice_ObjAXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Obj0Xbox {
+typedef struct ref_slice_Obj0Xbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_Obj0Xbox;
+} ref_slice_Obj0Xbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_ModelInfoXbox {
+typedef struct ref_slice_ModelInfoXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_ModelInfoXbox;
+} ref_slice_ModelInfoXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_BufferInfoXbox {
+typedef struct ref_slice_BufferInfoXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_BufferInfoXbox;
+} ref_slice_BufferInfoXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Mat1Xbox {
+typedef struct ref_slice_Mat1Xbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_Mat1Xbox;
+} ref_slice_Mat1Xbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Mat2Xbox {
+typedef struct ref_slice_Mat2Xbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_Mat2Xbox;
+} ref_slice_Mat2Xbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Mat3Xbox {
+typedef struct ref_slice_Mat3Xbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_Mat3Xbox;
+} ref_slice_Mat3Xbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Mat4Xbox {
+typedef struct ref_slice_Mat4Xbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_Mat4Xbox;
+} ref_slice_Mat4Xbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_MatExtraXbox {
+typedef struct ref_slice_MatExtraXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_MatExtraXbox;
+} ref_slice_MatExtraXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_ShapeInfoXbox {
+typedef struct ref_slice_ShapeInfoXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_ShapeInfoXbox;
+} ref_slice_ShapeInfoXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_HkShapeInfoXbox {
+typedef struct ref_slice_HkShapeInfoXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_HkShapeInfoXbox;
+} ref_slice_HkShapeInfoXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_HkConstraintDataXbox {
+typedef struct ref_slice_HkConstraintDataXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_HkConstraintDataXbox;
+} ref_slice_HkConstraintDataXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_VBuffInfoXbox {
+typedef struct ref_slice_VBuffInfoXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_VBuffInfoXbox;
+} ref_slice_VBuffInfoXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_IBuffInfoXbox {
+typedef struct ref_slice_IBuffInfoXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_IBuffInfoXbox;
+} ref_slice_IBuffInfoXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_TextureInfoXbox {
+typedef struct ref_slice_TextureInfoXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_TextureInfoXbox;
+} ref_slice_TextureInfoXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_AnimationInfoXbox {
+typedef struct ref_slice_AnimationInfoXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_AnimationInfoXbox;
+} ref_slice_AnimationInfoXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_HkConstraintInfoXbox {
+typedef struct ref_slice_HkConstraintInfoXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_HkConstraintInfoXbox;
+} ref_slice_HkConstraintInfoXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_EffectInfoXbox {
+typedef struct ref_slice_EffectInfoXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_EffectInfoXbox;
+} ref_slice_EffectInfoXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_PFieldInfoXbox {
+typedef struct ref_slice_PFieldInfoXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_PFieldInfoXbox;
+} ref_slice_PFieldInfoXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_GFXBlockInfoXbox {
+typedef struct ref_slice_GFXBlockInfoXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_GFXBlockInfoXbox;
+} ref_slice_GFXBlockInfoXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_AnimationBlockInfoXbox {
+typedef struct ref_slice_AnimationBlockInfoXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_AnimationBlockInfoXbox;
+} ref_slice_AnimationBlockInfoXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_FoliageInfoXbox {
+typedef struct ref_slice_FoliageInfoXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_FoliageInfoXbox;
+} ref_slice_FoliageInfoXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_RadiosityValsInfoXbox {
+typedef struct ref_slice_RadiosityValsInfoXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_RadiosityValsInfoXbox;
+} ref_slice_RadiosityValsInfoXbox;
 
 typedef struct InfosRefXbox {
-  struct slice_ObjAXbox objas;
-  struct slice_Obj0Xbox obj0s;
-  struct slice_ModelInfoXbox models;
-  struct slice_BufferInfoXbox buffers;
-  struct slice_Mat1Xbox mat1s;
-  struct slice_Mat2Xbox mat2s;
-  struct slice_Mat3Xbox mat3s;
-  struct slice_Mat4Xbox mat4s;
-  struct slice_MatExtraXbox mat_extras;
-  struct slice_ShapeInfoXbox shapes;
-  struct slice_HkShapeInfoXbox hk_shapes;
-  struct slice_HkConstraintDataXbox hk_constraint_datas;
-  struct slice_VBuffInfoXbox vbuffs;
-  struct slice_IBuffInfoXbox ibuffs;
-  struct slice_TextureInfoXbox textures;
-  struct slice_AnimationInfoXbox animations;
-  struct slice_HkConstraintInfoXbox hk_constraints;
-  struct slice_EffectInfoXbox effects;
-  struct slice_PFieldInfoXbox pfields;
-  struct slice_GFXBlockInfoXbox gfxs;
-  struct slice_AnimationBlockInfoXbox animation_blocks;
-  struct slice_FoliageInfoXbox foliages;
-  struct slice_RadiosityValsInfoXbox radiosity_vals;
+  struct ref_slice_ObjAXbox objas;
+  struct ref_slice_Obj0Xbox obj0s;
+  struct ref_slice_ModelInfoXbox models;
+  struct ref_slice_BufferInfoXbox buffers;
+  struct ref_slice_Mat1Xbox mat1s;
+  struct ref_slice_Mat2Xbox mat2s;
+  struct ref_slice_Mat3Xbox mat3s;
+  struct ref_slice_Mat4Xbox mat4s;
+  struct ref_slice_MatExtraXbox mat_extras;
+  struct ref_slice_ShapeInfoXbox shapes;
+  struct ref_slice_HkShapeInfoXbox hk_shapes;
+  struct ref_slice_HkConstraintDataXbox hk_constraint_datas;
+  struct ref_slice_VBuffInfoXbox vbuffs;
+  struct ref_slice_IBuffInfoXbox ibuffs;
+  struct ref_slice_TextureInfoXbox textures;
+  struct ref_slice_AnimationInfoXbox animations;
+  struct ref_slice_HkConstraintInfoXbox hk_constraints;
+  struct ref_slice_EffectInfoXbox effects;
+  struct ref_slice_PFieldInfoXbox pfields;
+  struct ref_slice_GFXBlockInfoXbox gfxs;
+  struct ref_slice_AnimationBlockInfoXbox animation_blocks;
+  struct ref_slice_FoliageInfoXbox foliages;
+  struct ref_slice_RadiosityValsInfoXbox radiosity_vals;
 } InfosRefXbox;
 
 /**
@@ -1257,10 +1463,10 @@ typedef struct IndexMap_u32__EffectRefXbox {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct IndexMap_u32__owned_slice_FoliageRefXbox {
+typedef struct IndexMap_u32__slice_FoliageRefXbox {
   uint64_t align;
   uint8_t pad[64];
-} IndexMap_u32__owned_slice_FoliageRefXbox;
+} IndexMap_u32__slice_FoliageRefXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
@@ -1282,8 +1488,8 @@ typedef struct ObjsRefXbox {
   struct IndexMap_u32__TextureRefXbox textures;
   struct IndexMap_u32__ModelRefXbox models;
   struct IndexMap_u32__EffectRefXbox effects;
-  struct IndexMap_u32__owned_slice_FoliageRefXbox foliages;
-  struct IndexMap_u32__slice_u8 gfxs;
+  struct IndexMap_u32__slice_FoliageRefXbox foliages;
+  struct IndexMap_u32__ref_slice_u8 gfxs;
   struct RadiosityRefXbox radiosity;
 } ObjsRefXbox;
 
@@ -1301,14 +1507,14 @@ typedef struct SubBlocksHeaderXbox {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_SubBlocksBlockHeaderXbox {
+typedef struct ref_slice_SubBlocksBlockHeaderXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_SubBlocksBlockHeaderXbox;
+} ref_slice_SubBlocksBlockHeaderXbox;
 
 typedef struct SubBlocksInfoRefXbox {
   const struct SubBlocksHeaderXbox *header;
-  struct slice_SubBlocksBlockHeaderXbox block_headers;
+  struct ref_slice_SubBlocksBlockHeaderXbox block_headers;
 } SubBlocksInfoRefXbox;
 
 /**
@@ -1415,24 +1621,24 @@ typedef struct StringKeysHeaderXbox {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_StringKeysValXbox {
+typedef struct ref_slice_StringKeysValXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_StringKeysValXbox;
+} ref_slice_StringKeysValXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_u32Xbox {
+typedef struct ref_slice_u32Xbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_u32Xbox;
+} ref_slice_u32Xbox;
 
 typedef struct StringKeysRefXbox {
   const struct StringKeysHeaderXbox *header;
-  struct slice_StringKeysValXbox vals;
-  struct slice_u32Xbox pad;
+  struct ref_slice_StringKeysValXbox vals;
+  struct ref_slice_u32Xbox pad;
 } StringKeysRefXbox;
 
 typedef struct Block1RefXbox {
@@ -1488,7 +1694,7 @@ typedef struct SubBlocks2RefXbox {
 
 typedef struct Block2RefXbox {
   struct SubBlocks2RefXbox sub_blocks;
-  struct slice_u32Xbox offsets;
+  struct ref_slice_u32Xbox offsets;
 } Block2RefXbox;
 
 /**
@@ -1502,17 +1708,17 @@ typedef struct IndexMap_u32__AnimationRefXbox {
 
 typedef struct AnimationsRefXbox {
   struct IndexMap_u32__AnimationRefXbox animations;
-  struct slice_AnimationBlockInfoXbox block_infos;
+  struct ref_slice_AnimationBlockInfoXbox block_infos;
 } AnimationsRefXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_BlockAValXbox {
+typedef struct ref_slice_BlockAValXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_BlockAValXbox;
+} ref_slice_BlockAValXbox;
 
 typedef struct PakRefXbox {
   const struct PakHeaderXbox *header;
@@ -1520,7 +1726,8 @@ typedef struct PakRefXbox {
   struct Block1RefXbox block1;
   struct Block2RefXbox block2;
   struct AnimationsRefXbox animations;
-  struct slice_BlockAValXbox vals_a;
+  struct ref_slice_BlockAValXbox vals_a;
+  struct ref_slice_CompressedDataRef animation_data;
 } PakRefXbox;
 
 /**
@@ -1576,15 +1783,15 @@ typedef struct BinHeaderXbox {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_AssetHandleXbox {
+typedef struct ref_slice_AssetHandleXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_AssetHandleXbox;
+} ref_slice_AssetHandleXbox;
 
 typedef struct BinRefXbox {
   const struct BinHeaderXbox *header;
   StringsRefXbox strings;
-  struct slice_AssetHandleXbox asset_handles;
+  struct ref_slice_AssetHandleXbox asset_handles;
   struct IndexMap_u32_______CompressedDataRef model_data;
   struct IndexMap_u32_______CompressedDataRef texture_data;
 } BinRefXbox;
@@ -1720,239 +1927,239 @@ typedef struct PakHeaderPs3 {
   u32Ps3 block2_offsets_offset;
 } PakHeaderPs3;
 
-typedef struct owned_slice_string StringsRefPs3;
+typedef struct slice_string StringsRefPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_ObjAPs3 {
+typedef struct ref_slice_ObjAPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_ObjAPs3;
+} ref_slice_ObjAPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Obj0Ps3 {
+typedef struct ref_slice_Obj0Ps3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_Obj0Ps3;
+} ref_slice_Obj0Ps3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_ModelInfoPs3 {
+typedef struct ref_slice_ModelInfoPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_ModelInfoPs3;
+} ref_slice_ModelInfoPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_BufferInfoPs3 {
+typedef struct ref_slice_BufferInfoPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_BufferInfoPs3;
+} ref_slice_BufferInfoPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Mat1Ps3 {
+typedef struct ref_slice_Mat1Ps3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_Mat1Ps3;
+} ref_slice_Mat1Ps3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Mat2Ps3 {
+typedef struct ref_slice_Mat2Ps3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_Mat2Ps3;
+} ref_slice_Mat2Ps3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Mat3Ps3 {
+typedef struct ref_slice_Mat3Ps3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_Mat3Ps3;
+} ref_slice_Mat3Ps3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Mat4Ps3 {
+typedef struct ref_slice_Mat4Ps3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_Mat4Ps3;
+} ref_slice_Mat4Ps3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_MatExtraPs3 {
+typedef struct ref_slice_MatExtraPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_MatExtraPs3;
+} ref_slice_MatExtraPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_ShapeInfoPs3 {
+typedef struct ref_slice_ShapeInfoPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_ShapeInfoPs3;
+} ref_slice_ShapeInfoPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_HkShapeInfoPs3 {
+typedef struct ref_slice_HkShapeInfoPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_HkShapeInfoPs3;
+} ref_slice_HkShapeInfoPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_HkConstraintDataPs3 {
+typedef struct ref_slice_HkConstraintDataPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_HkConstraintDataPs3;
+} ref_slice_HkConstraintDataPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_VBuffInfoPs3 {
+typedef struct ref_slice_VBuffInfoPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_VBuffInfoPs3;
+} ref_slice_VBuffInfoPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_IBuffInfoPs3 {
+typedef struct ref_slice_IBuffInfoPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_IBuffInfoPs3;
+} ref_slice_IBuffInfoPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_TextureInfoPs3 {
+typedef struct ref_slice_TextureInfoPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_TextureInfoPs3;
+} ref_slice_TextureInfoPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_AnimationInfoPs3 {
+typedef struct ref_slice_AnimationInfoPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_AnimationInfoPs3;
+} ref_slice_AnimationInfoPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_HkConstraintInfoPs3 {
+typedef struct ref_slice_HkConstraintInfoPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_HkConstraintInfoPs3;
+} ref_slice_HkConstraintInfoPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_EffectInfoPs3 {
+typedef struct ref_slice_EffectInfoPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_EffectInfoPs3;
+} ref_slice_EffectInfoPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_PFieldInfoPs3 {
+typedef struct ref_slice_PFieldInfoPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_PFieldInfoPs3;
+} ref_slice_PFieldInfoPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_GFXBlockInfoPs3 {
+typedef struct ref_slice_GFXBlockInfoPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_GFXBlockInfoPs3;
+} ref_slice_GFXBlockInfoPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_AnimationBlockInfoPs3 {
+typedef struct ref_slice_AnimationBlockInfoPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_AnimationBlockInfoPs3;
+} ref_slice_AnimationBlockInfoPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_FoliageInfoPs3 {
+typedef struct ref_slice_FoliageInfoPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_FoliageInfoPs3;
+} ref_slice_FoliageInfoPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_RadiosityValsInfoPs3 {
+typedef struct ref_slice_RadiosityValsInfoPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_RadiosityValsInfoPs3;
+} ref_slice_RadiosityValsInfoPs3;
 
 typedef struct InfosRefPs3 {
-  struct slice_ObjAPs3 objas;
-  struct slice_Obj0Ps3 obj0s;
-  struct slice_ModelInfoPs3 models;
-  struct slice_BufferInfoPs3 buffers;
-  struct slice_Mat1Ps3 mat1s;
-  struct slice_Mat2Ps3 mat2s;
-  struct slice_Mat3Ps3 mat3s;
-  struct slice_Mat4Ps3 mat4s;
-  struct slice_MatExtraPs3 mat_extras;
-  struct slice_ShapeInfoPs3 shapes;
-  struct slice_HkShapeInfoPs3 hk_shapes;
-  struct slice_HkConstraintDataPs3 hk_constraint_datas;
-  struct slice_VBuffInfoPs3 vbuffs;
-  struct slice_IBuffInfoPs3 ibuffs;
-  struct slice_TextureInfoPs3 textures;
-  struct slice_AnimationInfoPs3 animations;
-  struct slice_HkConstraintInfoPs3 hk_constraints;
-  struct slice_EffectInfoPs3 effects;
-  struct slice_PFieldInfoPs3 pfields;
-  struct slice_GFXBlockInfoPs3 gfxs;
-  struct slice_AnimationBlockInfoPs3 animation_blocks;
-  struct slice_FoliageInfoPs3 foliages;
-  struct slice_RadiosityValsInfoPs3 radiosity_vals;
+  struct ref_slice_ObjAPs3 objas;
+  struct ref_slice_Obj0Ps3 obj0s;
+  struct ref_slice_ModelInfoPs3 models;
+  struct ref_slice_BufferInfoPs3 buffers;
+  struct ref_slice_Mat1Ps3 mat1s;
+  struct ref_slice_Mat2Ps3 mat2s;
+  struct ref_slice_Mat3Ps3 mat3s;
+  struct ref_slice_Mat4Ps3 mat4s;
+  struct ref_slice_MatExtraPs3 mat_extras;
+  struct ref_slice_ShapeInfoPs3 shapes;
+  struct ref_slice_HkShapeInfoPs3 hk_shapes;
+  struct ref_slice_HkConstraintDataPs3 hk_constraint_datas;
+  struct ref_slice_VBuffInfoPs3 vbuffs;
+  struct ref_slice_IBuffInfoPs3 ibuffs;
+  struct ref_slice_TextureInfoPs3 textures;
+  struct ref_slice_AnimationInfoPs3 animations;
+  struct ref_slice_HkConstraintInfoPs3 hk_constraints;
+  struct ref_slice_EffectInfoPs3 effects;
+  struct ref_slice_PFieldInfoPs3 pfields;
+  struct ref_slice_GFXBlockInfoPs3 gfxs;
+  struct ref_slice_AnimationBlockInfoPs3 animation_blocks;
+  struct ref_slice_FoliageInfoPs3 foliages;
+  struct ref_slice_RadiosityValsInfoPs3 radiosity_vals;
 } InfosRefPs3;
 
 /**
@@ -1986,10 +2193,10 @@ typedef struct IndexMap_u32__EffectRefPs3 {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct IndexMap_u32__owned_slice_FoliageRefPs3 {
+typedef struct IndexMap_u32__slice_FoliageRefPs3 {
   uint64_t align;
   uint8_t pad[64];
-} IndexMap_u32__owned_slice_FoliageRefPs3;
+} IndexMap_u32__slice_FoliageRefPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
@@ -2011,8 +2218,8 @@ typedef struct ObjsRefPs3 {
   struct IndexMap_u32__TextureRefPs3 textures;
   struct IndexMap_u32__ModelRefPs3 models;
   struct IndexMap_u32__EffectRefPs3 effects;
-  struct IndexMap_u32__owned_slice_FoliageRefPs3 foliages;
-  struct IndexMap_u32__slice_u8 gfxs;
+  struct IndexMap_u32__slice_FoliageRefPs3 foliages;
+  struct IndexMap_u32__ref_slice_u8 gfxs;
   struct RadiosityRefPs3 radiosity;
 } ObjsRefPs3;
 
@@ -2030,14 +2237,14 @@ typedef struct SubBlocksHeaderPs3 {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_SubBlocksBlockHeaderPs3 {
+typedef struct ref_slice_SubBlocksBlockHeaderPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_SubBlocksBlockHeaderPs3;
+} ref_slice_SubBlocksBlockHeaderPs3;
 
 typedef struct SubBlocksInfoRefPs3 {
   const struct SubBlocksHeaderPs3 *header;
-  struct slice_SubBlocksBlockHeaderPs3 block_headers;
+  struct ref_slice_SubBlocksBlockHeaderPs3 block_headers;
 } SubBlocksInfoRefPs3;
 
 /**
@@ -2142,24 +2349,24 @@ typedef struct StringKeysHeaderPs3 {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_StringKeysValPs3 {
+typedef struct ref_slice_StringKeysValPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_StringKeysValPs3;
+} ref_slice_StringKeysValPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_u32Ps3 {
+typedef struct ref_slice_u32Ps3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_u32Ps3;
+} ref_slice_u32Ps3;
 
 typedef struct StringKeysRefPs3 {
   const struct StringKeysHeaderPs3 *header;
-  struct slice_StringKeysValPs3 vals;
-  struct slice_u32Ps3 pad;
+  struct ref_slice_StringKeysValPs3 vals;
+  struct ref_slice_u32Ps3 pad;
 } StringKeysRefPs3;
 
 typedef struct Block1RefPs3 {
@@ -2215,7 +2422,7 @@ typedef struct SubBlocks2RefPs3 {
 
 typedef struct Block2RefPs3 {
   struct SubBlocks2RefPs3 sub_blocks;
-  struct slice_u32Ps3 offsets;
+  struct ref_slice_u32Ps3 offsets;
 } Block2RefPs3;
 
 /**
@@ -2229,17 +2436,17 @@ typedef struct IndexMap_u32__AnimationRefPs3 {
 
 typedef struct AnimationsRefPs3 {
   struct IndexMap_u32__AnimationRefPs3 animations;
-  struct slice_AnimationBlockInfoPs3 block_infos;
+  struct ref_slice_AnimationBlockInfoPs3 block_infos;
 } AnimationsRefPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_BlockAValPs3 {
+typedef struct ref_slice_BlockAValPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_BlockAValPs3;
+} ref_slice_BlockAValPs3;
 
 typedef struct PakRefPs3 {
   const struct PakHeaderPs3 *header;
@@ -2247,7 +2454,8 @@ typedef struct PakRefPs3 {
   struct Block1RefPs3 block1;
   struct Block2RefPs3 block2;
   struct AnimationsRefPs3 animations;
-  struct slice_BlockAValPs3 vals_a;
+  struct ref_slice_BlockAValPs3 vals_a;
+  struct ref_slice_CompressedDataRef animation_data;
 } PakRefPs3;
 
 /**
@@ -2303,15 +2511,15 @@ typedef struct BinHeaderPs3 {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_AssetHandlePs3 {
+typedef struct ref_slice_AssetHandlePs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_AssetHandlePs3;
+} ref_slice_AssetHandlePs3;
 
 typedef struct BinRefPs3 {
   const struct BinHeaderPs3 *header;
   StringsRefPs3 strings;
-  struct slice_AssetHandlePs3 asset_handles;
+  struct ref_slice_AssetHandlePs3 asset_handles;
   struct IndexMap_u32_______CompressedDataRef model_data;
   struct IndexMap_u32_______CompressedDataRef texture_data;
 } BinRefPs3;
@@ -2321,14 +2529,1240 @@ typedef struct LevelRefPs3 {
   struct BinRefPs3 bin;
 } LevelRefPs3;
 
+typedef struct InfoCounts {
+  uintptr_t objas;
+  uintptr_t obj0s;
+  uintptr_t models;
+  uintptr_t buffers;
+  uintptr_t mat1s;
+  uintptr_t mat2s;
+  uintptr_t mat3s;
+  uintptr_t mat4s;
+  uintptr_t mat_extras;
+  uintptr_t shapes;
+  uintptr_t hk_shapes;
+  uintptr_t hk_constraint_datas;
+  uintptr_t vbuffs;
+  uintptr_t ibuffs;
+  uintptr_t textures;
+  uintptr_t animations;
+  uintptr_t hk_constraints;
+  uintptr_t effects;
+  uintptr_t pfields;
+  uintptr_t gfxs;
+  uintptr_t animation_blocks;
+  uintptr_t foliages;
+  uintptr_t radiosity_vals;
+  uintptr_t offsets;
+} InfoCounts;
+
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice______CompressedDataRef {
+typedef struct mut_slice_u8 {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice______CompressedDataRef;
+} mut_slice_u8;
+
+typedef struct DumpSlice {
+  struct mut_slice_u8 vals;
+  uintptr_t offset;
+} DumpSlice;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_u32Pc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_u32Pc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_u32Xbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_u32Xbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_u32Ps3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_u32Ps3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_ObjAPc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_ObjAPc;
+
+typedef struct DumpInfo_ObjAPc {
+  struct mut_slice_ObjAPc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_ObjAPc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_Obj0Pc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_Obj0Pc;
+
+typedef struct DumpInfo_Obj0Pc {
+  struct mut_slice_Obj0Pc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_Obj0Pc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_ModelInfoPc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_ModelInfoPc;
+
+typedef struct DumpInfo_ModelInfoPc {
+  struct mut_slice_ModelInfoPc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_ModelInfoPc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_BufferInfoPc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_BufferInfoPc;
+
+typedef struct DumpInfo_BufferInfoPc {
+  struct mut_slice_BufferInfoPc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_BufferInfoPc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_Mat1Pc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_Mat1Pc;
+
+typedef struct DumpInfo_Mat1Pc {
+  struct mut_slice_Mat1Pc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_Mat1Pc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_Mat2Pc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_Mat2Pc;
+
+typedef struct DumpInfo_Mat2Pc {
+  struct mut_slice_Mat2Pc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_Mat2Pc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_Mat3Pc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_Mat3Pc;
+
+typedef struct DumpInfo_Mat3Pc {
+  struct mut_slice_Mat3Pc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_Mat3Pc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_Mat4Pc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_Mat4Pc;
+
+typedef struct DumpInfo_Mat4Pc {
+  struct mut_slice_Mat4Pc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_Mat4Pc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_MatExtraPc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_MatExtraPc;
+
+typedef struct DumpInfo_MatExtraPc {
+  struct mut_slice_MatExtraPc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_MatExtraPc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_ShapeInfoPc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_ShapeInfoPc;
+
+typedef struct DumpInfo_ShapeInfoPc {
+  struct mut_slice_ShapeInfoPc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_ShapeInfoPc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_HkShapeInfoPc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_HkShapeInfoPc;
+
+typedef struct DumpInfo_HkShapeInfoPc {
+  struct mut_slice_HkShapeInfoPc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_HkShapeInfoPc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_HkConstraintDataPc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_HkConstraintDataPc;
+
+typedef struct DumpInfo_HkConstraintDataPc {
+  struct mut_slice_HkConstraintDataPc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_HkConstraintDataPc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_VBuffInfoPc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_VBuffInfoPc;
+
+typedef struct DumpInfo_VBuffInfoPc {
+  struct mut_slice_VBuffInfoPc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_VBuffInfoPc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_IBuffInfoPc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_IBuffInfoPc;
+
+typedef struct DumpInfo_IBuffInfoPc {
+  struct mut_slice_IBuffInfoPc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_IBuffInfoPc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_TextureInfoPc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_TextureInfoPc;
+
+typedef struct DumpInfo_TextureInfoPc {
+  struct mut_slice_TextureInfoPc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_TextureInfoPc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_AnimationInfoPc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_AnimationInfoPc;
+
+typedef struct DumpInfo_AnimationInfoPc {
+  struct mut_slice_AnimationInfoPc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_AnimationInfoPc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_HkConstraintInfoPc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_HkConstraintInfoPc;
+
+typedef struct DumpInfo_HkConstraintInfoPc {
+  struct mut_slice_HkConstraintInfoPc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_HkConstraintInfoPc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_EffectInfoPc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_EffectInfoPc;
+
+typedef struct DumpInfo_EffectInfoPc {
+  struct mut_slice_EffectInfoPc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_EffectInfoPc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_PFieldInfoPc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_PFieldInfoPc;
+
+typedef struct DumpInfo_PFieldInfoPc {
+  struct mut_slice_PFieldInfoPc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_PFieldInfoPc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_GFXBlockInfoPc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_GFXBlockInfoPc;
+
+typedef struct DumpInfo_GFXBlockInfoPc {
+  struct mut_slice_GFXBlockInfoPc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_GFXBlockInfoPc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_AnimationBlockInfoPc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_AnimationBlockInfoPc;
+
+typedef struct DumpInfo_AnimationBlockInfoPc {
+  struct mut_slice_AnimationBlockInfoPc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_AnimationBlockInfoPc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_FoliageInfoPc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_FoliageInfoPc;
+
+typedef struct DumpInfo_FoliageInfoPc {
+  struct mut_slice_FoliageInfoPc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_FoliageInfoPc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_RadiosityValsInfoPc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_RadiosityValsInfoPc;
+
+typedef struct DumpInfo_RadiosityValsInfoPc {
+  struct mut_slice_RadiosityValsInfoPc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_RadiosityValsInfoPc;
+
+typedef struct DumpInfo_u32Pc {
+  struct mut_slice_u32Pc vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_u32Pc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct Vec_DumpInfoDataPc {
+  uint64_t align;
+  uint8_t pad[16];
+} Vec_DumpInfoDataPc;
+
+typedef struct DumpInfosPc {
+  struct DumpInfo_ObjAPc objas;
+  struct DumpInfo_Obj0Pc obj0s;
+  struct DumpInfo_ModelInfoPc models;
+  struct DumpInfo_BufferInfoPc buffers;
+  struct DumpInfo_Mat1Pc mat1s;
+  struct DumpInfo_Mat2Pc mat2s;
+  struct DumpInfo_Mat3Pc mat3s;
+  struct DumpInfo_Mat4Pc mat4s;
+  struct DumpInfo_MatExtraPc mat_extras;
+  struct DumpInfo_ShapeInfoPc shapes;
+  struct DumpInfo_HkShapeInfoPc hk_shapes;
+  struct DumpInfo_HkConstraintDataPc hk_constraint_datas;
+  struct DumpInfo_VBuffInfoPc vbuffs;
+  struct DumpInfo_IBuffInfoPc ibuffs;
+  struct DumpInfo_TextureInfoPc textures;
+  struct DumpInfo_AnimationInfoPc animations;
+  struct DumpInfo_HkConstraintInfoPc hk_constraints;
+  struct DumpInfo_EffectInfoPc effects;
+  struct DumpInfo_PFieldInfoPc pfields;
+  struct DumpInfo_GFXBlockInfoPc gfxs;
+  struct DumpInfo_AnimationBlockInfoPc animation_blocks;
+  struct DumpInfo_FoliageInfoPc foliages;
+  struct DumpInfo_RadiosityValsInfoPc radiosity_vals;
+  struct DumpInfo_u32Pc offsets;
+  struct Vec_DumpInfoDataPc model_data;
+  struct Vec_DumpInfoDataPc texture_data;
+} DumpInfosPc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_ObjAXbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_ObjAXbox;
+
+typedef struct DumpInfo_ObjAXbox {
+  struct mut_slice_ObjAXbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_ObjAXbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_Obj0Xbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_Obj0Xbox;
+
+typedef struct DumpInfo_Obj0Xbox {
+  struct mut_slice_Obj0Xbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_Obj0Xbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_ModelInfoXbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_ModelInfoXbox;
+
+typedef struct DumpInfo_ModelInfoXbox {
+  struct mut_slice_ModelInfoXbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_ModelInfoXbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_BufferInfoXbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_BufferInfoXbox;
+
+typedef struct DumpInfo_BufferInfoXbox {
+  struct mut_slice_BufferInfoXbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_BufferInfoXbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_Mat1Xbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_Mat1Xbox;
+
+typedef struct DumpInfo_Mat1Xbox {
+  struct mut_slice_Mat1Xbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_Mat1Xbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_Mat2Xbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_Mat2Xbox;
+
+typedef struct DumpInfo_Mat2Xbox {
+  struct mut_slice_Mat2Xbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_Mat2Xbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_Mat3Xbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_Mat3Xbox;
+
+typedef struct DumpInfo_Mat3Xbox {
+  struct mut_slice_Mat3Xbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_Mat3Xbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_Mat4Xbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_Mat4Xbox;
+
+typedef struct DumpInfo_Mat4Xbox {
+  struct mut_slice_Mat4Xbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_Mat4Xbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_MatExtraXbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_MatExtraXbox;
+
+typedef struct DumpInfo_MatExtraXbox {
+  struct mut_slice_MatExtraXbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_MatExtraXbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_ShapeInfoXbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_ShapeInfoXbox;
+
+typedef struct DumpInfo_ShapeInfoXbox {
+  struct mut_slice_ShapeInfoXbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_ShapeInfoXbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_HkShapeInfoXbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_HkShapeInfoXbox;
+
+typedef struct DumpInfo_HkShapeInfoXbox {
+  struct mut_slice_HkShapeInfoXbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_HkShapeInfoXbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_HkConstraintDataXbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_HkConstraintDataXbox;
+
+typedef struct DumpInfo_HkConstraintDataXbox {
+  struct mut_slice_HkConstraintDataXbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_HkConstraintDataXbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_VBuffInfoXbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_VBuffInfoXbox;
+
+typedef struct DumpInfo_VBuffInfoXbox {
+  struct mut_slice_VBuffInfoXbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_VBuffInfoXbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_IBuffInfoXbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_IBuffInfoXbox;
+
+typedef struct DumpInfo_IBuffInfoXbox {
+  struct mut_slice_IBuffInfoXbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_IBuffInfoXbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_TextureInfoXbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_TextureInfoXbox;
+
+typedef struct DumpInfo_TextureInfoXbox {
+  struct mut_slice_TextureInfoXbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_TextureInfoXbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_AnimationInfoXbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_AnimationInfoXbox;
+
+typedef struct DumpInfo_AnimationInfoXbox {
+  struct mut_slice_AnimationInfoXbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_AnimationInfoXbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_HkConstraintInfoXbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_HkConstraintInfoXbox;
+
+typedef struct DumpInfo_HkConstraintInfoXbox {
+  struct mut_slice_HkConstraintInfoXbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_HkConstraintInfoXbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_EffectInfoXbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_EffectInfoXbox;
+
+typedef struct DumpInfo_EffectInfoXbox {
+  struct mut_slice_EffectInfoXbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_EffectInfoXbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_PFieldInfoXbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_PFieldInfoXbox;
+
+typedef struct DumpInfo_PFieldInfoXbox {
+  struct mut_slice_PFieldInfoXbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_PFieldInfoXbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_GFXBlockInfoXbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_GFXBlockInfoXbox;
+
+typedef struct DumpInfo_GFXBlockInfoXbox {
+  struct mut_slice_GFXBlockInfoXbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_GFXBlockInfoXbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_AnimationBlockInfoXbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_AnimationBlockInfoXbox;
+
+typedef struct DumpInfo_AnimationBlockInfoXbox {
+  struct mut_slice_AnimationBlockInfoXbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_AnimationBlockInfoXbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_FoliageInfoXbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_FoliageInfoXbox;
+
+typedef struct DumpInfo_FoliageInfoXbox {
+  struct mut_slice_FoliageInfoXbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_FoliageInfoXbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_RadiosityValsInfoXbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_RadiosityValsInfoXbox;
+
+typedef struct DumpInfo_RadiosityValsInfoXbox {
+  struct mut_slice_RadiosityValsInfoXbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_RadiosityValsInfoXbox;
+
+typedef struct DumpInfo_u32Xbox {
+  struct mut_slice_u32Xbox vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_u32Xbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct Vec_DumpInfoDataXbox {
+  uint64_t align;
+  uint8_t pad[16];
+} Vec_DumpInfoDataXbox;
+
+typedef struct DumpInfosXbox {
+  struct DumpInfo_ObjAXbox objas;
+  struct DumpInfo_Obj0Xbox obj0s;
+  struct DumpInfo_ModelInfoXbox models;
+  struct DumpInfo_BufferInfoXbox buffers;
+  struct DumpInfo_Mat1Xbox mat1s;
+  struct DumpInfo_Mat2Xbox mat2s;
+  struct DumpInfo_Mat3Xbox mat3s;
+  struct DumpInfo_Mat4Xbox mat4s;
+  struct DumpInfo_MatExtraXbox mat_extras;
+  struct DumpInfo_ShapeInfoXbox shapes;
+  struct DumpInfo_HkShapeInfoXbox hk_shapes;
+  struct DumpInfo_HkConstraintDataXbox hk_constraint_datas;
+  struct DumpInfo_VBuffInfoXbox vbuffs;
+  struct DumpInfo_IBuffInfoXbox ibuffs;
+  struct DumpInfo_TextureInfoXbox textures;
+  struct DumpInfo_AnimationInfoXbox animations;
+  struct DumpInfo_HkConstraintInfoXbox hk_constraints;
+  struct DumpInfo_EffectInfoXbox effects;
+  struct DumpInfo_PFieldInfoXbox pfields;
+  struct DumpInfo_GFXBlockInfoXbox gfxs;
+  struct DumpInfo_AnimationBlockInfoXbox animation_blocks;
+  struct DumpInfo_FoliageInfoXbox foliages;
+  struct DumpInfo_RadiosityValsInfoXbox radiosity_vals;
+  struct DumpInfo_u32Xbox offsets;
+  struct Vec_DumpInfoDataXbox model_data;
+  struct Vec_DumpInfoDataXbox texture_data;
+} DumpInfosXbox;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_ObjAPs3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_ObjAPs3;
+
+typedef struct DumpInfo_ObjAPs3 {
+  struct mut_slice_ObjAPs3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_ObjAPs3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_Obj0Ps3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_Obj0Ps3;
+
+typedef struct DumpInfo_Obj0Ps3 {
+  struct mut_slice_Obj0Ps3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_Obj0Ps3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_ModelInfoPs3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_ModelInfoPs3;
+
+typedef struct DumpInfo_ModelInfoPs3 {
+  struct mut_slice_ModelInfoPs3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_ModelInfoPs3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_BufferInfoPs3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_BufferInfoPs3;
+
+typedef struct DumpInfo_BufferInfoPs3 {
+  struct mut_slice_BufferInfoPs3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_BufferInfoPs3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_Mat1Ps3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_Mat1Ps3;
+
+typedef struct DumpInfo_Mat1Ps3 {
+  struct mut_slice_Mat1Ps3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_Mat1Ps3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_Mat2Ps3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_Mat2Ps3;
+
+typedef struct DumpInfo_Mat2Ps3 {
+  struct mut_slice_Mat2Ps3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_Mat2Ps3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_Mat3Ps3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_Mat3Ps3;
+
+typedef struct DumpInfo_Mat3Ps3 {
+  struct mut_slice_Mat3Ps3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_Mat3Ps3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_Mat4Ps3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_Mat4Ps3;
+
+typedef struct DumpInfo_Mat4Ps3 {
+  struct mut_slice_Mat4Ps3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_Mat4Ps3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_MatExtraPs3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_MatExtraPs3;
+
+typedef struct DumpInfo_MatExtraPs3 {
+  struct mut_slice_MatExtraPs3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_MatExtraPs3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_ShapeInfoPs3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_ShapeInfoPs3;
+
+typedef struct DumpInfo_ShapeInfoPs3 {
+  struct mut_slice_ShapeInfoPs3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_ShapeInfoPs3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_HkShapeInfoPs3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_HkShapeInfoPs3;
+
+typedef struct DumpInfo_HkShapeInfoPs3 {
+  struct mut_slice_HkShapeInfoPs3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_HkShapeInfoPs3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_HkConstraintDataPs3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_HkConstraintDataPs3;
+
+typedef struct DumpInfo_HkConstraintDataPs3 {
+  struct mut_slice_HkConstraintDataPs3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_HkConstraintDataPs3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_VBuffInfoPs3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_VBuffInfoPs3;
+
+typedef struct DumpInfo_VBuffInfoPs3 {
+  struct mut_slice_VBuffInfoPs3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_VBuffInfoPs3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_IBuffInfoPs3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_IBuffInfoPs3;
+
+typedef struct DumpInfo_IBuffInfoPs3 {
+  struct mut_slice_IBuffInfoPs3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_IBuffInfoPs3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_TextureInfoPs3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_TextureInfoPs3;
+
+typedef struct DumpInfo_TextureInfoPs3 {
+  struct mut_slice_TextureInfoPs3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_TextureInfoPs3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_AnimationInfoPs3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_AnimationInfoPs3;
+
+typedef struct DumpInfo_AnimationInfoPs3 {
+  struct mut_slice_AnimationInfoPs3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_AnimationInfoPs3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_HkConstraintInfoPs3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_HkConstraintInfoPs3;
+
+typedef struct DumpInfo_HkConstraintInfoPs3 {
+  struct mut_slice_HkConstraintInfoPs3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_HkConstraintInfoPs3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_EffectInfoPs3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_EffectInfoPs3;
+
+typedef struct DumpInfo_EffectInfoPs3 {
+  struct mut_slice_EffectInfoPs3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_EffectInfoPs3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_PFieldInfoPs3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_PFieldInfoPs3;
+
+typedef struct DumpInfo_PFieldInfoPs3 {
+  struct mut_slice_PFieldInfoPs3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_PFieldInfoPs3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_GFXBlockInfoPs3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_GFXBlockInfoPs3;
+
+typedef struct DumpInfo_GFXBlockInfoPs3 {
+  struct mut_slice_GFXBlockInfoPs3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_GFXBlockInfoPs3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_AnimationBlockInfoPs3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_AnimationBlockInfoPs3;
+
+typedef struct DumpInfo_AnimationBlockInfoPs3 {
+  struct mut_slice_AnimationBlockInfoPs3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_AnimationBlockInfoPs3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_FoliageInfoPs3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_FoliageInfoPs3;
+
+typedef struct DumpInfo_FoliageInfoPs3 {
+  struct mut_slice_FoliageInfoPs3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_FoliageInfoPs3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_RadiosityValsInfoPs3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_RadiosityValsInfoPs3;
+
+typedef struct DumpInfo_RadiosityValsInfoPs3 {
+  struct mut_slice_RadiosityValsInfoPs3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_RadiosityValsInfoPs3;
+
+typedef struct DumpInfo_u32Ps3 {
+  struct mut_slice_u32Ps3 vals;
+  uintptr_t ind;
+  uintptr_t offset;
+} DumpInfo_u32Ps3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct Vec_DumpInfoDataPs3 {
+  uint64_t align;
+  uint8_t pad[16];
+} Vec_DumpInfoDataPs3;
+
+typedef struct DumpInfosPs3 {
+  struct DumpInfo_ObjAPs3 objas;
+  struct DumpInfo_Obj0Ps3 obj0s;
+  struct DumpInfo_ModelInfoPs3 models;
+  struct DumpInfo_BufferInfoPs3 buffers;
+  struct DumpInfo_Mat1Ps3 mat1s;
+  struct DumpInfo_Mat2Ps3 mat2s;
+  struct DumpInfo_Mat3Ps3 mat3s;
+  struct DumpInfo_Mat4Ps3 mat4s;
+  struct DumpInfo_MatExtraPs3 mat_extras;
+  struct DumpInfo_ShapeInfoPs3 shapes;
+  struct DumpInfo_HkShapeInfoPs3 hk_shapes;
+  struct DumpInfo_HkConstraintDataPs3 hk_constraint_datas;
+  struct DumpInfo_VBuffInfoPs3 vbuffs;
+  struct DumpInfo_IBuffInfoPs3 ibuffs;
+  struct DumpInfo_TextureInfoPs3 textures;
+  struct DumpInfo_AnimationInfoPs3 animations;
+  struct DumpInfo_HkConstraintInfoPs3 hk_constraints;
+  struct DumpInfo_EffectInfoPs3 effects;
+  struct DumpInfo_PFieldInfoPs3 pfields;
+  struct DumpInfo_GFXBlockInfoPs3 gfxs;
+  struct DumpInfo_AnimationBlockInfoPs3 animation_blocks;
+  struct DumpInfo_FoliageInfoPs3 foliages;
+  struct DumpInfo_RadiosityValsInfoPs3 radiosity_vals;
+  struct DumpInfo_u32Ps3 offsets;
+  struct Vec_DumpInfoDataPs3 model_data;
+  struct Vec_DumpInfoDataPs3 texture_data;
+} DumpInfosPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
@@ -2338,6 +3772,15 @@ typedef struct string {
   uint64_t align;
   uint8_t pad[8];
 } string;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_u32 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_u32;
 
 typedef struct VertexDataIndex {
   uint32_t key;
@@ -2381,9 +3824,45 @@ typedef struct VertexUsage {
   };
 } VertexUsage;
 
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_VertexUsage {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_VertexUsage;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct ref_slice_u32 {
+  uint64_t align;
+  uint8_t pad[8];
+} ref_slice_u32;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct ref_slice_VertexUsage {
+  uint64_t align;
+  uint8_t pad[8];
+} ref_slice_VertexUsage;
+
 typedef struct AlignmentHelper {
   uint32_t a;
 } AlignmentHelper;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct slice______CompressedDataRef {
+  uint64_t align;
+  uint8_t pad[8];
+} slice______CompressedDataRef;
 
 /**
  *gen_ffi:export
@@ -2401,10 +3880,10 @@ typedef struct IBuffInfoPc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_u16Pc {
+typedef struct ref_slice_u16Pc {
   uint64_t align;
   uint8_t pad[8];
-} slice_u16Pc;
+} ref_slice_u16Pc;
 
 enum IndexBufferValsRefPc_Tag {
   IndexBufferValsRefPc_U16,
@@ -2416,10 +3895,10 @@ typedef struct IndexBufferValsRefPc {
   IndexBufferValsRefPc_Tag tag;
   union {
     struct {
-      struct slice_u16Pc u16;
+      struct ref_slice_u16Pc u16;
     };
     struct {
-      struct slice_u32Pc u32;
+      struct ref_slice_u32Pc u32;
     };
   };
 } IndexBufferValsRefPc;
@@ -2456,7 +3935,7 @@ typedef struct VertexBufferRefPc {
   const struct VBuffInfoPc *info;
   struct IndexMap_VertexUsage__VertexDataIndex offsets;
   uintptr_t size;
-  struct slice_u8 data;
+  struct ref_slice_u8 data;
 } VertexBufferRefPc;
 
 /**
@@ -2921,62 +4400,62 @@ typedef struct ModelInfoPc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_CrcPc {
+typedef struct ref_slice_CrcPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_CrcPc;
+} ref_slice_CrcPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_i32Pc {
+typedef struct ref_slice_i32Pc {
   uint64_t align;
   uint8_t pad[8];
-} slice_i32Pc;
+} ref_slice_i32Pc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Matrix4x4Pc {
+typedef struct ref_slice_Matrix4x4Pc {
   uint64_t align;
   uint8_t pad[8];
-} slice_Matrix4x4Pc;
+} ref_slice_Matrix4x4Pc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_BoundingBoxPc {
+typedef struct ref_slice_BoundingBoxPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_BoundingBoxPc;
+} ref_slice_BoundingBoxPc;
 
 typedef struct BonesRefPc {
-  struct slice_CrcPc names;
-  struct slice_i32Pc parents;
-  struct slice_Matrix4x4Pc transforms;
-  struct slice_BoundingBoxPc bounding_boxes;
+  struct ref_slice_CrcPc names;
+  struct ref_slice_i32Pc parents;
+  struct ref_slice_Matrix4x4Pc transforms;
+  struct ref_slice_BoundingBoxPc bounding_boxes;
 } BonesRefPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Key2Pc {
+typedef struct ref_slice_Key2Pc {
   uint64_t align;
   uint8_t pad[8];
-} slice_Key2Pc;
+} ref_slice_Key2Pc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_BlockRefPc {
+typedef struct slice_BlockRefPc {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_BlockRefPc;
+} slice_BlockRefPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
@@ -3009,15 +4488,15 @@ typedef struct Option_HkConstraintRefPc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_ShapeRefPc {
+typedef struct slice_ShapeRefPc {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_ShapeRefPc;
+} slice_ShapeRefPc;
 
 typedef struct ModelDataRefPc {
-  struct slice_BufferInfoPc infos;
-  struct slice_u32Pc vbuff_order;
-  struct slice_u32Pc ibuff_order;
+  struct ref_slice_BufferInfoPc infos;
+  struct ref_slice_u32Pc vbuff_order;
+  struct ref_slice_u32Pc ibuff_order;
   struct IndexMap_u32__VertexBufferRefPc vertex;
   struct IndexMap_u32__IndexBufferRefPc index;
   const struct CompressedDataRef *data;
@@ -3026,28 +4505,28 @@ typedef struct ModelDataRefPc {
 typedef struct ModelRefPc {
   const struct ModelInfoPc *info;
   struct BonesRefPc bones;
-  struct slice_u32Pc mat_order;
-  struct slice_u32Pc mesh_order;
-  struct slice_BoundingBoxPc mesh_bounding_boxes;
-  struct slice_Matrix4x4Pc skin_binds;
-  struct slice_u32Pc vals_j;
-  struct slice_u16Pc val_k_header;
-  struct slice_u32Pc vals_k;
-  struct slice_u32Pc skin_order;
-  struct slice_Key2Pc slots;
-  struct slice_u32Pc slot_map;
+  struct ref_slice_u32Pc mat_order;
+  struct ref_slice_u32Pc mesh_order;
+  struct ref_slice_BoundingBoxPc mesh_bounding_boxes;
+  struct ref_slice_Matrix4x4Pc skin_binds;
+  struct ref_slice_u32Pc vals_j;
+  struct ref_slice_u16Pc val_k_header;
+  struct ref_slice_u32Pc vals_k;
+  struct ref_slice_u32Pc skin_order;
+  struct ref_slice_Key2Pc slots;
+  struct ref_slice_u32Pc slot_map;
   const u32Pc *block_header;
-  struct slice_u32Pc block_offsets;
-  struct owned_slice_BlockRefPc blocks;
-  struct slice_BufferInfoPc buffer_infos;
-  struct slice_u32Pc vbuff_order;
-  struct slice_u32Pc ibuff_order;
+  struct ref_slice_u32Pc block_offsets;
+  struct slice_BlockRefPc blocks;
+  struct ref_slice_BufferInfoPc buffer_infos;
+  struct ref_slice_u32Pc vbuff_order;
+  struct ref_slice_u32Pc ibuff_order;
   struct IndexMap_u32_______VBuffInfoPc vbuffs;
   struct IndexMap_u32_______IBuffInfoPc ibuffs;
   struct IndexMap_u32__MatRefPc mats;
   struct Option_HkConstraintRefPc hk_constraint;
-  struct slice_HkConstraintDataPc hk_constraint_datas;
-  struct owned_slice_ShapeRefPc shapes;
+  struct ref_slice_HkConstraintDataPc hk_constraint_datas;
+  struct slice_ShapeRefPc shapes;
   struct ModelDataRefPc data;
 } ModelRefPc;
 
@@ -3098,10 +4577,10 @@ typedef struct AnimationInfoPc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Obj3Pc {
+typedef struct ref_slice_Obj3Pc {
   uint64_t align;
   uint8_t pad[8];
-} slice_Obj3Pc;
+} ref_slice_Obj3Pc;
 
 /**
  *gen_ffi:export
@@ -3117,10 +4596,10 @@ typedef struct Obj5HeaderPc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Obj5ValPc {
+typedef struct ref_slice_Obj5ValPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_Obj5ValPc;
+} ref_slice_Obj5ValPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
@@ -3133,19 +4612,19 @@ typedef struct Option_BlocksRefPc {
 
 typedef struct AnimationRefPc {
   const struct AnimationInfoPc *info;
-  struct slice_u32Pc obj1;
-  struct slice_u32Pc obj2;
-  struct slice_Obj3Pc obj3;
-  struct slice_CrcPc bones;
+  struct ref_slice_u32Pc obj1;
+  struct ref_slice_u32Pc obj2;
+  struct ref_slice_Obj3Pc obj3;
+  struct ref_slice_CrcPc bones;
   const struct Obj5HeaderPc *obj5_header;
-  struct slice_Obj5ValPc obj5_a;
-  struct slice_Obj5ValPc obj5_b;
+  struct ref_slice_Obj5ValPc obj5_a;
+  struct ref_slice_Obj5ValPc obj5_b;
   struct Option_BlocksRefPc blocks;
   uintptr_t size;
 } AnimationRefPc;
 
 typedef struct DataRefPc {
-  struct slice_u8 data;
+  struct ref_slice_u8 data;
 } DataRefPc;
 
 /**
@@ -3167,13 +4646,13 @@ typedef struct EffectRefPc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct IndexMap_u32__slice_u16Pc {
+typedef struct IndexMap_u32__ref_slice_u16Pc {
   uint64_t align;
   uint8_t pad[64];
-} IndexMap_u32__slice_u16Pc;
+} IndexMap_u32__ref_slice_u16Pc;
 
 typedef struct LangStringsRefPc {
-  struct IndexMap_u32__slice_u16Pc strings;
+  struct IndexMap_u32__ref_slice_u16Pc strings;
 } LangStringsRefPc;
 
 typedef struct DataRefPc LuaRefPc;
@@ -3214,30 +4693,30 @@ typedef struct RadiosityValsInfoPc {
 
 typedef struct RadiosityValsRefPc {
   const struct RadiosityValsInfoPc *info;
-  struct slice_i32Pc offs;
+  struct ref_slice_i32Pc offs;
 } RadiosityValsRefPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_SSAValPc {
+typedef struct ref_slice_SSAValPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_SSAValPc;
+} ref_slice_SSAValPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_slice_u16Pc {
+typedef struct slice_ref_slice_u16Pc {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_slice_u16Pc;
+} slice_ref_slice_u16Pc;
 
 typedef struct SSARefPc {
-  struct slice_SSAValPc vals;
-  struct owned_slice_slice_u16Pc strings;
+  struct ref_slice_SSAValPc vals;
+  struct slice_ref_slice_u16Pc strings;
 } SSARefPc;
 
 /**
@@ -3297,24 +4776,24 @@ typedef struct TypeHeaderPc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_TypeFieldPc {
+typedef struct ref_slice_TypeFieldPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_TypeFieldPc;
+} ref_slice_TypeFieldPc;
 
 typedef struct TypeRefPc {
   const struct TypeHeaderPc *header;
-  struct slice_TypeFieldPc fields;
+  struct ref_slice_TypeFieldPc fields;
 } TypeRefPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_FoliageRefPc {
+typedef struct slice_FoliageRefPc {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_FoliageRefPc;
+} slice_FoliageRefPc;
 
 /**
  *gen_ffi:export
@@ -3348,28 +4827,28 @@ typedef struct Matrix4x4Pc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_U32Pc {
+typedef struct ref_slice_U32Pc {
   uint64_t align;
   uint8_t pad[8];
-} slice_U32Pc;
+} ref_slice_U32Pc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Vector4Pc {
+typedef struct ref_slice_Vector4Pc {
   uint64_t align;
   uint8_t pad[8];
-} slice_Vector4Pc;
+} ref_slice_Vector4Pc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_WeightPc {
+typedef struct ref_slice_WeightPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_WeightPc;
+} ref_slice_WeightPc;
 
 enum BaseTypeRefPc_Tag {
   BaseTypeRefPc_Crc,
@@ -3430,25 +4909,25 @@ typedef struct BaseTypeRefPc {
       struct string string;
     };
     struct {
-      struct owned_slice_string string_list;
+      struct slice_string string_list;
     };
     struct {
-      struct slice_U32Pc object_list;
+      struct ref_slice_U32Pc object_list;
     };
     struct {
-      struct slice_Vector4Pc node_list;
+      struct ref_slice_Vector4Pc node_list;
     };
     struct {
-      struct slice_i32Pc int_list;
+      struct ref_slice_i32Pc int_list;
     };
     struct {
-      struct slice_U32Pc crc_list;
+      struct ref_slice_U32Pc crc_list;
     };
     struct {
-      struct slice_WeightPc weight_list;
+      struct ref_slice_WeightPc weight_list;
     };
     struct {
-      struct slice_Matrix4x4Pc matrix_list;
+      struct ref_slice_Matrix4x4Pc matrix_list;
     };
   };
 } BaseTypeRefPc;
@@ -3478,27 +4957,27 @@ typedef struct BlockHeader2Pc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_BlockValAPc {
+typedef struct ref_slice_BlockValAPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_BlockValAPc;
+} ref_slice_BlockValAPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_BlockValBPc {
+typedef struct ref_slice_BlockValBPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_BlockValBPc;
+} ref_slice_BlockValBPc;
 
 typedef struct BlockRefPc {
   const struct BlockHeader1Pc *info1;
   const struct BlockHeader2Pc *info2;
-  struct slice_BlockValAPc vals_a;
-  struct slice_BlockValAPc vals_b;
-  struct slice_BlockValBPc vals_c;
-  struct slice_u8 pad;
+  struct ref_slice_BlockValAPc vals_a;
+  struct ref_slice_BlockValAPc vals_b;
+  struct ref_slice_BlockValBPc vals_c;
+  struct ref_slice_u8 pad;
 } BlockRefPc;
 
 /**
@@ -3549,15 +5028,15 @@ typedef struct Option_ShapeExtraRefPc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_HkShapeRefPc {
+typedef struct slice_HkShapeRefPc {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_HkShapeRefPc;
+} slice_HkShapeRefPc;
 
 typedef struct ShapeRefPc {
   const struct ShapeInfoPc *info;
   struct Option_ShapeExtraRefPc extra;
-  struct owned_slice_HkShapeRefPc hk_shapes;
+  struct slice_HkShapeRefPc hk_shapes;
 } ShapeRefPc;
 
 /**
@@ -3654,15 +5133,15 @@ typedef struct ConvexVerticesInfoPc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Vector3Pc {
+typedef struct ref_slice_Vector3Pc {
   uint64_t align;
   uint8_t pad[8];
-} slice_Vector3Pc;
+} ref_slice_Vector3Pc;
 
 typedef struct ConvexVerticesRefPc {
   const struct ConvexVerticesInfoPc *info;
-  struct slice_Vector4Pc norms;
-  struct slice_Vector3Pc verts;
+  struct ref_slice_Vector4Pc norms;
+  struct ref_slice_Vector3Pc verts;
 } ConvexVerticesRefPc;
 
 /**
@@ -3685,9 +5164,9 @@ typedef struct BVTreeMeshInfoPc {
 
 typedef struct BVTreeMeshRefPc {
   const struct BVTreeMeshInfoPc *info;
-  struct slice_u8 tree;
-  struct slice_Vector3Pc verts;
-  struct slice_u16Pc inds;
+  struct ref_slice_u8 tree;
+  struct ref_slice_Vector3Pc verts;
+  struct ref_slice_u16Pc inds;
 } BVTreeMeshRefPc;
 
 /**
@@ -3775,47 +5254,47 @@ typedef struct FoliageInfoPc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_FoliageValPc {
+typedef struct ref_slice_FoliageValPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_FoliageValPc;
+} ref_slice_FoliageValPc;
 
 typedef struct FoliageRefPc {
   const struct FoliageInfoPc *info;
-  struct slice_FoliageValPc vals;
+  struct ref_slice_FoliageValPc vals;
 } FoliageRefPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_BlockValARefPc {
+typedef struct slice_BlockValARefPc {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_BlockValARefPc;
+} slice_BlockValARefPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_Obj1RefPc {
+typedef struct slice_Obj1RefPc {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_Obj1RefPc;
+} slice_Obj1RefPc;
 
 typedef struct BlockValRefPc {
-  struct owned_slice_BlockValARefPc vals_a;
-  struct owned_slice_Obj1RefPc vals_b;
+  struct slice_BlockValARefPc vals_a;
+  struct slice_Obj1RefPc vals_b;
 } BlockValRefPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_BlockValRefPc {
+typedef struct slice_BlockValRefPc {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_BlockValRefPc;
+} slice_BlockValRefPc;
 
 /**
  *gen_ffi:export
@@ -3834,25 +5313,25 @@ typedef struct CrowdItemHeaderPc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_CrowdValPc {
+typedef struct ref_slice_CrowdValPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_CrowdValPc;
+} ref_slice_CrowdValPc;
 
 typedef struct CrowdItemRefPc {
   const struct CrowdItemHeaderPc *header;
-  struct slice_CrcPc animations;
-  struct slice_CrowdValPc instances;
+  struct ref_slice_CrcPc animations;
+  struct ref_slice_CrowdValPc instances;
 } CrowdItemRefPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_CrowdItemRefPc {
+typedef struct slice_CrowdItemRefPc {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_CrowdItemRefPc;
+} slice_CrowdItemRefPc;
 
 /**
  *gen_ffi:export
@@ -3867,19 +5346,19 @@ typedef struct HkConstraintBoneRefPc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_HkConstraintBoneRefPc {
+typedef struct slice_HkConstraintBoneRefPc {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_HkConstraintBoneRefPc;
+} slice_HkConstraintBoneRefPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_f32Pc {
+typedef struct ref_slice_f32Pc {
   uint64_t align;
   uint8_t pad[8];
-} slice_f32Pc;
+} ref_slice_f32Pc;
 
 enum AnimVals1RefPc_Tag {
   AnimVals1RefPc_Type1,
@@ -3893,16 +5372,16 @@ typedef struct AnimVals1RefPc {
   AnimVals1RefPc_Tag tag;
   union {
     struct {
-      struct slice_u8 type1;
+      struct ref_slice_u8 type1;
     };
     struct {
-      struct slice_u16Pc type2;
+      struct ref_slice_u16Pc type2;
     };
     struct {
-      struct slice_u16Pc type3;
+      struct ref_slice_u16Pc type3;
     };
     struct {
-      struct slice_u16Pc type4;
+      struct ref_slice_u16Pc type4;
     };
   };
 } AnimVals1RefPc;
@@ -3911,8 +5390,8 @@ typedef struct Obj1RefPc {
   uint8_t flags;
   uint8_t s2;
   u16Pc s1;
-  struct slice_u8 data;
-  struct slice_f32Pc vals_a;
+  struct ref_slice_u8 data;
+  struct ref_slice_f32Pc vals_a;
   struct AnimVals1RefPc vals;
   uintptr_t size;
 } Obj1RefPc;
@@ -3921,55 +5400,55 @@ typedef struct Obj1RefPc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_RotationPolar32Pc {
+typedef struct ref_slice_RotationPolar32Pc {
   uint64_t align;
   uint8_t pad[8];
-} slice_RotationPolar32Pc;
+} ref_slice_RotationPolar32Pc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_RotationThreeComp40Pc {
+typedef struct ref_slice_RotationThreeComp40Pc {
   uint64_t align;
   uint8_t pad[8];
-} slice_RotationThreeComp40Pc;
+} ref_slice_RotationThreeComp40Pc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_RotationThreeComp48Pc {
+typedef struct ref_slice_RotationThreeComp48Pc {
   uint64_t align;
   uint8_t pad[8];
-} slice_RotationThreeComp48Pc;
+} ref_slice_RotationThreeComp48Pc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_RotationThreeComp24Pc {
+typedef struct ref_slice_RotationThreeComp24Pc {
   uint64_t align;
   uint8_t pad[8];
-} slice_RotationThreeComp24Pc;
+} ref_slice_RotationThreeComp24Pc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_RotationStraight16Pc {
+typedef struct ref_slice_RotationStraight16Pc {
   uint64_t align;
   uint8_t pad[8];
-} slice_RotationStraight16Pc;
+} ref_slice_RotationStraight16Pc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_RotationUncompressedPc {
+typedef struct ref_slice_RotationUncompressedPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_RotationUncompressedPc;
+} ref_slice_RotationUncompressedPc;
 
 enum RotationQuantizationRefPc_Tag {
   RotationQuantizationRefPc_Polar32,
@@ -3985,22 +5464,22 @@ typedef struct RotationQuantizationRefPc {
   RotationQuantizationRefPc_Tag tag;
   union {
     struct {
-      struct slice_RotationPolar32Pc polar32;
+      struct ref_slice_RotationPolar32Pc polar32;
     };
     struct {
-      struct slice_RotationThreeComp40Pc three_comp40;
+      struct ref_slice_RotationThreeComp40Pc three_comp40;
     };
     struct {
-      struct slice_RotationThreeComp48Pc three_comp48;
+      struct ref_slice_RotationThreeComp48Pc three_comp48;
     };
     struct {
-      struct slice_RotationThreeComp24Pc three_comp24;
+      struct ref_slice_RotationThreeComp24Pc three_comp24;
     };
     struct {
-      struct slice_RotationStraight16Pc straight16;
+      struct ref_slice_RotationStraight16Pc straight16;
     };
     struct {
-      struct slice_RotationUncompressedPc uncompressed;
+      struct ref_slice_RotationUncompressedPc uncompressed;
     };
   };
 } RotationQuantizationRefPc;
@@ -4009,7 +5488,7 @@ typedef struct Obj2RefPc {
   uint8_t flags;
   uint8_t s2;
   u16Pc s1;
-  struct slice_u8 data;
+  struct ref_slice_u8 data;
   struct RotationQuantizationRefPc vals;
   uintptr_t size;
 } Obj2RefPc;
@@ -4404,10 +5883,10 @@ typedef struct AtlasUVValPc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_AtlasUVValPc {
+typedef struct ref_slice_AtlasUVValPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_AtlasUVValPc;
+} ref_slice_AtlasUVValPc;
 
 /**
  *gen_ffi:export
@@ -4436,10 +5915,10 @@ typedef struct SprayInstancePc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_SprayInstancePc {
+typedef struct ref_slice_SprayInstancePc {
   uint64_t align;
   uint8_t pad[8];
-} slice_SprayInstancePc;
+} ref_slice_SprayInstancePc;
 
 /**
  *gen_ffi:export
@@ -4455,10 +5934,10 @@ typedef struct SprayValPc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_SprayValPc {
+typedef struct ref_slice_SprayValPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_SprayValPc;
+} ref_slice_SprayValPc;
 
 /**
  *gen_ffi:export
@@ -4473,19 +5952,19 @@ typedef struct TRSPc {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_TRSPc {
+typedef struct ref_slice_TRSPc {
   uint64_t align;
   uint8_t pad[8];
-} slice_TRSPc;
+} ref_slice_TRSPc;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_i16Pc {
+typedef struct ref_slice_i16Pc {
   uint64_t align;
   uint8_t pad[8];
-} slice_i16Pc;
+} ref_slice_i16Pc;
 
 /**
  *gen_ffi:export
@@ -4555,13 +6034,13 @@ typedef struct RotationUncompressedPc {
  */
 typedef struct HkConstraintRefPc {
   const struct HkConstraintInfoPc *info;
-  struct slice_i16Pc bone_parents;
-  struct owned_slice_HkConstraintBoneRefPc bone_names;
-  struct slice_u32Pc name_offsets;
-  struct slice_TRSPc bone_transforms;
-  struct slice_u32Pc bones;
-  struct slice_Key2Pc bones_order;
-  struct slice_f32Pc vals2;
+  struct ref_slice_i16Pc bone_parents;
+  struct slice_HkConstraintBoneRefPc bone_names;
+  struct ref_slice_u32Pc name_offsets;
+  struct ref_slice_TRSPc bone_transforms;
+  struct ref_slice_u32Pc bones;
+  struct ref_slice_Key2Pc bones_order;
+  struct ref_slice_f32Pc vals2;
 } HkConstraintRefPc;
 
 /**
@@ -4576,20 +6055,20 @@ typedef struct ShapeExtraInfoPc {
 
 typedef struct ShapeExtraRefPc {
   const struct ShapeExtraInfoPc *info;
-  struct slice_u32Pc offs;
-  struct slice_u8 data;
+  struct ref_slice_u32Pc offs;
+  struct ref_slice_u8 data;
 } ShapeExtraRefPc;
 
 typedef struct AtlasUVRefPc {
-  struct slice_AtlasUVValPc vals;
+  struct ref_slice_AtlasUVValPc vals;
 } AtlasUVRefPc;
 
 typedef struct BlocksRefPc {
-  struct slice_u32Pc block_starts;
-  struct slice_u32Pc block_starts2;
-  struct slice_u32Pc obj_c3;
-  struct slice_u32Pc obj_c4;
-  struct owned_slice_BlockValRefPc blocks;
+  struct ref_slice_u32Pc block_starts;
+  struct ref_slice_u32Pc block_starts2;
+  struct ref_slice_u32Pc obj_c3;
+  struct ref_slice_u32Pc obj_c4;
+  struct slice_BlockValRefPc blocks;
 } BlocksRefPc;
 
 /**
@@ -4602,15 +6081,15 @@ typedef struct CrowdHeaderPc {
 
 typedef struct CrowdRefPc {
   const struct CrowdHeaderPc *header;
-  struct slice_u32Pc offs;
-  struct owned_slice_CrowdItemRefPc vals;
+  struct ref_slice_u32Pc offs;
+  struct slice_CrowdItemRefPc vals;
 } CrowdRefPc;
 
 typedef struct DataRefPc PFieldsRefPc;
 
 typedef struct SprayRefPc {
-  struct slice_SprayInstancePc instances;
-  struct slice_SprayValPc vals;
+  struct ref_slice_SprayInstancePc instances;
+  struct ref_slice_SprayValPc vals;
 } SprayRefPc;
 
 /**
@@ -4636,10 +6115,10 @@ typedef struct IBuffInfoXbox {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_u16Xbox {
+typedef struct ref_slice_u16Xbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_u16Xbox;
+} ref_slice_u16Xbox;
 
 enum IndexBufferValsRefXbox_Tag {
   IndexBufferValsRefXbox_U16,
@@ -4651,10 +6130,10 @@ typedef struct IndexBufferValsRefXbox {
   IndexBufferValsRefXbox_Tag tag;
   union {
     struct {
-      struct slice_u16Xbox u16;
+      struct ref_slice_u16Xbox u16;
     };
     struct {
-      struct slice_u32Xbox u32;
+      struct ref_slice_u32Xbox u32;
     };
   };
 } IndexBufferValsRefXbox;
@@ -4697,7 +6176,7 @@ typedef struct VertexBufferRefXbox {
   const struct VBuffInfoXbox *info;
   struct IndexMap_VertexUsage__VertexDataIndex offsets;
   uintptr_t size;
-  struct slice_u8 data;
+  struct ref_slice_u8 data;
 } VertexBufferRefXbox;
 
 /**
@@ -5162,62 +6641,62 @@ typedef struct ModelInfoXbox {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_CrcXbox {
+typedef struct ref_slice_CrcXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_CrcXbox;
+} ref_slice_CrcXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_i32Xbox {
+typedef struct ref_slice_i32Xbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_i32Xbox;
+} ref_slice_i32Xbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Matrix4x4Xbox {
+typedef struct ref_slice_Matrix4x4Xbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_Matrix4x4Xbox;
+} ref_slice_Matrix4x4Xbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_BoundingBoxXbox {
+typedef struct ref_slice_BoundingBoxXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_BoundingBoxXbox;
+} ref_slice_BoundingBoxXbox;
 
 typedef struct BonesRefXbox {
-  struct slice_CrcXbox names;
-  struct slice_i32Xbox parents;
-  struct slice_Matrix4x4Xbox transforms;
-  struct slice_BoundingBoxXbox bounding_boxes;
+  struct ref_slice_CrcXbox names;
+  struct ref_slice_i32Xbox parents;
+  struct ref_slice_Matrix4x4Xbox transforms;
+  struct ref_slice_BoundingBoxXbox bounding_boxes;
 } BonesRefXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Key2Xbox {
+typedef struct ref_slice_Key2Xbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_Key2Xbox;
+} ref_slice_Key2Xbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_BlockRefXbox {
+typedef struct slice_BlockRefXbox {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_BlockRefXbox;
+} slice_BlockRefXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
@@ -5250,15 +6729,15 @@ typedef struct Option_HkConstraintRefXbox {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_ShapeRefXbox {
+typedef struct slice_ShapeRefXbox {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_ShapeRefXbox;
+} slice_ShapeRefXbox;
 
 typedef struct ModelDataRefXbox {
-  struct slice_BufferInfoXbox infos;
-  struct slice_u32Xbox vbuff_order;
-  struct slice_u32Xbox ibuff_order;
+  struct ref_slice_BufferInfoXbox infos;
+  struct ref_slice_u32Xbox vbuff_order;
+  struct ref_slice_u32Xbox ibuff_order;
   struct IndexMap_u32__VertexBufferRefXbox vertex;
   struct IndexMap_u32__IndexBufferRefXbox index;
   const struct CompressedDataRef *data;
@@ -5267,28 +6746,28 @@ typedef struct ModelDataRefXbox {
 typedef struct ModelRefXbox {
   const struct ModelInfoXbox *info;
   struct BonesRefXbox bones;
-  struct slice_u32Xbox mat_order;
-  struct slice_u32Xbox mesh_order;
-  struct slice_BoundingBoxXbox mesh_bounding_boxes;
-  struct slice_Matrix4x4Xbox skin_binds;
-  struct slice_u32Xbox vals_j;
-  struct slice_u16Xbox val_k_header;
-  struct slice_u32Xbox vals_k;
-  struct slice_u32Xbox skin_order;
-  struct slice_Key2Xbox slots;
-  struct slice_u32Xbox slot_map;
+  struct ref_slice_u32Xbox mat_order;
+  struct ref_slice_u32Xbox mesh_order;
+  struct ref_slice_BoundingBoxXbox mesh_bounding_boxes;
+  struct ref_slice_Matrix4x4Xbox skin_binds;
+  struct ref_slice_u32Xbox vals_j;
+  struct ref_slice_u16Xbox val_k_header;
+  struct ref_slice_u32Xbox vals_k;
+  struct ref_slice_u32Xbox skin_order;
+  struct ref_slice_Key2Xbox slots;
+  struct ref_slice_u32Xbox slot_map;
   const u32Xbox *block_header;
-  struct slice_u32Xbox block_offsets;
-  struct owned_slice_BlockRefXbox blocks;
-  struct slice_BufferInfoXbox buffer_infos;
-  struct slice_u32Xbox vbuff_order;
-  struct slice_u32Xbox ibuff_order;
+  struct ref_slice_u32Xbox block_offsets;
+  struct slice_BlockRefXbox blocks;
+  struct ref_slice_BufferInfoXbox buffer_infos;
+  struct ref_slice_u32Xbox vbuff_order;
+  struct ref_slice_u32Xbox ibuff_order;
   struct IndexMap_u32_______VBuffInfoXbox vbuffs;
   struct IndexMap_u32_______IBuffInfoXbox ibuffs;
   struct IndexMap_u32__MatRefXbox mats;
   struct Option_HkConstraintRefXbox hk_constraint;
-  struct slice_HkConstraintDataXbox hk_constraint_datas;
-  struct owned_slice_ShapeRefXbox shapes;
+  struct ref_slice_HkConstraintDataXbox hk_constraint_datas;
+  struct slice_ShapeRefXbox shapes;
   struct ModelDataRefXbox data;
 } ModelRefXbox;
 
@@ -5339,10 +6818,10 @@ typedef struct AnimationInfoXbox {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Obj3Xbox {
+typedef struct ref_slice_Obj3Xbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_Obj3Xbox;
+} ref_slice_Obj3Xbox;
 
 /**
  *gen_ffi:export
@@ -5358,10 +6837,10 @@ typedef struct Obj5HeaderXbox {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Obj5ValXbox {
+typedef struct ref_slice_Obj5ValXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_Obj5ValXbox;
+} ref_slice_Obj5ValXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
@@ -5374,19 +6853,19 @@ typedef struct Option_BlocksRefXbox {
 
 typedef struct AnimationRefXbox {
   const struct AnimationInfoXbox *info;
-  struct slice_u32Xbox obj1;
-  struct slice_u32Xbox obj2;
-  struct slice_Obj3Xbox obj3;
-  struct slice_CrcXbox bones;
+  struct ref_slice_u32Xbox obj1;
+  struct ref_slice_u32Xbox obj2;
+  struct ref_slice_Obj3Xbox obj3;
+  struct ref_slice_CrcXbox bones;
   const struct Obj5HeaderXbox *obj5_header;
-  struct slice_Obj5ValXbox obj5_a;
-  struct slice_Obj5ValXbox obj5_b;
+  struct ref_slice_Obj5ValXbox obj5_a;
+  struct ref_slice_Obj5ValXbox obj5_b;
   struct Option_BlocksRefXbox blocks;
   uintptr_t size;
 } AnimationRefXbox;
 
 typedef struct DataRefXbox {
-  struct slice_u8 data;
+  struct ref_slice_u8 data;
 } DataRefXbox;
 
 /**
@@ -5408,13 +6887,13 @@ typedef struct EffectRefXbox {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct IndexMap_u32__slice_u16Xbox {
+typedef struct IndexMap_u32__ref_slice_u16Xbox {
   uint64_t align;
   uint8_t pad[64];
-} IndexMap_u32__slice_u16Xbox;
+} IndexMap_u32__ref_slice_u16Xbox;
 
 typedef struct LangStringsRefXbox {
-  struct IndexMap_u32__slice_u16Xbox strings;
+  struct IndexMap_u32__ref_slice_u16Xbox strings;
 } LangStringsRefXbox;
 
 typedef struct DataRefXbox LuaRefXbox;
@@ -5455,30 +6934,30 @@ typedef struct RadiosityValsInfoXbox {
 
 typedef struct RadiosityValsRefXbox {
   const struct RadiosityValsInfoXbox *info;
-  struct slice_i32Xbox offs;
+  struct ref_slice_i32Xbox offs;
 } RadiosityValsRefXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_SSAValXbox {
+typedef struct ref_slice_SSAValXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_SSAValXbox;
+} ref_slice_SSAValXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_slice_u16Xbox {
+typedef struct slice_ref_slice_u16Xbox {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_slice_u16Xbox;
+} slice_ref_slice_u16Xbox;
 
 typedef struct SSARefXbox {
-  struct slice_SSAValXbox vals;
-  struct owned_slice_slice_u16Xbox strings;
+  struct ref_slice_SSAValXbox vals;
+  struct slice_ref_slice_u16Xbox strings;
 } SSARefXbox;
 
 /**
@@ -5538,24 +7017,24 @@ typedef struct TypeHeaderXbox {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_TypeFieldXbox {
+typedef struct ref_slice_TypeFieldXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_TypeFieldXbox;
+} ref_slice_TypeFieldXbox;
 
 typedef struct TypeRefXbox {
   const struct TypeHeaderXbox *header;
-  struct slice_TypeFieldXbox fields;
+  struct ref_slice_TypeFieldXbox fields;
 } TypeRefXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_FoliageRefXbox {
+typedef struct slice_FoliageRefXbox {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_FoliageRefXbox;
+} slice_FoliageRefXbox;
 
 /**
  *gen_ffi:export
@@ -5589,28 +7068,28 @@ typedef struct Matrix4x4Xbox {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_U32Xbox {
+typedef struct ref_slice_U32Xbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_U32Xbox;
+} ref_slice_U32Xbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Vector4Xbox {
+typedef struct ref_slice_Vector4Xbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_Vector4Xbox;
+} ref_slice_Vector4Xbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_WeightXbox {
+typedef struct ref_slice_WeightXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_WeightXbox;
+} ref_slice_WeightXbox;
 
 enum BaseTypeRefXbox_Tag {
   BaseTypeRefXbox_Crc,
@@ -5671,25 +7150,25 @@ typedef struct BaseTypeRefXbox {
       struct string string;
     };
     struct {
-      struct owned_slice_string string_list;
+      struct slice_string string_list;
     };
     struct {
-      struct slice_U32Xbox object_list;
+      struct ref_slice_U32Xbox object_list;
     };
     struct {
-      struct slice_Vector4Xbox node_list;
+      struct ref_slice_Vector4Xbox node_list;
     };
     struct {
-      struct slice_i32Xbox int_list;
+      struct ref_slice_i32Xbox int_list;
     };
     struct {
-      struct slice_U32Xbox crc_list;
+      struct ref_slice_U32Xbox crc_list;
     };
     struct {
-      struct slice_WeightXbox weight_list;
+      struct ref_slice_WeightXbox weight_list;
     };
     struct {
-      struct slice_Matrix4x4Xbox matrix_list;
+      struct ref_slice_Matrix4x4Xbox matrix_list;
     };
   };
 } BaseTypeRefXbox;
@@ -5719,27 +7198,27 @@ typedef struct BlockHeader2Xbox {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_BlockValAXbox {
+typedef struct ref_slice_BlockValAXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_BlockValAXbox;
+} ref_slice_BlockValAXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_BlockValBXbox {
+typedef struct ref_slice_BlockValBXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_BlockValBXbox;
+} ref_slice_BlockValBXbox;
 
 typedef struct BlockRefXbox {
   const struct BlockHeader1Xbox *info1;
   const struct BlockHeader2Xbox *info2;
-  struct slice_BlockValAXbox vals_a;
-  struct slice_BlockValAXbox vals_b;
-  struct slice_BlockValBXbox vals_c;
-  struct slice_u8 pad;
+  struct ref_slice_BlockValAXbox vals_a;
+  struct ref_slice_BlockValAXbox vals_b;
+  struct ref_slice_BlockValBXbox vals_c;
+  struct ref_slice_u8 pad;
 } BlockRefXbox;
 
 /**
@@ -5790,15 +7269,15 @@ typedef struct Option_ShapeExtraRefXbox {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_HkShapeRefXbox {
+typedef struct slice_HkShapeRefXbox {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_HkShapeRefXbox;
+} slice_HkShapeRefXbox;
 
 typedef struct ShapeRefXbox {
   const struct ShapeInfoXbox *info;
   struct Option_ShapeExtraRefXbox extra;
-  struct owned_slice_HkShapeRefXbox hk_shapes;
+  struct slice_HkShapeRefXbox hk_shapes;
 } ShapeRefXbox;
 
 /**
@@ -5895,15 +7374,15 @@ typedef struct ConvexVerticesInfoXbox {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Vector3Xbox {
+typedef struct ref_slice_Vector3Xbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_Vector3Xbox;
+} ref_slice_Vector3Xbox;
 
 typedef struct ConvexVerticesRefXbox {
   const struct ConvexVerticesInfoXbox *info;
-  struct slice_Vector4Xbox norms;
-  struct slice_Vector3Xbox verts;
+  struct ref_slice_Vector4Xbox norms;
+  struct ref_slice_Vector3Xbox verts;
 } ConvexVerticesRefXbox;
 
 /**
@@ -5926,9 +7405,9 @@ typedef struct BVTreeMeshInfoXbox {
 
 typedef struct BVTreeMeshRefXbox {
   const struct BVTreeMeshInfoXbox *info;
-  struct slice_u8 tree;
-  struct slice_Vector3Xbox verts;
-  struct slice_u16Xbox inds;
+  struct ref_slice_u8 tree;
+  struct ref_slice_Vector3Xbox verts;
+  struct ref_slice_u16Xbox inds;
 } BVTreeMeshRefXbox;
 
 /**
@@ -6016,47 +7495,47 @@ typedef struct FoliageInfoXbox {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_FoliageValXbox {
+typedef struct ref_slice_FoliageValXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_FoliageValXbox;
+} ref_slice_FoliageValXbox;
 
 typedef struct FoliageRefXbox {
   const struct FoliageInfoXbox *info;
-  struct slice_FoliageValXbox vals;
+  struct ref_slice_FoliageValXbox vals;
 } FoliageRefXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_BlockValARefXbox {
+typedef struct slice_BlockValARefXbox {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_BlockValARefXbox;
+} slice_BlockValARefXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_Obj1RefXbox {
+typedef struct slice_Obj1RefXbox {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_Obj1RefXbox;
+} slice_Obj1RefXbox;
 
 typedef struct BlockValRefXbox {
-  struct owned_slice_BlockValARefXbox vals_a;
-  struct owned_slice_Obj1RefXbox vals_b;
+  struct slice_BlockValARefXbox vals_a;
+  struct slice_Obj1RefXbox vals_b;
 } BlockValRefXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_BlockValRefXbox {
+typedef struct slice_BlockValRefXbox {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_BlockValRefXbox;
+} slice_BlockValRefXbox;
 
 /**
  *gen_ffi:export
@@ -6075,25 +7554,25 @@ typedef struct CrowdItemHeaderXbox {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_CrowdValXbox {
+typedef struct ref_slice_CrowdValXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_CrowdValXbox;
+} ref_slice_CrowdValXbox;
 
 typedef struct CrowdItemRefXbox {
   const struct CrowdItemHeaderXbox *header;
-  struct slice_CrcXbox animations;
-  struct slice_CrowdValXbox instances;
+  struct ref_slice_CrcXbox animations;
+  struct ref_slice_CrowdValXbox instances;
 } CrowdItemRefXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_CrowdItemRefXbox {
+typedef struct slice_CrowdItemRefXbox {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_CrowdItemRefXbox;
+} slice_CrowdItemRefXbox;
 
 /**
  *gen_ffi:export
@@ -6108,19 +7587,19 @@ typedef struct HkConstraintBoneRefXbox {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_HkConstraintBoneRefXbox {
+typedef struct slice_HkConstraintBoneRefXbox {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_HkConstraintBoneRefXbox;
+} slice_HkConstraintBoneRefXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_f32Xbox {
+typedef struct ref_slice_f32Xbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_f32Xbox;
+} ref_slice_f32Xbox;
 
 enum AnimVals1RefXbox_Tag {
   AnimVals1RefXbox_Type1,
@@ -6134,16 +7613,16 @@ typedef struct AnimVals1RefXbox {
   AnimVals1RefXbox_Tag tag;
   union {
     struct {
-      struct slice_u8 type1;
+      struct ref_slice_u8 type1;
     };
     struct {
-      struct slice_u16Xbox type2;
+      struct ref_slice_u16Xbox type2;
     };
     struct {
-      struct slice_u16Xbox type3;
+      struct ref_slice_u16Xbox type3;
     };
     struct {
-      struct slice_u16Xbox type4;
+      struct ref_slice_u16Xbox type4;
     };
   };
 } AnimVals1RefXbox;
@@ -6152,8 +7631,8 @@ typedef struct Obj1RefXbox {
   uint8_t flags;
   uint8_t s2;
   u16Xbox s1;
-  struct slice_u8 data;
-  struct slice_f32Xbox vals_a;
+  struct ref_slice_u8 data;
+  struct ref_slice_f32Xbox vals_a;
   struct AnimVals1RefXbox vals;
   uintptr_t size;
 } Obj1RefXbox;
@@ -6162,55 +7641,55 @@ typedef struct Obj1RefXbox {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_RotationPolar32Xbox {
+typedef struct ref_slice_RotationPolar32Xbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_RotationPolar32Xbox;
+} ref_slice_RotationPolar32Xbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_RotationThreeComp40Xbox {
+typedef struct ref_slice_RotationThreeComp40Xbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_RotationThreeComp40Xbox;
+} ref_slice_RotationThreeComp40Xbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_RotationThreeComp48Xbox {
+typedef struct ref_slice_RotationThreeComp48Xbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_RotationThreeComp48Xbox;
+} ref_slice_RotationThreeComp48Xbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_RotationThreeComp24Xbox {
+typedef struct ref_slice_RotationThreeComp24Xbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_RotationThreeComp24Xbox;
+} ref_slice_RotationThreeComp24Xbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_RotationStraight16Xbox {
+typedef struct ref_slice_RotationStraight16Xbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_RotationStraight16Xbox;
+} ref_slice_RotationStraight16Xbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_RotationUncompressedXbox {
+typedef struct ref_slice_RotationUncompressedXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_RotationUncompressedXbox;
+} ref_slice_RotationUncompressedXbox;
 
 enum RotationQuantizationRefXbox_Tag {
   RotationQuantizationRefXbox_Polar32,
@@ -6226,22 +7705,22 @@ typedef struct RotationQuantizationRefXbox {
   RotationQuantizationRefXbox_Tag tag;
   union {
     struct {
-      struct slice_RotationPolar32Xbox polar32;
+      struct ref_slice_RotationPolar32Xbox polar32;
     };
     struct {
-      struct slice_RotationThreeComp40Xbox three_comp40;
+      struct ref_slice_RotationThreeComp40Xbox three_comp40;
     };
     struct {
-      struct slice_RotationThreeComp48Xbox three_comp48;
+      struct ref_slice_RotationThreeComp48Xbox three_comp48;
     };
     struct {
-      struct slice_RotationThreeComp24Xbox three_comp24;
+      struct ref_slice_RotationThreeComp24Xbox three_comp24;
     };
     struct {
-      struct slice_RotationStraight16Xbox straight16;
+      struct ref_slice_RotationStraight16Xbox straight16;
     };
     struct {
-      struct slice_RotationUncompressedXbox uncompressed;
+      struct ref_slice_RotationUncompressedXbox uncompressed;
     };
   };
 } RotationQuantizationRefXbox;
@@ -6250,7 +7729,7 @@ typedef struct Obj2RefXbox {
   uint8_t flags;
   uint8_t s2;
   u16Xbox s1;
-  struct slice_u8 data;
+  struct ref_slice_u8 data;
   struct RotationQuantizationRefXbox vals;
   uintptr_t size;
 } Obj2RefXbox;
@@ -6643,10 +8122,10 @@ typedef struct AtlasUVValXbox {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_AtlasUVValXbox {
+typedef struct ref_slice_AtlasUVValXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_AtlasUVValXbox;
+} ref_slice_AtlasUVValXbox;
 
 /**
  *gen_ffi:export
@@ -6675,10 +8154,10 @@ typedef struct SprayInstanceXbox {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_SprayInstanceXbox {
+typedef struct ref_slice_SprayInstanceXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_SprayInstanceXbox;
+} ref_slice_SprayInstanceXbox;
 
 /**
  *gen_ffi:export
@@ -6694,10 +8173,10 @@ typedef struct SprayValXbox {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_SprayValXbox {
+typedef struct ref_slice_SprayValXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_SprayValXbox;
+} ref_slice_SprayValXbox;
 
 /**
  *gen_ffi:export
@@ -6712,19 +8191,19 @@ typedef struct TRSXbox {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_TRSXbox {
+typedef struct ref_slice_TRSXbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_TRSXbox;
+} ref_slice_TRSXbox;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_i16Xbox {
+typedef struct ref_slice_i16Xbox {
   uint64_t align;
   uint8_t pad[8];
-} slice_i16Xbox;
+} ref_slice_i16Xbox;
 
 /**
  *gen_ffi:export
@@ -6794,13 +8273,13 @@ typedef struct RotationUncompressedXbox {
  */
 typedef struct HkConstraintRefXbox {
   const struct HkConstraintInfoXbox *info;
-  struct slice_i16Xbox bone_parents;
-  struct owned_slice_HkConstraintBoneRefXbox bone_names;
-  struct slice_u32Xbox name_offsets;
-  struct slice_TRSXbox bone_transforms;
-  struct slice_u32Xbox bones;
-  struct slice_Key2Xbox bones_order;
-  struct slice_f32Xbox vals2;
+  struct ref_slice_i16Xbox bone_parents;
+  struct slice_HkConstraintBoneRefXbox bone_names;
+  struct ref_slice_u32Xbox name_offsets;
+  struct ref_slice_TRSXbox bone_transforms;
+  struct ref_slice_u32Xbox bones;
+  struct ref_slice_Key2Xbox bones_order;
+  struct ref_slice_f32Xbox vals2;
 } HkConstraintRefXbox;
 
 /**
@@ -6815,20 +8294,20 @@ typedef struct ShapeExtraInfoXbox {
 
 typedef struct ShapeExtraRefXbox {
   const struct ShapeExtraInfoXbox *info;
-  struct slice_u32Xbox offs;
-  struct slice_u8 data;
+  struct ref_slice_u32Xbox offs;
+  struct ref_slice_u8 data;
 } ShapeExtraRefXbox;
 
 typedef struct AtlasUVRefXbox {
-  struct slice_AtlasUVValXbox vals;
+  struct ref_slice_AtlasUVValXbox vals;
 } AtlasUVRefXbox;
 
 typedef struct BlocksRefXbox {
-  struct slice_u32Xbox block_starts;
-  struct slice_u32Xbox block_starts2;
-  struct slice_u32Xbox obj_c3;
-  struct slice_u32Xbox obj_c4;
-  struct owned_slice_BlockValRefXbox blocks;
+  struct ref_slice_u32Xbox block_starts;
+  struct ref_slice_u32Xbox block_starts2;
+  struct ref_slice_u32Xbox obj_c3;
+  struct ref_slice_u32Xbox obj_c4;
+  struct slice_BlockValRefXbox blocks;
 } BlocksRefXbox;
 
 /**
@@ -6841,15 +8320,15 @@ typedef struct CrowdHeaderXbox {
 
 typedef struct CrowdRefXbox {
   const struct CrowdHeaderXbox *header;
-  struct slice_u32Xbox offs;
-  struct owned_slice_CrowdItemRefXbox vals;
+  struct ref_slice_u32Xbox offs;
+  struct slice_CrowdItemRefXbox vals;
 } CrowdRefXbox;
 
 typedef struct DataRefXbox PFieldsRefXbox;
 
 typedef struct SprayRefXbox {
-  struct slice_SprayInstanceXbox instances;
-  struct slice_SprayValXbox vals;
+  struct ref_slice_SprayInstanceXbox instances;
+  struct ref_slice_SprayValXbox vals;
 } SprayRefXbox;
 
 /**
@@ -6871,10 +8350,10 @@ typedef struct IBuffInfoPs3 {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_u16Ps3 {
+typedef struct ref_slice_u16Ps3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_u16Ps3;
+} ref_slice_u16Ps3;
 
 enum IndexBufferValsRefPs3_Tag {
   IndexBufferValsRefPs3_U16,
@@ -6886,10 +8365,10 @@ typedef struct IndexBufferValsRefPs3 {
   IndexBufferValsRefPs3_Tag tag;
   union {
     struct {
-      struct slice_u16Ps3 u16;
+      struct ref_slice_u16Ps3 u16;
     };
     struct {
-      struct slice_u32Ps3 u32;
+      struct ref_slice_u32Ps3 u32;
     };
   };
 } IndexBufferValsRefPs3;
@@ -6928,7 +8407,7 @@ typedef struct VertexBufferRefPs3 {
   const struct VBuffInfoPs3 *info;
   struct IndexMap_VertexUsage__VertexDataIndex offsets;
   uintptr_t size;
-  struct slice_u8 data;
+  struct ref_slice_u8 data;
 } VertexBufferRefPs3;
 
 /**
@@ -7387,62 +8866,62 @@ typedef struct ModelInfoPs3 {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_CrcPs3 {
+typedef struct ref_slice_CrcPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_CrcPs3;
+} ref_slice_CrcPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_i32Ps3 {
+typedef struct ref_slice_i32Ps3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_i32Ps3;
+} ref_slice_i32Ps3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Matrix4x4Ps3 {
+typedef struct ref_slice_Matrix4x4Ps3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_Matrix4x4Ps3;
+} ref_slice_Matrix4x4Ps3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_BoundingBoxPs3 {
+typedef struct ref_slice_BoundingBoxPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_BoundingBoxPs3;
+} ref_slice_BoundingBoxPs3;
 
 typedef struct BonesRefPs3 {
-  struct slice_CrcPs3 names;
-  struct slice_i32Ps3 parents;
-  struct slice_Matrix4x4Ps3 transforms;
-  struct slice_BoundingBoxPs3 bounding_boxes;
+  struct ref_slice_CrcPs3 names;
+  struct ref_slice_i32Ps3 parents;
+  struct ref_slice_Matrix4x4Ps3 transforms;
+  struct ref_slice_BoundingBoxPs3 bounding_boxes;
 } BonesRefPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Key2Ps3 {
+typedef struct ref_slice_Key2Ps3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_Key2Ps3;
+} ref_slice_Key2Ps3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_BlockRefPs3 {
+typedef struct slice_BlockRefPs3 {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_BlockRefPs3;
+} slice_BlockRefPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
@@ -7475,15 +8954,15 @@ typedef struct Option_HkConstraintRefPs3 {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_ShapeRefPs3 {
+typedef struct slice_ShapeRefPs3 {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_ShapeRefPs3;
+} slice_ShapeRefPs3;
 
 typedef struct ModelDataRefPs3 {
-  struct slice_BufferInfoPs3 infos;
-  struct slice_u32Ps3 vbuff_order;
-  struct slice_u32Ps3 ibuff_order;
+  struct ref_slice_BufferInfoPs3 infos;
+  struct ref_slice_u32Ps3 vbuff_order;
+  struct ref_slice_u32Ps3 ibuff_order;
   struct IndexMap_u32__VertexBufferRefPs3 vertex;
   struct IndexMap_u32__IndexBufferRefPs3 index;
   const struct CompressedDataRef *data;
@@ -7492,28 +8971,28 @@ typedef struct ModelDataRefPs3 {
 typedef struct ModelRefPs3 {
   const struct ModelInfoPs3 *info;
   struct BonesRefPs3 bones;
-  struct slice_u32Ps3 mat_order;
-  struct slice_u32Ps3 mesh_order;
-  struct slice_BoundingBoxPs3 mesh_bounding_boxes;
-  struct slice_Matrix4x4Ps3 skin_binds;
-  struct slice_u32Ps3 vals_j;
-  struct slice_u16Ps3 val_k_header;
-  struct slice_u32Ps3 vals_k;
-  struct slice_u32Ps3 skin_order;
-  struct slice_Key2Ps3 slots;
-  struct slice_u32Ps3 slot_map;
+  struct ref_slice_u32Ps3 mat_order;
+  struct ref_slice_u32Ps3 mesh_order;
+  struct ref_slice_BoundingBoxPs3 mesh_bounding_boxes;
+  struct ref_slice_Matrix4x4Ps3 skin_binds;
+  struct ref_slice_u32Ps3 vals_j;
+  struct ref_slice_u16Ps3 val_k_header;
+  struct ref_slice_u32Ps3 vals_k;
+  struct ref_slice_u32Ps3 skin_order;
+  struct ref_slice_Key2Ps3 slots;
+  struct ref_slice_u32Ps3 slot_map;
   const u32Ps3 *block_header;
-  struct slice_u32Ps3 block_offsets;
-  struct owned_slice_BlockRefPs3 blocks;
-  struct slice_BufferInfoPs3 buffer_infos;
-  struct slice_u32Ps3 vbuff_order;
-  struct slice_u32Ps3 ibuff_order;
+  struct ref_slice_u32Ps3 block_offsets;
+  struct slice_BlockRefPs3 blocks;
+  struct ref_slice_BufferInfoPs3 buffer_infos;
+  struct ref_slice_u32Ps3 vbuff_order;
+  struct ref_slice_u32Ps3 ibuff_order;
   struct IndexMap_u32_______VBuffInfoPs3 vbuffs;
   struct IndexMap_u32_______IBuffInfoPs3 ibuffs;
   struct IndexMap_u32__MatRefPs3 mats;
   struct Option_HkConstraintRefPs3 hk_constraint;
-  struct slice_HkConstraintDataPs3 hk_constraint_datas;
-  struct owned_slice_ShapeRefPs3 shapes;
+  struct ref_slice_HkConstraintDataPs3 hk_constraint_datas;
+  struct slice_ShapeRefPs3 shapes;
   struct ModelDataRefPs3 data;
 } ModelRefPs3;
 
@@ -7564,10 +9043,10 @@ typedef struct AnimationInfoPs3 {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Obj3Ps3 {
+typedef struct ref_slice_Obj3Ps3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_Obj3Ps3;
+} ref_slice_Obj3Ps3;
 
 /**
  *gen_ffi:export
@@ -7583,10 +9062,10 @@ typedef struct Obj5HeaderPs3 {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Obj5ValPs3 {
+typedef struct ref_slice_Obj5ValPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_Obj5ValPs3;
+} ref_slice_Obj5ValPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
@@ -7599,19 +9078,19 @@ typedef struct Option_BlocksRefPs3 {
 
 typedef struct AnimationRefPs3 {
   const struct AnimationInfoPs3 *info;
-  struct slice_u32Ps3 obj1;
-  struct slice_u32Ps3 obj2;
-  struct slice_Obj3Ps3 obj3;
-  struct slice_CrcPs3 bones;
+  struct ref_slice_u32Ps3 obj1;
+  struct ref_slice_u32Ps3 obj2;
+  struct ref_slice_Obj3Ps3 obj3;
+  struct ref_slice_CrcPs3 bones;
   const struct Obj5HeaderPs3 *obj5_header;
-  struct slice_Obj5ValPs3 obj5_a;
-  struct slice_Obj5ValPs3 obj5_b;
+  struct ref_slice_Obj5ValPs3 obj5_a;
+  struct ref_slice_Obj5ValPs3 obj5_b;
   struct Option_BlocksRefPs3 blocks;
   uintptr_t size;
 } AnimationRefPs3;
 
 typedef struct DataRefPs3 {
-  struct slice_u8 data;
+  struct ref_slice_u8 data;
 } DataRefPs3;
 
 /**
@@ -7633,13 +9112,13 @@ typedef struct EffectRefPs3 {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct IndexMap_u32__slice_u16Ps3 {
+typedef struct IndexMap_u32__ref_slice_u16Ps3 {
   uint64_t align;
   uint8_t pad[64];
-} IndexMap_u32__slice_u16Ps3;
+} IndexMap_u32__ref_slice_u16Ps3;
 
 typedef struct LangStringsRefPs3 {
-  struct IndexMap_u32__slice_u16Ps3 strings;
+  struct IndexMap_u32__ref_slice_u16Ps3 strings;
 } LangStringsRefPs3;
 
 typedef struct DataRefPs3 LuaRefPs3;
@@ -7680,30 +9159,30 @@ typedef struct RadiosityValsInfoPs3 {
 
 typedef struct RadiosityValsRefPs3 {
   const struct RadiosityValsInfoPs3 *info;
-  struct slice_i32Ps3 offs;
+  struct ref_slice_i32Ps3 offs;
 } RadiosityValsRefPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_SSAValPs3 {
+typedef struct ref_slice_SSAValPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_SSAValPs3;
+} ref_slice_SSAValPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_slice_u16Ps3 {
+typedef struct slice_ref_slice_u16Ps3 {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_slice_u16Ps3;
+} slice_ref_slice_u16Ps3;
 
 typedef struct SSARefPs3 {
-  struct slice_SSAValPs3 vals;
-  struct owned_slice_slice_u16Ps3 strings;
+  struct ref_slice_SSAValPs3 vals;
+  struct slice_ref_slice_u16Ps3 strings;
 } SSARefPs3;
 
 /**
@@ -7763,24 +9242,24 @@ typedef struct TypeHeaderPs3 {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_TypeFieldPs3 {
+typedef struct ref_slice_TypeFieldPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_TypeFieldPs3;
+} ref_slice_TypeFieldPs3;
 
 typedef struct TypeRefPs3 {
   const struct TypeHeaderPs3 *header;
-  struct slice_TypeFieldPs3 fields;
+  struct ref_slice_TypeFieldPs3 fields;
 } TypeRefPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_FoliageRefPs3 {
+typedef struct slice_FoliageRefPs3 {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_FoliageRefPs3;
+} slice_FoliageRefPs3;
 
 /**
  *gen_ffi:export
@@ -7814,28 +9293,28 @@ typedef struct Matrix4x4Ps3 {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_U32Ps3 {
+typedef struct ref_slice_U32Ps3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_U32Ps3;
+} ref_slice_U32Ps3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Vector4Ps3 {
+typedef struct ref_slice_Vector4Ps3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_Vector4Ps3;
+} ref_slice_Vector4Ps3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_WeightPs3 {
+typedef struct ref_slice_WeightPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_WeightPs3;
+} ref_slice_WeightPs3;
 
 enum BaseTypeRefPs3_Tag {
   BaseTypeRefPs3_Crc,
@@ -7896,25 +9375,25 @@ typedef struct BaseTypeRefPs3 {
       struct string string;
     };
     struct {
-      struct owned_slice_string string_list;
+      struct slice_string string_list;
     };
     struct {
-      struct slice_U32Ps3 object_list;
+      struct ref_slice_U32Ps3 object_list;
     };
     struct {
-      struct slice_Vector4Ps3 node_list;
+      struct ref_slice_Vector4Ps3 node_list;
     };
     struct {
-      struct slice_i32Ps3 int_list;
+      struct ref_slice_i32Ps3 int_list;
     };
     struct {
-      struct slice_U32Ps3 crc_list;
+      struct ref_slice_U32Ps3 crc_list;
     };
     struct {
-      struct slice_WeightPs3 weight_list;
+      struct ref_slice_WeightPs3 weight_list;
     };
     struct {
-      struct slice_Matrix4x4Ps3 matrix_list;
+      struct ref_slice_Matrix4x4Ps3 matrix_list;
     };
   };
 } BaseTypeRefPs3;
@@ -7944,27 +9423,27 @@ typedef struct BlockHeader2Ps3 {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_BlockValAPs3 {
+typedef struct ref_slice_BlockValAPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_BlockValAPs3;
+} ref_slice_BlockValAPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_BlockValBPs3 {
+typedef struct ref_slice_BlockValBPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_BlockValBPs3;
+} ref_slice_BlockValBPs3;
 
 typedef struct BlockRefPs3 {
   const struct BlockHeader1Ps3 *info1;
   const struct BlockHeader2Ps3 *info2;
-  struct slice_BlockValAPs3 vals_a;
-  struct slice_BlockValAPs3 vals_b;
-  struct slice_BlockValBPs3 vals_c;
-  struct slice_u8 pad;
+  struct ref_slice_BlockValAPs3 vals_a;
+  struct ref_slice_BlockValAPs3 vals_b;
+  struct ref_slice_BlockValBPs3 vals_c;
+  struct ref_slice_u8 pad;
 } BlockRefPs3;
 
 /**
@@ -8015,15 +9494,15 @@ typedef struct Option_ShapeExtraRefPs3 {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_HkShapeRefPs3 {
+typedef struct slice_HkShapeRefPs3 {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_HkShapeRefPs3;
+} slice_HkShapeRefPs3;
 
 typedef struct ShapeRefPs3 {
   const struct ShapeInfoPs3 *info;
   struct Option_ShapeExtraRefPs3 extra;
-  struct owned_slice_HkShapeRefPs3 hk_shapes;
+  struct slice_HkShapeRefPs3 hk_shapes;
 } ShapeRefPs3;
 
 /**
@@ -8120,15 +9599,15 @@ typedef struct ConvexVerticesInfoPs3 {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_Vector3Ps3 {
+typedef struct ref_slice_Vector3Ps3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_Vector3Ps3;
+} ref_slice_Vector3Ps3;
 
 typedef struct ConvexVerticesRefPs3 {
   const struct ConvexVerticesInfoPs3 *info;
-  struct slice_Vector4Ps3 norms;
-  struct slice_Vector3Ps3 verts;
+  struct ref_slice_Vector4Ps3 norms;
+  struct ref_slice_Vector3Ps3 verts;
 } ConvexVerticesRefPs3;
 
 /**
@@ -8151,9 +9630,9 @@ typedef struct BVTreeMeshInfoPs3 {
 
 typedef struct BVTreeMeshRefPs3 {
   const struct BVTreeMeshInfoPs3 *info;
-  struct slice_u8 tree;
-  struct slice_Vector3Ps3 verts;
-  struct slice_u16Ps3 inds;
+  struct ref_slice_u8 tree;
+  struct ref_slice_Vector3Ps3 verts;
+  struct ref_slice_u16Ps3 inds;
 } BVTreeMeshRefPs3;
 
 /**
@@ -8241,47 +9720,47 @@ typedef struct FoliageInfoPs3 {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_FoliageValPs3 {
+typedef struct ref_slice_FoliageValPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_FoliageValPs3;
+} ref_slice_FoliageValPs3;
 
 typedef struct FoliageRefPs3 {
   const struct FoliageInfoPs3 *info;
-  struct slice_FoliageValPs3 vals;
+  struct ref_slice_FoliageValPs3 vals;
 } FoliageRefPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_BlockValARefPs3 {
+typedef struct slice_BlockValARefPs3 {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_BlockValARefPs3;
+} slice_BlockValARefPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_Obj1RefPs3 {
+typedef struct slice_Obj1RefPs3 {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_Obj1RefPs3;
+} slice_Obj1RefPs3;
 
 typedef struct BlockValRefPs3 {
-  struct owned_slice_BlockValARefPs3 vals_a;
-  struct owned_slice_Obj1RefPs3 vals_b;
+  struct slice_BlockValARefPs3 vals_a;
+  struct slice_Obj1RefPs3 vals_b;
 } BlockValRefPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_BlockValRefPs3 {
+typedef struct slice_BlockValRefPs3 {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_BlockValRefPs3;
+} slice_BlockValRefPs3;
 
 /**
  *gen_ffi:export
@@ -8300,25 +9779,25 @@ typedef struct CrowdItemHeaderPs3 {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_CrowdValPs3 {
+typedef struct ref_slice_CrowdValPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_CrowdValPs3;
+} ref_slice_CrowdValPs3;
 
 typedef struct CrowdItemRefPs3 {
   const struct CrowdItemHeaderPs3 *header;
-  struct slice_CrcPs3 animations;
-  struct slice_CrowdValPs3 instances;
+  struct ref_slice_CrcPs3 animations;
+  struct ref_slice_CrowdValPs3 instances;
 } CrowdItemRefPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_CrowdItemRefPs3 {
+typedef struct slice_CrowdItemRefPs3 {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_CrowdItemRefPs3;
+} slice_CrowdItemRefPs3;
 
 /**
  *gen_ffi:export
@@ -8333,19 +9812,19 @@ typedef struct HkConstraintBoneRefPs3 {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct owned_slice_HkConstraintBoneRefPs3 {
+typedef struct slice_HkConstraintBoneRefPs3 {
   uint64_t align;
   uint8_t pad[8];
-} owned_slice_HkConstraintBoneRefPs3;
+} slice_HkConstraintBoneRefPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_f32Ps3 {
+typedef struct ref_slice_f32Ps3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_f32Ps3;
+} ref_slice_f32Ps3;
 
 enum AnimVals1RefPs3_Tag {
   AnimVals1RefPs3_Type1,
@@ -8359,16 +9838,16 @@ typedef struct AnimVals1RefPs3 {
   AnimVals1RefPs3_Tag tag;
   union {
     struct {
-      struct slice_u8 type1;
+      struct ref_slice_u8 type1;
     };
     struct {
-      struct slice_u16Ps3 type2;
+      struct ref_slice_u16Ps3 type2;
     };
     struct {
-      struct slice_u16Ps3 type3;
+      struct ref_slice_u16Ps3 type3;
     };
     struct {
-      struct slice_u16Ps3 type4;
+      struct ref_slice_u16Ps3 type4;
     };
   };
 } AnimVals1RefPs3;
@@ -8377,8 +9856,8 @@ typedef struct Obj1RefPs3 {
   uint8_t flags;
   uint8_t s2;
   u16Ps3 s1;
-  struct slice_u8 data;
-  struct slice_f32Ps3 vals_a;
+  struct ref_slice_u8 data;
+  struct ref_slice_f32Ps3 vals_a;
   struct AnimVals1RefPs3 vals;
   uintptr_t size;
 } Obj1RefPs3;
@@ -8387,55 +9866,55 @@ typedef struct Obj1RefPs3 {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_RotationPolar32Ps3 {
+typedef struct ref_slice_RotationPolar32Ps3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_RotationPolar32Ps3;
+} ref_slice_RotationPolar32Ps3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_RotationThreeComp40Ps3 {
+typedef struct ref_slice_RotationThreeComp40Ps3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_RotationThreeComp40Ps3;
+} ref_slice_RotationThreeComp40Ps3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_RotationThreeComp48Ps3 {
+typedef struct ref_slice_RotationThreeComp48Ps3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_RotationThreeComp48Ps3;
+} ref_slice_RotationThreeComp48Ps3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_RotationThreeComp24Ps3 {
+typedef struct ref_slice_RotationThreeComp24Ps3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_RotationThreeComp24Ps3;
+} ref_slice_RotationThreeComp24Ps3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_RotationStraight16Ps3 {
+typedef struct ref_slice_RotationStraight16Ps3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_RotationStraight16Ps3;
+} ref_slice_RotationStraight16Ps3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_RotationUncompressedPs3 {
+typedef struct ref_slice_RotationUncompressedPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_RotationUncompressedPs3;
+} ref_slice_RotationUncompressedPs3;
 
 enum RotationQuantizationRefPs3_Tag {
   RotationQuantizationRefPs3_Polar32,
@@ -8451,22 +9930,22 @@ typedef struct RotationQuantizationRefPs3 {
   RotationQuantizationRefPs3_Tag tag;
   union {
     struct {
-      struct slice_RotationPolar32Ps3 polar32;
+      struct ref_slice_RotationPolar32Ps3 polar32;
     };
     struct {
-      struct slice_RotationThreeComp40Ps3 three_comp40;
+      struct ref_slice_RotationThreeComp40Ps3 three_comp40;
     };
     struct {
-      struct slice_RotationThreeComp48Ps3 three_comp48;
+      struct ref_slice_RotationThreeComp48Ps3 three_comp48;
     };
     struct {
-      struct slice_RotationThreeComp24Ps3 three_comp24;
+      struct ref_slice_RotationThreeComp24Ps3 three_comp24;
     };
     struct {
-      struct slice_RotationStraight16Ps3 straight16;
+      struct ref_slice_RotationStraight16Ps3 straight16;
     };
     struct {
-      struct slice_RotationUncompressedPs3 uncompressed;
+      struct ref_slice_RotationUncompressedPs3 uncompressed;
     };
   };
 } RotationQuantizationRefPs3;
@@ -8475,7 +9954,7 @@ typedef struct Obj2RefPs3 {
   uint8_t flags;
   uint8_t s2;
   u16Ps3 s1;
-  struct slice_u8 data;
+  struct ref_slice_u8 data;
   struct RotationQuantizationRefPs3 vals;
   uintptr_t size;
 } Obj2RefPs3;
@@ -8794,10 +10273,10 @@ typedef struct AtlasUVValPs3 {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_AtlasUVValPs3 {
+typedef struct ref_slice_AtlasUVValPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_AtlasUVValPs3;
+} ref_slice_AtlasUVValPs3;
 
 /**
  *gen_ffi:export
@@ -8826,10 +10305,10 @@ typedef struct SprayInstancePs3 {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_SprayInstancePs3 {
+typedef struct ref_slice_SprayInstancePs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_SprayInstancePs3;
+} ref_slice_SprayInstancePs3;
 
 /**
  *gen_ffi:export
@@ -8845,10 +10324,10 @@ typedef struct SprayValPs3 {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_SprayValPs3 {
+typedef struct ref_slice_SprayValPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_SprayValPs3;
+} ref_slice_SprayValPs3;
 
 /**
  *gen_ffi:export
@@ -8863,19 +10342,19 @@ typedef struct TRSPs3 {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_TRSPs3 {
+typedef struct ref_slice_TRSPs3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_TRSPs3;
+} ref_slice_TRSPs3;
 
 /**
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct slice_i16Ps3 {
+typedef struct ref_slice_i16Ps3 {
   uint64_t align;
   uint8_t pad[8];
-} slice_i16Ps3;
+} ref_slice_i16Ps3;
 
 /**
  *gen_ffi:export
@@ -8945,13 +10424,13 @@ typedef struct RotationUncompressedPs3 {
  */
 typedef struct HkConstraintRefPs3 {
   const struct HkConstraintInfoPs3 *info;
-  struct slice_i16Ps3 bone_parents;
-  struct owned_slice_HkConstraintBoneRefPs3 bone_names;
-  struct slice_u32Ps3 name_offsets;
-  struct slice_TRSPs3 bone_transforms;
-  struct slice_u32Ps3 bones;
-  struct slice_Key2Ps3 bones_order;
-  struct slice_f32Ps3 vals2;
+  struct ref_slice_i16Ps3 bone_parents;
+  struct slice_HkConstraintBoneRefPs3 bone_names;
+  struct ref_slice_u32Ps3 name_offsets;
+  struct ref_slice_TRSPs3 bone_transforms;
+  struct ref_slice_u32Ps3 bones;
+  struct ref_slice_Key2Ps3 bones_order;
+  struct ref_slice_f32Ps3 vals2;
 } HkConstraintRefPs3;
 
 /**
@@ -8966,20 +10445,20 @@ typedef struct ShapeExtraInfoPs3 {
 
 typedef struct ShapeExtraRefPs3 {
   const struct ShapeExtraInfoPs3 *info;
-  struct slice_u32Ps3 offs;
-  struct slice_u8 data;
+  struct ref_slice_u32Ps3 offs;
+  struct ref_slice_u8 data;
 } ShapeExtraRefPs3;
 
 typedef struct AtlasUVRefPs3 {
-  struct slice_AtlasUVValPs3 vals;
+  struct ref_slice_AtlasUVValPs3 vals;
 } AtlasUVRefPs3;
 
 typedef struct BlocksRefPs3 {
-  struct slice_u32Ps3 block_starts;
-  struct slice_u32Ps3 block_starts2;
-  struct slice_u32Ps3 obj_c3;
-  struct slice_u32Ps3 obj_c4;
-  struct owned_slice_BlockValRefPs3 blocks;
+  struct ref_slice_u32Ps3 block_starts;
+  struct ref_slice_u32Ps3 block_starts2;
+  struct ref_slice_u32Ps3 obj_c3;
+  struct ref_slice_u32Ps3 obj_c4;
+  struct slice_BlockValRefPs3 blocks;
 } BlocksRefPs3;
 
 /**
@@ -8992,49 +10471,47 @@ typedef struct CrowdHeaderPs3 {
 
 typedef struct CrowdRefPs3 {
   const struct CrowdHeaderPs3 *header;
-  struct slice_u32Ps3 offs;
-  struct owned_slice_CrowdItemRefPs3 vals;
+  struct ref_slice_u32Ps3 offs;
+  struct slice_CrowdItemRefPs3 vals;
 } CrowdRefPs3;
 
 typedef struct DataRefPs3 PFieldsRefPs3;
 
 typedef struct SprayRefPs3 {
-  struct slice_SprayInstancePs3 instances;
-  struct slice_SprayValPs3 vals;
+  struct ref_slice_SprayInstancePs3 instances;
+  struct ref_slice_SprayValPs3 vals;
 } SprayRefPs3;
 
-struct LevelData *LevelData_read_data(const char *path);
+struct LevelData *OwnedLevelData_get(struct OwnedLevelData *val);
+
+void OwnedLevelData_free(struct OwnedLevelData *val);
+
+struct OwnedLevelData *LevelData_read_data(const char *path);
 
 Version LevelData_version(const struct LevelData *src);
 
-void LevelData_free(struct LevelData *val);
+struct OwnedLevelCompressedData *LevelCompressedData_new(void);
 
-struct LevelCompressedData *LevelCompressedData_new(void);
-
-void LevelCompressedData_free(struct LevelCompressedData *val);
-
-struct LevelRefPc *LevelRefPc_from_data(const struct LevelData *src,
-                                        struct LevelCompressedData *data);
+struct OwnedLevelRefPc *LevelRefPc_from_data(const struct LevelData *src,
+                                             struct LevelCompressedData *data);
 
 struct LevelData *LevelRefPc_dump(const struct LevelRefPc *src, uint32_t compression);
 
-void LevelRefPc_free(struct LevelRefPc *val);
-
-struct LevelRefXbox *LevelRefXbox_from_data(const struct LevelData *src,
-                                            struct LevelCompressedData *data);
+struct OwnedLevelRefXbox *LevelRefXbox_from_data(const struct LevelData *src,
+                                                 struct LevelCompressedData *data);
 
 struct LevelData *LevelRefXbox_dump(const struct LevelRefXbox *src, uint32_t compression);
 
-void LevelRefXbox_free(struct LevelRefXbox *val);
-
-struct LevelRefPs3 *LevelRefPs3_from_data(const struct LevelData *src,
-                                          struct LevelCompressedData *data);
+struct OwnedLevelRefPs3 *LevelRefPs3_from_data(const struct LevelData *src,
+                                               struct LevelCompressedData *data);
 
 struct LevelData *LevelRefPs3_dump(const struct LevelRefPs3 *src, uint32_t compression);
 
-void LevelRefPs3_free(struct LevelRefPs3 *val);
+struct InfoCounts *OwnedInfoCounts_get(struct OwnedInfoCounts *val);
 
-struct InfoCounts *InfoCounts_new(void);
+void OwnedInfoCounts_free(struct OwnedInfoCounts *val);
+
+struct OwnedInfoCounts *InfoCounts_new(void);
 
 uintptr_t InfoCounts_size_pc(const struct InfoCounts *counts);
 
@@ -9042,26 +10519,30 @@ uintptr_t InfoCounts_size_xbox(const struct InfoCounts *counts);
 
 uintptr_t InfoCounts_size_ps3(const struct InfoCounts *counts);
 
-struct DumpInfosPc *DumpInfosPc_from_data(struct DumpSlice *dst,
-                                          const struct InfoCounts *counts,
-                                          u32Pc *offsets);
+struct OwnedDumpInfosPc *DumpInfosPc_from_data(struct DumpSlice *dst,
+                                               const struct InfoCounts *counts,
+                                               struct mut_slice_u32Pc *offsets);
 
-struct DumpInfosXbox *DumpInfosXbox_from_data(struct DumpSlice *dst,
-                                              const struct InfoCounts *counts,
-                                              u32Xbox *offsets);
+struct OwnedDumpInfosXbox *DumpInfosXbox_from_data(struct DumpSlice *dst,
+                                                   const struct InfoCounts *counts,
+                                                   struct mut_slice_u32Xbox *offsets);
 
-struct DumpInfosPs3 *DumpInfosPs3_from_data(struct DumpSlice *dst,
-                                            const struct InfoCounts *counts,
-                                            u32Ps3 *offsets);
+struct OwnedDumpInfosPs3 *DumpInfosPs3_from_data(struct DumpSlice *dst,
+                                                 const struct InfoCounts *counts,
+                                                 struct mut_slice_u32Ps3 *offsets);
 
-struct owned_slice______CompressedDataRef *AnimationsRefPc_dump(const struct AnimationsRefPc *anims,
-                                                                struct DumpInfosPc *infos);
+struct OwnedVecCompressedData *AnimationsRefPc_dump(const struct AnimationsRefPc *anims,
+                                                    struct DumpInfosPc *infos);
 
-struct owned_slice______CompressedDataRef *AnimationsRefXbox_dump(const struct AnimationsRefXbox *anims,
-                                                                  struct DumpInfosXbox *infos);
+struct OwnedVecCompressedData *AnimationsRefXbox_dump(const struct AnimationsRefXbox *anims,
+                                                      struct DumpInfosXbox *infos);
 
-struct owned_slice______CompressedDataRef *AnimationsRefPs3_dump(const struct AnimationsRefPs3 *anims,
-                                                                 struct DumpInfosPs3 *infos);
+struct OwnedVecCompressedData *AnimationsRefPs3_dump(const struct AnimationsRefPs3 *anims,
+                                                     struct DumpInfosPs3 *infos);
+
+struct AlignedBuf *OwnedAlignedBuf_get(struct OwnedAlignedBuf *val);
+
+void OwnedAlignedBuf_free(struct OwnedAlignedBuf *val);
 
 const uint8_t *string_get(const struct string *string);
 
@@ -9073,14 +10554,15 @@ const struct CompressedDataRef *IndexMap_u32__CompressedDataRef_get(const struct
 uintptr_t IndexMap_u32__CompressedDataRef_len(const struct IndexMap_u32__CompressedDataRef *map);
 
 void IndexMap_u32__CompressedDataRef_keys(const struct IndexMap_u32__CompressedDataRef *map,
-                                          uint32_t *keys);
+                                          struct mut_slice_u32 *keys);
 
-const struct slice_u8 *IndexMap_u32__slice_u8_get(const struct IndexMap_u32__slice_u8 *map,
-                                                  const uint32_t *key);
+const struct ref_slice_u8 *IndexMap_u32__ref_slice_u8_get(const struct IndexMap_u32__ref_slice_u8 *map,
+                                                          const uint32_t *key);
 
-uintptr_t IndexMap_u32__slice_u8_len(const struct IndexMap_u32__slice_u8 *map);
+uintptr_t IndexMap_u32__ref_slice_u8_len(const struct IndexMap_u32__ref_slice_u8 *map);
 
-void IndexMap_u32__slice_u8_keys(const struct IndexMap_u32__slice_u8 *map, uint32_t *keys);
+void IndexMap_u32__ref_slice_u8_keys(const struct IndexMap_u32__ref_slice_u8 *map,
+                                     struct mut_slice_u32 *keys);
 
 const struct CompressedDataRef *const *IndexMap_u32_______CompressedDataRef_get(const struct IndexMap_u32_______CompressedDataRef *map,
                                                                                 const uint32_t *key);
@@ -9088,7 +10570,7 @@ const struct CompressedDataRef *const *IndexMap_u32_______CompressedDataRef_get(
 uintptr_t IndexMap_u32_______CompressedDataRef_len(const struct IndexMap_u32_______CompressedDataRef *map);
 
 void IndexMap_u32_______CompressedDataRef_keys(const struct IndexMap_u32_______CompressedDataRef *map,
-                                               uint32_t *keys);
+                                               struct mut_slice_u32 *keys);
 
 const struct VertexDataIndex *IndexMap_VertexUsage__VertexDataIndex_get(const struct IndexMap_VertexUsage__VertexDataIndex *map,
                                                                         const struct VertexUsage *key);
@@ -9096,34 +10578,58 @@ const struct VertexDataIndex *IndexMap_VertexUsage__VertexDataIndex_get(const st
 uintptr_t IndexMap_VertexUsage__VertexDataIndex_len(const struct IndexMap_VertexUsage__VertexDataIndex *map);
 
 void IndexMap_VertexUsage__VertexDataIndex_keys(const struct IndexMap_VertexUsage__VertexDataIndex *map,
-                                                struct VertexUsage *keys);
+                                                struct mut_slice_VertexUsage *keys);
 
-const uint8_t *slice_u8_get(const struct slice_u8 *slice, uintptr_t idx);
+const uint8_t *ref_slice_u8_get(const struct ref_slice_u8 *slice, uintptr_t idx);
 
-uintptr_t slice_u8_len(const struct slice_u8 *slice);
+uintptr_t ref_slice_u8_len(const struct ref_slice_u8 *slice);
 
-const struct string *owned_slice_string_get(const struct owned_slice_string *slice, uintptr_t idx);
+const uint32_t *ref_slice_u32_get(const struct ref_slice_u32 *slice, uintptr_t idx);
 
-uintptr_t owned_slice_string_len(const struct owned_slice_string *slice);
+uintptr_t ref_slice_u32_len(const struct ref_slice_u32 *slice);
 
-const struct CompressedDataRef *owned_slice_CompressedDataRef_get(const struct owned_slice_CompressedDataRef *slice,
-                                                                  uintptr_t idx);
+const struct VertexUsage *ref_slice_VertexUsage_get(const struct ref_slice_VertexUsage *slice,
+                                                    uintptr_t idx);
 
-uintptr_t owned_slice_CompressedDataRef_len(const struct owned_slice_CompressedDataRef *slice);
+uintptr_t ref_slice_VertexUsage_len(const struct ref_slice_VertexUsage *slice);
 
-const struct AlignmentHelper *owned_slice_AlignmentHelper_get(const struct owned_slice_AlignmentHelper *slice,
-                                                              uintptr_t idx);
+uint8_t *mut_slice_u8_get(struct mut_slice_u8 *slice, uintptr_t idx);
 
-uintptr_t owned_slice_AlignmentHelper_len(const struct owned_slice_AlignmentHelper *slice);
+uintptr_t mut_slice_u8_len(const struct slice_u8 *slice);
 
-const struct CompressedDataRef *const *owned_slice______CompressedDataRef_get(const struct owned_slice______CompressedDataRef *slice,
-                                                                              uintptr_t idx);
+struct VertexUsage *mut_slice_VertexUsage_get(struct mut_slice_VertexUsage *slice, uintptr_t idx);
 
-uintptr_t owned_slice______CompressedDataRef_len(const struct owned_slice______CompressedDataRef *slice);
+uintptr_t mut_slice_VertexUsage_len(const struct slice_VertexUsage *slice);
 
-struct AlignedBuf *AlignedBuf_with_capacity(uintptr_t size);
+uint32_t *mut_slice_u32_get(struct mut_slice_u32 *slice, uintptr_t idx);
 
-void AlignedBuf_free(struct AlignedBuf *val);
+uintptr_t mut_slice_u32_len(const struct slice_u32 *slice);
+
+const struct string *slice_string_get(const struct slice_string *slice, uintptr_t idx);
+
+uintptr_t slice_string_len(const struct slice_string *slice);
+
+const struct CompressedDataRef *slice_CompressedDataRef_get(const struct slice_CompressedDataRef *slice,
+                                                            uintptr_t idx);
+
+uintptr_t slice_CompressedDataRef_len(const struct slice_CompressedDataRef *slice);
+
+const struct AlignmentHelper *slice_AlignmentHelper_get(const struct slice_AlignmentHelper *slice,
+                                                        uintptr_t idx);
+
+uintptr_t slice_AlignmentHelper_len(const struct slice_AlignmentHelper *slice);
+
+const struct CompressedDataRef *const *slice______CompressedDataRef_get(const struct slice______CompressedDataRef *slice,
+                                                                        uintptr_t idx);
+
+uintptr_t slice______CompressedDataRef_len(const struct slice______CompressedDataRef *slice);
+
+const struct CompressedDataRef *ref_slice_CompressedDataRef_get(const struct slice_CompressedDataRef *slice,
+                                                                uintptr_t idx);
+
+uintptr_t ref_slice_CompressedDataRef_len(const struct slice_CompressedDataRef *slice);
+
+struct OwnedAlignedBuf *AlignedBuf_with_capacity(uintptr_t size);
 
 const struct IndexBufferRefPc *IndexMap_u32__IndexBufferRefPc_get(const struct IndexMap_u32__IndexBufferRefPc *map,
                                                                   const uint32_t *key);
@@ -9131,7 +10637,7 @@ const struct IndexBufferRefPc *IndexMap_u32__IndexBufferRefPc_get(const struct I
 uintptr_t IndexMap_u32__IndexBufferRefPc_len(const struct IndexMap_u32__IndexBufferRefPc *map);
 
 void IndexMap_u32__IndexBufferRefPc_keys(const struct IndexMap_u32__IndexBufferRefPc *map,
-                                         uint32_t *keys);
+                                         struct mut_slice_u32 *keys);
 
 const struct VertexBufferRefPc *IndexMap_u32__VertexBufferRefPc_get(const struct IndexMap_u32__VertexBufferRefPc *map,
                                                                     const uint32_t *key);
@@ -9139,21 +10645,23 @@ const struct VertexBufferRefPc *IndexMap_u32__VertexBufferRefPc_get(const struct
 uintptr_t IndexMap_u32__VertexBufferRefPc_len(const struct IndexMap_u32__VertexBufferRefPc *map);
 
 void IndexMap_u32__VertexBufferRefPc_keys(const struct IndexMap_u32__VertexBufferRefPc *map,
-                                          uint32_t *keys);
+                                          struct mut_slice_u32 *keys);
 
 const struct MatRefPc *IndexMap_u32__MatRefPc_get(const struct IndexMap_u32__MatRefPc *map,
                                                   const uint32_t *key);
 
 uintptr_t IndexMap_u32__MatRefPc_len(const struct IndexMap_u32__MatRefPc *map);
 
-void IndexMap_u32__MatRefPc_keys(const struct IndexMap_u32__MatRefPc *map, uint32_t *keys);
+void IndexMap_u32__MatRefPc_keys(const struct IndexMap_u32__MatRefPc *map,
+                                 struct mut_slice_u32 *keys);
 
 const struct ModelRefPc *IndexMap_u32__ModelRefPc_get(const struct IndexMap_u32__ModelRefPc *map,
                                                       const uint32_t *key);
 
 uintptr_t IndexMap_u32__ModelRefPc_len(const struct IndexMap_u32__ModelRefPc *map);
 
-void IndexMap_u32__ModelRefPc_keys(const struct IndexMap_u32__ModelRefPc *map, uint32_t *keys);
+void IndexMap_u32__ModelRefPc_keys(const struct IndexMap_u32__ModelRefPc *map,
+                                   struct mut_slice_u32 *keys);
 
 const struct IBuffInfoPc *const *IndexMap_u32_______IBuffInfoPc_get(const struct IndexMap_u32_______IBuffInfoPc *map,
                                                                     const uint32_t *key);
@@ -9161,7 +10669,7 @@ const struct IBuffInfoPc *const *IndexMap_u32_______IBuffInfoPc_get(const struct
 uintptr_t IndexMap_u32_______IBuffInfoPc_len(const struct IndexMap_u32_______IBuffInfoPc *map);
 
 void IndexMap_u32_______IBuffInfoPc_keys(const struct IndexMap_u32_______IBuffInfoPc *map,
-                                         uint32_t *keys);
+                                         struct mut_slice_u32 *keys);
 
 const struct VBuffInfoPc *const *IndexMap_u32_______VBuffInfoPc_get(const struct IndexMap_u32_______VBuffInfoPc *map,
                                                                     const uint32_t *key);
@@ -9169,7 +10677,7 @@ const struct VBuffInfoPc *const *IndexMap_u32_______VBuffInfoPc_get(const struct
 uintptr_t IndexMap_u32_______VBuffInfoPc_len(const struct IndexMap_u32_______VBuffInfoPc *map);
 
 void IndexMap_u32_______VBuffInfoPc_keys(const struct IndexMap_u32_______VBuffInfoPc *map,
-                                         uint32_t *keys);
+                                         struct mut_slice_u32 *keys);
 
 const struct AnimationRefPc *IndexMap_u32__AnimationRefPc_get(const struct IndexMap_u32__AnimationRefPc *map,
                                                               const uint32_t *key);
@@ -9177,21 +10685,23 @@ const struct AnimationRefPc *IndexMap_u32__AnimationRefPc_get(const struct Index
 uintptr_t IndexMap_u32__AnimationRefPc_len(const struct IndexMap_u32__AnimationRefPc *map);
 
 void IndexMap_u32__AnimationRefPc_keys(const struct IndexMap_u32__AnimationRefPc *map,
-                                       uint32_t *keys);
+                                       struct mut_slice_u32 *keys);
 
 const struct DataRefPc *IndexMap_u32__DataRefPc_get(const struct IndexMap_u32__DataRefPc *map,
                                                     const uint32_t *key);
 
 uintptr_t IndexMap_u32__DataRefPc_len(const struct IndexMap_u32__DataRefPc *map);
 
-void IndexMap_u32__DataRefPc_keys(const struct IndexMap_u32__DataRefPc *map, uint32_t *keys);
+void IndexMap_u32__DataRefPc_keys(const struct IndexMap_u32__DataRefPc *map,
+                                  struct mut_slice_u32 *keys);
 
 const struct EffectRefPc *IndexMap_u32__EffectRefPc_get(const struct IndexMap_u32__EffectRefPc *map,
                                                         const uint32_t *key);
 
 uintptr_t IndexMap_u32__EffectRefPc_len(const struct IndexMap_u32__EffectRefPc *map);
 
-void IndexMap_u32__EffectRefPc_keys(const struct IndexMap_u32__EffectRefPc *map, uint32_t *keys);
+void IndexMap_u32__EffectRefPc_keys(const struct IndexMap_u32__EffectRefPc *map,
+                                    struct mut_slice_u32 *keys);
 
 const struct LangStringsRefPc *IndexMap_u32__LangStringsRefPc_get(const struct IndexMap_u32__LangStringsRefPc *map,
                                                                   const uint32_t *key);
@@ -9199,21 +10709,23 @@ const struct LangStringsRefPc *IndexMap_u32__LangStringsRefPc_get(const struct I
 uintptr_t IndexMap_u32__LangStringsRefPc_len(const struct IndexMap_u32__LangStringsRefPc *map);
 
 void IndexMap_u32__LangStringsRefPc_keys(const struct IndexMap_u32__LangStringsRefPc *map,
-                                         uint32_t *keys);
+                                         struct mut_slice_u32 *keys);
 
 const LuaRefPc *IndexMap_u32__LuaRefPc_get(const struct IndexMap_u32__LuaRefPc *map,
                                            const uint32_t *key);
 
 uintptr_t IndexMap_u32__LuaRefPc_len(const struct IndexMap_u32__LuaRefPc *map);
 
-void IndexMap_u32__LuaRefPc_keys(const struct IndexMap_u32__LuaRefPc *map, uint32_t *keys);
+void IndexMap_u32__LuaRefPc_keys(const struct IndexMap_u32__LuaRefPc *map,
+                                 struct mut_slice_u32 *keys);
 
 const struct ObjRefPc *IndexMap_u32__ObjRefPc_get(const struct IndexMap_u32__ObjRefPc *map,
                                                   const uint32_t *key);
 
 uintptr_t IndexMap_u32__ObjRefPc_len(const struct IndexMap_u32__ObjRefPc *map);
 
-void IndexMap_u32__ObjRefPc_keys(const struct IndexMap_u32__ObjRefPc *map, uint32_t *keys);
+void IndexMap_u32__ObjRefPc_keys(const struct IndexMap_u32__ObjRefPc *map,
+                                 struct mut_slice_u32 *keys);
 
 const struct RadiosityValsRefPc *IndexMap_u32__RadiosityValsRefPc_get(const struct IndexMap_u32__RadiosityValsRefPc *map,
                                                                       const uint32_t *key);
@@ -9221,36 +10733,39 @@ const struct RadiosityValsRefPc *IndexMap_u32__RadiosityValsRefPc_get(const stru
 uintptr_t IndexMap_u32__RadiosityValsRefPc_len(const struct IndexMap_u32__RadiosityValsRefPc *map);
 
 void IndexMap_u32__RadiosityValsRefPc_keys(const struct IndexMap_u32__RadiosityValsRefPc *map,
-                                           uint32_t *keys);
+                                           struct mut_slice_u32 *keys);
 
 const struct SSARefPc *IndexMap_u32__SSARefPc_get(const struct IndexMap_u32__SSARefPc *map,
                                                   const uint32_t *key);
 
 uintptr_t IndexMap_u32__SSARefPc_len(const struct IndexMap_u32__SSARefPc *map);
 
-void IndexMap_u32__SSARefPc_keys(const struct IndexMap_u32__SSARefPc *map, uint32_t *keys);
+void IndexMap_u32__SSARefPc_keys(const struct IndexMap_u32__SSARefPc *map,
+                                 struct mut_slice_u32 *keys);
 
 const struct TextureRefPc *IndexMap_u32__TextureRefPc_get(const struct IndexMap_u32__TextureRefPc *map,
                                                           const uint32_t *key);
 
 uintptr_t IndexMap_u32__TextureRefPc_len(const struct IndexMap_u32__TextureRefPc *map);
 
-void IndexMap_u32__TextureRefPc_keys(const struct IndexMap_u32__TextureRefPc *map, uint32_t *keys);
+void IndexMap_u32__TextureRefPc_keys(const struct IndexMap_u32__TextureRefPc *map,
+                                     struct mut_slice_u32 *keys);
 
 const struct TypeRefPc *IndexMap_u32__TypeRefPc_get(const struct IndexMap_u32__TypeRefPc *map,
                                                     const uint32_t *key);
 
 uintptr_t IndexMap_u32__TypeRefPc_len(const struct IndexMap_u32__TypeRefPc *map);
 
-void IndexMap_u32__TypeRefPc_keys(const struct IndexMap_u32__TypeRefPc *map, uint32_t *keys);
+void IndexMap_u32__TypeRefPc_keys(const struct IndexMap_u32__TypeRefPc *map,
+                                  struct mut_slice_u32 *keys);
 
-const struct owned_slice_FoliageRefPc *IndexMap_u32__owned_slice_FoliageRefPc_get(const struct IndexMap_u32__owned_slice_FoliageRefPc *map,
-                                                                                  const uint32_t *key);
+const struct slice_FoliageRefPc *IndexMap_u32__slice_FoliageRefPc_get(const struct IndexMap_u32__slice_FoliageRefPc *map,
+                                                                      const uint32_t *key);
 
-uintptr_t IndexMap_u32__owned_slice_FoliageRefPc_len(const struct IndexMap_u32__owned_slice_FoliageRefPc *map);
+uintptr_t IndexMap_u32__slice_FoliageRefPc_len(const struct IndexMap_u32__slice_FoliageRefPc *map);
 
-void IndexMap_u32__owned_slice_FoliageRefPc_keys(const struct IndexMap_u32__owned_slice_FoliageRefPc *map,
-                                                 uint32_t *keys);
+void IndexMap_u32__slice_FoliageRefPc_keys(const struct IndexMap_u32__slice_FoliageRefPc *map,
+                                           struct mut_slice_u32 *keys);
 
 const struct BaseTypeRefPc *IndexMap_u32__BaseTypeRefPc_get(const struct IndexMap_u32__BaseTypeRefPc *map,
                                                             const uint32_t *key);
@@ -9258,330 +10773,449 @@ const struct BaseTypeRefPc *IndexMap_u32__BaseTypeRefPc_get(const struct IndexMa
 uintptr_t IndexMap_u32__BaseTypeRefPc_len(const struct IndexMap_u32__BaseTypeRefPc *map);
 
 void IndexMap_u32__BaseTypeRefPc_keys(const struct IndexMap_u32__BaseTypeRefPc *map,
-                                      uint32_t *keys);
+                                      struct mut_slice_u32 *keys);
 
-const struct slice_u16Pc *IndexMap_u32__slice_u16Pc_get(const struct IndexMap_u32__slice_u16Pc *map,
-                                                        const uint32_t *key);
+const struct ref_slice_u16Pc *IndexMap_u32__ref_slice_u16Pc_get(const struct IndexMap_u32__ref_slice_u16Pc *map,
+                                                                const uint32_t *key);
 
-uintptr_t IndexMap_u32__slice_u16Pc_len(const struct IndexMap_u32__slice_u16Pc *map);
+uintptr_t IndexMap_u32__ref_slice_u16Pc_len(const struct IndexMap_u32__ref_slice_u16Pc *map);
 
-void IndexMap_u32__slice_u16Pc_keys(const struct IndexMap_u32__slice_u16Pc *map, uint32_t *keys);
+void IndexMap_u32__ref_slice_u16Pc_keys(const struct IndexMap_u32__ref_slice_u16Pc *map,
+                                        struct mut_slice_u32 *keys);
 
-const struct BlockRefPc *owned_slice_BlockRefPc_get(const struct owned_slice_BlockRefPc *slice,
-                                                    uintptr_t idx);
+const struct BlockRefPc *slice_BlockRefPc_get(const struct slice_BlockRefPc *slice, uintptr_t idx);
 
-uintptr_t owned_slice_BlockRefPc_len(const struct owned_slice_BlockRefPc *slice);
+uintptr_t slice_BlockRefPc_len(const struct slice_BlockRefPc *slice);
 
-const struct ShapeRefPc *owned_slice_ShapeRefPc_get(const struct owned_slice_ShapeRefPc *slice,
-                                                    uintptr_t idx);
+const struct ShapeRefPc *slice_ShapeRefPc_get(const struct slice_ShapeRefPc *slice, uintptr_t idx);
 
-uintptr_t owned_slice_ShapeRefPc_len(const struct owned_slice_ShapeRefPc *slice);
+uintptr_t slice_ShapeRefPc_len(const struct slice_ShapeRefPc *slice);
 
-const struct HkShapeRefPc *owned_slice_HkShapeRefPc_get(const struct owned_slice_HkShapeRefPc *slice,
+const struct HkShapeRefPc *owned_slice_HkShapeRefPc_get(const struct slice_HkShapeRefPc *slice,
                                                         uintptr_t idx);
 
-uintptr_t owned_slice_HkShapeRefPc_len(const struct owned_slice_HkShapeRefPc *slice);
+uintptr_t owned_slice_HkShapeRefPc_len(const struct slice_HkShapeRefPc *slice);
 
-const struct FoliageRefPc *owned_slice_FoliageRefPc_get(const struct owned_slice_FoliageRefPc *slice,
+const struct FoliageRefPc *slice_FoliageRefPc_get(const struct slice_FoliageRefPc *slice,
+                                                  uintptr_t idx);
+
+uintptr_t slice_FoliageRefPc_len(const struct slice_FoliageRefPc *slice);
+
+const struct ref_slice_u16Pc *slice_ref_slice_u16Pc_get(const struct slice_ref_slice_u16Pc *slice,
                                                         uintptr_t idx);
 
-uintptr_t owned_slice_FoliageRefPc_len(const struct owned_slice_FoliageRefPc *slice);
+uintptr_t slice_ref_slice_u16Pc_len(const struct slice_ref_slice_u16Pc *slice);
 
-const struct slice_u16Pc *owned_slice_slice_u16Pc_get(const struct owned_slice_slice_u16Pc *slice,
+const struct BlockValRefPc *slice_BlockValRefPc_get(const struct slice_BlockValRefPc *slice,
+                                                    uintptr_t idx);
+
+uintptr_t slice_BlockValRefPc_len(const struct slice_BlockValRefPc *slice);
+
+const struct CrowdItemRefPc *slice_CrowdItemRefPc_get(const struct slice_CrowdItemRefPc *slice,
                                                       uintptr_t idx);
 
-uintptr_t owned_slice_slice_u16Pc_len(const struct owned_slice_slice_u16Pc *slice);
+uintptr_t slice_CrowdItemRefPc_len(const struct slice_CrowdItemRefPc *slice);
 
-const struct BlockValRefPc *owned_slice_BlockValRefPc_get(const struct owned_slice_BlockValRefPc *slice,
+const struct HkConstraintBoneRefPc *slice_HkConstraintBoneRefPc_get(const struct slice_HkConstraintBoneRefPc *slice,
+                                                                    uintptr_t idx);
+
+uintptr_t slice_HkConstraintBoneRefPc_len(const struct slice_HkConstraintBoneRefPc *slice);
+
+const struct BlockValARefPc *slice_BlockValARefPc_get(const struct slice_BlockValARefPc *slice,
+                                                      uintptr_t idx);
+
+uintptr_t slice_BlockValARefPc_len(const struct slice_BlockValARefPc *slice);
+
+const struct Obj1RefPc *slice_Obj1RefPc_get(const struct slice_Obj1RefPc *slice, uintptr_t idx);
+
+uintptr_t slice_Obj1RefPc_len(const struct slice_Obj1RefPc *slice);
+
+const struct HkShapeRefPc *slice_HkShapeRefPc_get(const struct slice_HkShapeRefPc *slice,
+                                                  uintptr_t idx);
+
+uintptr_t slice_HkShapeRefPc_len(const struct slice_HkShapeRefPc *slice);
+
+const struct BoundingBoxPc *ref_slice_BoundingBoxPc_get(const struct ref_slice_BoundingBoxPc *slice,
+                                                        uintptr_t idx);
+
+uintptr_t ref_slice_BoundingBoxPc_len(const struct ref_slice_BoundingBoxPc *slice);
+
+const struct BufferInfoPc *ref_slice_BufferInfoPc_get(const struct ref_slice_BufferInfoPc *slice,
+                                                      uintptr_t idx);
+
+uintptr_t ref_slice_BufferInfoPc_len(const struct ref_slice_BufferInfoPc *slice);
+
+const CrcPc *ref_slice_CrcPc_get(const struct ref_slice_CrcPc *slice, uintptr_t idx);
+
+uintptr_t ref_slice_CrcPc_len(const struct ref_slice_CrcPc *slice);
+
+const struct HkConstraintDataPc *ref_slice_HkConstraintDataPc_get(const struct ref_slice_HkConstraintDataPc *slice,
+                                                                  uintptr_t idx);
+
+uintptr_t ref_slice_HkConstraintDataPc_len(const struct ref_slice_HkConstraintDataPc *slice);
+
+const struct Key2Pc *ref_slice_Key2Pc_get(const struct ref_slice_Key2Pc *slice, uintptr_t idx);
+
+uintptr_t ref_slice_Key2Pc_len(const struct ref_slice_Key2Pc *slice);
+
+const struct Matrix4x4Pc *ref_slice_Matrix4x4Pc_get(const struct ref_slice_Matrix4x4Pc *slice,
+                                                    uintptr_t idx);
+
+uintptr_t ref_slice_Matrix4x4Pc_len(const struct ref_slice_Matrix4x4Pc *slice);
+
+const struct Vector3Pc *ref_slice_Vector3Pc_get(const struct ref_slice_Vector3Pc *slice,
+                                                uintptr_t idx);
+
+uintptr_t ref_slice_Vector3Pc_len(const struct ref_slice_Vector3Pc *slice);
+
+const struct Vector4Pc *ref_slice_Vector4Pc_get(const struct ref_slice_Vector4Pc *slice,
+                                                uintptr_t idx);
+
+uintptr_t ref_slice_Vector4Pc_len(const struct ref_slice_Vector4Pc *slice);
+
+const i32Pc *ref_slice_i32Pc_get(const struct ref_slice_i32Pc *slice, uintptr_t idx);
+
+uintptr_t ref_slice_i32Pc_len(const struct ref_slice_i32Pc *slice);
+
+const u16Pc *ref_slice_u16Pc_get(const struct ref_slice_u16Pc *slice, uintptr_t idx);
+
+uintptr_t ref_slice_u16Pc_len(const struct ref_slice_u16Pc *slice);
+
+const u32Pc *ref_slice_u32Pc_get(const struct ref_slice_u32Pc *slice, uintptr_t idx);
+
+uintptr_t ref_slice_u32Pc_len(const struct ref_slice_u32Pc *slice);
+
+const struct BlockValAPc *ref_slice_BlockValAPc_get(const struct ref_slice_BlockValAPc *slice,
+                                                    uintptr_t idx);
+
+uintptr_t ref_slice_BlockValAPc_len(const struct ref_slice_BlockValAPc *slice);
+
+const struct BlockValBPc *ref_slice_BlockValBPc_get(const struct ref_slice_BlockValBPc *slice,
+                                                    uintptr_t idx);
+
+uintptr_t ref_slice_BlockValBPc_len(const struct ref_slice_BlockValBPc *slice);
+
+const struct AnimationBlockInfoPc *ref_slice_AnimationBlockInfoPc_get(const struct ref_slice_AnimationBlockInfoPc *slice,
+                                                                      uintptr_t idx);
+
+uintptr_t ref_slice_AnimationBlockInfoPc_len(const struct ref_slice_AnimationBlockInfoPc *slice);
+
+const struct AnimationInfoPc *ref_slice_AnimationInfoPc_get(const struct ref_slice_AnimationInfoPc *slice,
+                                                            uintptr_t idx);
+
+uintptr_t ref_slice_AnimationInfoPc_len(const struct ref_slice_AnimationInfoPc *slice);
+
+const struct AssetHandlePc *ref_slice_AssetHandlePc_get(const struct ref_slice_AssetHandlePc *slice,
+                                                        uintptr_t idx);
+
+uintptr_t ref_slice_AssetHandlePc_len(const struct ref_slice_AssetHandlePc *slice);
+
+const struct BlockAValPc *ref_slice_BlockAValPc_get(const struct ref_slice_BlockAValPc *slice,
+                                                    uintptr_t idx);
+
+uintptr_t ref_slice_BlockAValPc_len(const struct ref_slice_BlockAValPc *slice);
+
+const struct EffectInfoPc *ref_slice_EffectInfoPc_get(const struct ref_slice_EffectInfoPc *slice,
+                                                      uintptr_t idx);
+
+uintptr_t ref_slice_EffectInfoPc_len(const struct ref_slice_EffectInfoPc *slice);
+
+const struct FoliageInfoPc *ref_slice_FoliageInfoPc_get(const struct ref_slice_FoliageInfoPc *slice,
+                                                        uintptr_t idx);
+
+uintptr_t ref_slice_FoliageInfoPc_len(const struct ref_slice_FoliageInfoPc *slice);
+
+const struct GFXBlockInfoPc *ref_slice_GFXBlockInfoPc_get(const struct ref_slice_GFXBlockInfoPc *slice,
                                                           uintptr_t idx);
 
-uintptr_t owned_slice_BlockValRefPc_len(const struct owned_slice_BlockValRefPc *slice);
+uintptr_t ref_slice_GFXBlockInfoPc_len(const struct ref_slice_GFXBlockInfoPc *slice);
 
-const struct CrowdItemRefPc *owned_slice_CrowdItemRefPc_get(const struct owned_slice_CrowdItemRefPc *slice,
-                                                            uintptr_t idx);
-
-uintptr_t owned_slice_CrowdItemRefPc_len(const struct owned_slice_CrowdItemRefPc *slice);
-
-const struct HkConstraintBoneRefPc *owned_slice_HkConstraintBoneRefPc_get(const struct owned_slice_HkConstraintBoneRefPc *slice,
-                                                                          uintptr_t idx);
-
-uintptr_t owned_slice_HkConstraintBoneRefPc_len(const struct owned_slice_HkConstraintBoneRefPc *slice);
-
-const struct BlockValARefPc *owned_slice_BlockValARefPc_get(const struct owned_slice_BlockValARefPc *slice,
-                                                            uintptr_t idx);
-
-uintptr_t owned_slice_BlockValARefPc_len(const struct owned_slice_BlockValARefPc *slice);
-
-const struct Obj1RefPc *owned_slice_Obj1RefPc_get(const struct owned_slice_Obj1RefPc *slice,
-                                                  uintptr_t idx);
-
-uintptr_t owned_slice_Obj1RefPc_len(const struct owned_slice_Obj1RefPc *slice);
-
-const struct BoundingBoxPc *slice_BoundingBoxPc_get(const struct slice_BoundingBoxPc *slice,
-                                                    uintptr_t idx);
-
-uintptr_t slice_BoundingBoxPc_len(const struct slice_BoundingBoxPc *slice);
-
-const struct BufferInfoPc *slice_BufferInfoPc_get(const struct slice_BufferInfoPc *slice,
-                                                  uintptr_t idx);
-
-uintptr_t slice_BufferInfoPc_len(const struct slice_BufferInfoPc *slice);
-
-const CrcPc *slice_CrcPc_get(const struct slice_CrcPc *slice, uintptr_t idx);
-
-uintptr_t slice_CrcPc_len(const struct slice_CrcPc *slice);
-
-const struct HkConstraintDataPc *slice_HkConstraintDataPc_get(const struct slice_HkConstraintDataPc *slice,
-                                                              uintptr_t idx);
-
-uintptr_t slice_HkConstraintDataPc_len(const struct slice_HkConstraintDataPc *slice);
-
-const struct Key2Pc *slice_Key2Pc_get(const struct slice_Key2Pc *slice, uintptr_t idx);
-
-uintptr_t slice_Key2Pc_len(const struct slice_Key2Pc *slice);
-
-const struct Matrix4x4Pc *slice_Matrix4x4Pc_get(const struct slice_Matrix4x4Pc *slice,
-                                                uintptr_t idx);
-
-uintptr_t slice_Matrix4x4Pc_len(const struct slice_Matrix4x4Pc *slice);
-
-const struct Vector3Pc *slice_Vector3Pc_get(const struct slice_Vector3Pc *slice, uintptr_t idx);
-
-uintptr_t slice_Vector3Pc_len(const struct slice_Vector3Pc *slice);
-
-const struct Vector4Pc *slice_Vector4Pc_get(const struct slice_Vector4Pc *slice, uintptr_t idx);
-
-uintptr_t slice_Vector4Pc_len(const struct slice_Vector4Pc *slice);
-
-const i32Pc *slice_i32Pc_get(const struct slice_i32Pc *slice, uintptr_t idx);
-
-uintptr_t slice_i32Pc_len(const struct slice_i32Pc *slice);
-
-const u16Pc *slice_u16Pc_get(const struct slice_u16Pc *slice, uintptr_t idx);
-
-uintptr_t slice_u16Pc_len(const struct slice_u16Pc *slice);
-
-const u32Pc *slice_u32Pc_get(const struct slice_u32Pc *slice, uintptr_t idx);
-
-uintptr_t slice_u32Pc_len(const struct slice_u32Pc *slice);
-
-const struct BlockValAPc *slice_BlockValAPc_get(const struct slice_BlockValAPc *slice,
-                                                uintptr_t idx);
-
-uintptr_t slice_BlockValAPc_len(const struct slice_BlockValAPc *slice);
-
-const struct BlockValBPc *slice_BlockValBPc_get(const struct slice_BlockValBPc *slice,
-                                                uintptr_t idx);
-
-uintptr_t slice_BlockValBPc_len(const struct slice_BlockValBPc *slice);
-
-const struct AnimationBlockInfoPc *slice_AnimationBlockInfoPc_get(const struct slice_AnimationBlockInfoPc *slice,
+const struct HkConstraintInfoPc *ref_slice_HkConstraintInfoPc_get(const struct ref_slice_HkConstraintInfoPc *slice,
                                                                   uintptr_t idx);
 
-uintptr_t slice_AnimationBlockInfoPc_len(const struct slice_AnimationBlockInfoPc *slice);
+uintptr_t ref_slice_HkConstraintInfoPc_len(const struct ref_slice_HkConstraintInfoPc *slice);
 
-const struct AnimationInfoPc *slice_AnimationInfoPc_get(const struct slice_AnimationInfoPc *slice,
+const struct HkShapeInfoPc *ref_slice_HkShapeInfoPc_get(const struct ref_slice_HkShapeInfoPc *slice,
                                                         uintptr_t idx);
 
-uintptr_t slice_AnimationInfoPc_len(const struct slice_AnimationInfoPc *slice);
+uintptr_t ref_slice_HkShapeInfoPc_len(const struct ref_slice_HkShapeInfoPc *slice);
 
-const struct AssetHandlePc *slice_AssetHandlePc_get(const struct slice_AssetHandlePc *slice,
+const struct IBuffInfoPc *ref_slice_IBuffInfoPc_get(const struct ref_slice_IBuffInfoPc *slice,
                                                     uintptr_t idx);
 
-uintptr_t slice_AssetHandlePc_len(const struct slice_AssetHandlePc *slice);
+uintptr_t ref_slice_IBuffInfoPc_len(const struct ref_slice_IBuffInfoPc *slice);
 
-const struct BlockAValPc *slice_BlockAValPc_get(const struct slice_BlockAValPc *slice,
-                                                uintptr_t idx);
+const struct Mat1Pc *ref_slice_Mat1Pc_get(const struct ref_slice_Mat1Pc *slice, uintptr_t idx);
 
-uintptr_t slice_BlockAValPc_len(const struct slice_BlockAValPc *slice);
+uintptr_t ref_slice_Mat1Pc_len(const struct ref_slice_Mat1Pc *slice);
 
-const struct EffectInfoPc *slice_EffectInfoPc_get(const struct slice_EffectInfoPc *slice,
+const struct Mat2Pc *ref_slice_Mat2Pc_get(const struct ref_slice_Mat2Pc *slice, uintptr_t idx);
+
+uintptr_t ref_slice_Mat2Pc_len(const struct ref_slice_Mat2Pc *slice);
+
+const struct Mat3Pc *ref_slice_Mat3Pc_get(const struct ref_slice_Mat3Pc *slice, uintptr_t idx);
+
+uintptr_t ref_slice_Mat3Pc_len(const struct ref_slice_Mat3Pc *slice);
+
+const struct Mat4Pc *ref_slice_Mat4Pc_get(const struct ref_slice_Mat4Pc *slice, uintptr_t idx);
+
+uintptr_t ref_slice_Mat4Pc_len(const struct ref_slice_Mat4Pc *slice);
+
+const struct MatExtraPc *ref_slice_MatExtraPc_get(const struct ref_slice_MatExtraPc *slice,
                                                   uintptr_t idx);
 
-uintptr_t slice_EffectInfoPc_len(const struct slice_EffectInfoPc *slice);
+uintptr_t ref_slice_MatExtraPc_len(const struct ref_slice_MatExtraPc *slice);
 
-const struct FoliageInfoPc *slice_FoliageInfoPc_get(const struct slice_FoliageInfoPc *slice,
+const struct ModelInfoPc *ref_slice_ModelInfoPc_get(const struct ref_slice_ModelInfoPc *slice,
                                                     uintptr_t idx);
 
-uintptr_t slice_FoliageInfoPc_len(const struct slice_FoliageInfoPc *slice);
+uintptr_t ref_slice_ModelInfoPc_len(const struct ref_slice_ModelInfoPc *slice);
 
-const struct GFXBlockInfoPc *slice_GFXBlockInfoPc_get(const struct slice_GFXBlockInfoPc *slice,
+const struct Obj0Pc *ref_slice_Obj0Pc_get(const struct ref_slice_Obj0Pc *slice, uintptr_t idx);
+
+uintptr_t ref_slice_Obj0Pc_len(const struct ref_slice_Obj0Pc *slice);
+
+const struct ObjAPc *ref_slice_ObjAPc_get(const struct ref_slice_ObjAPc *slice, uintptr_t idx);
+
+uintptr_t ref_slice_ObjAPc_len(const struct ref_slice_ObjAPc *slice);
+
+const struct PFieldInfoPc *ref_slice_PFieldInfoPc_get(const struct ref_slice_PFieldInfoPc *slice,
                                                       uintptr_t idx);
 
-uintptr_t slice_GFXBlockInfoPc_len(const struct slice_GFXBlockInfoPc *slice);
+uintptr_t ref_slice_PFieldInfoPc_len(const struct ref_slice_PFieldInfoPc *slice);
 
-const struct HkConstraintInfoPc *slice_HkConstraintInfoPc_get(const struct slice_HkConstraintInfoPc *slice,
-                                                              uintptr_t idx);
+const struct RadiosityValsInfoPc *ref_slice_RadiosityValsInfoPc_get(const struct ref_slice_RadiosityValsInfoPc *slice,
+                                                                    uintptr_t idx);
 
-uintptr_t slice_HkConstraintInfoPc_len(const struct slice_HkConstraintInfoPc *slice);
+uintptr_t ref_slice_RadiosityValsInfoPc_len(const struct ref_slice_RadiosityValsInfoPc *slice);
 
-const struct HkShapeInfoPc *slice_HkShapeInfoPc_get(const struct slice_HkShapeInfoPc *slice,
+const struct ShapeInfoPc *ref_slice_ShapeInfoPc_get(const struct ref_slice_ShapeInfoPc *slice,
                                                     uintptr_t idx);
 
-uintptr_t slice_HkShapeInfoPc_len(const struct slice_HkShapeInfoPc *slice);
+uintptr_t ref_slice_ShapeInfoPc_len(const struct ref_slice_ShapeInfoPc *slice);
 
-const struct IBuffInfoPc *slice_IBuffInfoPc_get(const struct slice_IBuffInfoPc *slice,
-                                                uintptr_t idx);
-
-uintptr_t slice_IBuffInfoPc_len(const struct slice_IBuffInfoPc *slice);
-
-const struct Mat1Pc *slice_Mat1Pc_get(const struct slice_Mat1Pc *slice, uintptr_t idx);
-
-uintptr_t slice_Mat1Pc_len(const struct slice_Mat1Pc *slice);
-
-const struct Mat2Pc *slice_Mat2Pc_get(const struct slice_Mat2Pc *slice, uintptr_t idx);
-
-uintptr_t slice_Mat2Pc_len(const struct slice_Mat2Pc *slice);
-
-const struct Mat3Pc *slice_Mat3Pc_get(const struct slice_Mat3Pc *slice, uintptr_t idx);
-
-uintptr_t slice_Mat3Pc_len(const struct slice_Mat3Pc *slice);
-
-const struct Mat4Pc *slice_Mat4Pc_get(const struct slice_Mat4Pc *slice, uintptr_t idx);
-
-uintptr_t slice_Mat4Pc_len(const struct slice_Mat4Pc *slice);
-
-const struct MatExtraPc *slice_MatExtraPc_get(const struct slice_MatExtraPc *slice, uintptr_t idx);
-
-uintptr_t slice_MatExtraPc_len(const struct slice_MatExtraPc *slice);
-
-const struct ModelInfoPc *slice_ModelInfoPc_get(const struct slice_ModelInfoPc *slice,
-                                                uintptr_t idx);
-
-uintptr_t slice_ModelInfoPc_len(const struct slice_ModelInfoPc *slice);
-
-const struct Obj0Pc *slice_Obj0Pc_get(const struct slice_Obj0Pc *slice, uintptr_t idx);
-
-uintptr_t slice_Obj0Pc_len(const struct slice_Obj0Pc *slice);
-
-const struct ObjAPc *slice_ObjAPc_get(const struct slice_ObjAPc *slice, uintptr_t idx);
-
-uintptr_t slice_ObjAPc_len(const struct slice_ObjAPc *slice);
-
-const struct PFieldInfoPc *slice_PFieldInfoPc_get(const struct slice_PFieldInfoPc *slice,
-                                                  uintptr_t idx);
-
-uintptr_t slice_PFieldInfoPc_len(const struct slice_PFieldInfoPc *slice);
-
-const struct RadiosityValsInfoPc *slice_RadiosityValsInfoPc_get(const struct slice_RadiosityValsInfoPc *slice,
-                                                                uintptr_t idx);
-
-uintptr_t slice_RadiosityValsInfoPc_len(const struct slice_RadiosityValsInfoPc *slice);
-
-const struct ShapeInfoPc *slice_ShapeInfoPc_get(const struct slice_ShapeInfoPc *slice,
-                                                uintptr_t idx);
-
-uintptr_t slice_ShapeInfoPc_len(const struct slice_ShapeInfoPc *slice);
-
-const struct StringKeysValPc *slice_StringKeysValPc_get(const struct slice_StringKeysValPc *slice,
-                                                        uintptr_t idx);
-
-uintptr_t slice_StringKeysValPc_len(const struct slice_StringKeysValPc *slice);
-
-const struct SubBlocksBlockHeaderPc *slice_SubBlocksBlockHeaderPc_get(const struct slice_SubBlocksBlockHeaderPc *slice,
-                                                                      uintptr_t idx);
-
-uintptr_t slice_SubBlocksBlockHeaderPc_len(const struct slice_SubBlocksBlockHeaderPc *slice);
-
-const struct TextureInfoPc *slice_TextureInfoPc_get(const struct slice_TextureInfoPc *slice,
-                                                    uintptr_t idx);
-
-uintptr_t slice_TextureInfoPc_len(const struct slice_TextureInfoPc *slice);
-
-const struct VBuffInfoPc *slice_VBuffInfoPc_get(const struct slice_VBuffInfoPc *slice,
-                                                uintptr_t idx);
-
-uintptr_t slice_VBuffInfoPc_len(const struct slice_VBuffInfoPc *slice);
-
-const struct Obj3Pc *slice_Obj3Pc_get(const struct slice_Obj3Pc *slice, uintptr_t idx);
-
-uintptr_t slice_Obj3Pc_len(const struct slice_Obj3Pc *slice);
-
-const struct Obj5ValPc *slice_Obj5ValPc_get(const struct slice_Obj5ValPc *slice, uintptr_t idx);
-
-uintptr_t slice_Obj5ValPc_len(const struct slice_Obj5ValPc *slice);
-
-const struct SSAValPc *slice_SSAValPc_get(const struct slice_SSAValPc *slice, uintptr_t idx);
-
-uintptr_t slice_SSAValPc_len(const struct slice_SSAValPc *slice);
-
-const struct TypeFieldPc *slice_TypeFieldPc_get(const struct slice_TypeFieldPc *slice,
-                                                uintptr_t idx);
-
-uintptr_t slice_TypeFieldPc_len(const struct slice_TypeFieldPc *slice);
-
-const struct FoliageValPc *slice_FoliageValPc_get(const struct slice_FoliageValPc *slice,
-                                                  uintptr_t idx);
-
-uintptr_t slice_FoliageValPc_len(const struct slice_FoliageValPc *slice);
-
-const U32Pc *slice_U32Pc_get(const struct slice_U32Pc *slice, uintptr_t idx);
-
-uintptr_t slice_U32Pc_len(const struct slice_U32Pc *slice);
-
-const struct WeightPc *slice_WeightPc_get(const struct slice_WeightPc *slice, uintptr_t idx);
-
-uintptr_t slice_WeightPc_len(const struct slice_WeightPc *slice);
-
-const struct AtlasUVValPc *slice_AtlasUVValPc_get(const struct slice_AtlasUVValPc *slice,
-                                                  uintptr_t idx);
-
-uintptr_t slice_AtlasUVValPc_len(const struct slice_AtlasUVValPc *slice);
-
-const struct SprayInstancePc *slice_SprayInstancePc_get(const struct slice_SprayInstancePc *slice,
-                                                        uintptr_t idx);
-
-uintptr_t slice_SprayInstancePc_len(const struct slice_SprayInstancePc *slice);
-
-const struct SprayValPc *slice_SprayValPc_get(const struct slice_SprayValPc *slice, uintptr_t idx);
-
-uintptr_t slice_SprayValPc_len(const struct slice_SprayValPc *slice);
-
-const struct TRSPc *slice_TRSPc_get(const struct slice_TRSPc *slice, uintptr_t idx);
-
-uintptr_t slice_TRSPc_len(const struct slice_TRSPc *slice);
-
-const f32Pc *slice_f32Pc_get(const struct slice_f32Pc *slice, uintptr_t idx);
-
-uintptr_t slice_f32Pc_len(const struct slice_f32Pc *slice);
-
-const i16Pc *slice_i16Pc_get(const struct slice_i16Pc *slice, uintptr_t idx);
-
-uintptr_t slice_i16Pc_len(const struct slice_i16Pc *slice);
-
-const struct CrowdValPc *slice_CrowdValPc_get(const struct slice_CrowdValPc *slice, uintptr_t idx);
-
-uintptr_t slice_CrowdValPc_len(const struct slice_CrowdValPc *slice);
-
-const struct RotationPolar32Pc *slice_RotationPolar32Pc_get(const struct slice_RotationPolar32Pc *slice,
+const struct StringKeysValPc *ref_slice_StringKeysValPc_get(const struct ref_slice_StringKeysValPc *slice,
                                                             uintptr_t idx);
 
-uintptr_t slice_RotationPolar32Pc_len(const struct slice_RotationPolar32Pc *slice);
+uintptr_t ref_slice_StringKeysValPc_len(const struct ref_slice_StringKeysValPc *slice);
 
-const struct RotationStraight16Pc *slice_RotationStraight16Pc_get(const struct slice_RotationStraight16Pc *slice,
-                                                                  uintptr_t idx);
+const struct SubBlocksBlockHeaderPc *ref_slice_SubBlocksBlockHeaderPc_get(const struct ref_slice_SubBlocksBlockHeaderPc *slice,
+                                                                          uintptr_t idx);
 
-uintptr_t slice_RotationStraight16Pc_len(const struct slice_RotationStraight16Pc *slice);
+uintptr_t ref_slice_SubBlocksBlockHeaderPc_len(const struct ref_slice_SubBlocksBlockHeaderPc *slice);
 
-const struct RotationThreeComp24Pc *slice_RotationThreeComp24Pc_get(const struct slice_RotationThreeComp24Pc *slice,
-                                                                    uintptr_t idx);
+const struct TextureInfoPc *ref_slice_TextureInfoPc_get(const struct ref_slice_TextureInfoPc *slice,
+                                                        uintptr_t idx);
 
-uintptr_t slice_RotationThreeComp24Pc_len(const struct slice_RotationThreeComp24Pc *slice);
+uintptr_t ref_slice_TextureInfoPc_len(const struct ref_slice_TextureInfoPc *slice);
 
-const struct RotationThreeComp40Pc *slice_RotationThreeComp40Pc_get(const struct slice_RotationThreeComp40Pc *slice,
-                                                                    uintptr_t idx);
+const struct VBuffInfoPc *ref_slice_VBuffInfoPc_get(const struct ref_slice_VBuffInfoPc *slice,
+                                                    uintptr_t idx);
 
-uintptr_t slice_RotationThreeComp40Pc_len(const struct slice_RotationThreeComp40Pc *slice);
+uintptr_t ref_slice_VBuffInfoPc_len(const struct ref_slice_VBuffInfoPc *slice);
 
-const struct RotationThreeComp48Pc *slice_RotationThreeComp48Pc_get(const struct slice_RotationThreeComp48Pc *slice,
-                                                                    uintptr_t idx);
+const struct Obj3Pc *ref_slice_Obj3Pc_get(const struct ref_slice_Obj3Pc *slice, uintptr_t idx);
 
-uintptr_t slice_RotationThreeComp48Pc_len(const struct slice_RotationThreeComp48Pc *slice);
+uintptr_t ref_slice_Obj3Pc_len(const struct ref_slice_Obj3Pc *slice);
 
-const struct RotationUncompressedPc *slice_RotationUncompressedPc_get(const struct slice_RotationUncompressedPc *slice,
+const struct Obj5ValPc *ref_slice_Obj5ValPc_get(const struct ref_slice_Obj5ValPc *slice,
+                                                uintptr_t idx);
+
+uintptr_t ref_slice_Obj5ValPc_len(const struct ref_slice_Obj5ValPc *slice);
+
+const struct SSAValPc *ref_slice_SSAValPc_get(const struct ref_slice_SSAValPc *slice,
+                                              uintptr_t idx);
+
+uintptr_t ref_slice_SSAValPc_len(const struct ref_slice_SSAValPc *slice);
+
+const struct TypeFieldPc *ref_slice_TypeFieldPc_get(const struct ref_slice_TypeFieldPc *slice,
+                                                    uintptr_t idx);
+
+uintptr_t ref_slice_TypeFieldPc_len(const struct ref_slice_TypeFieldPc *slice);
+
+const struct FoliageValPc *ref_slice_FoliageValPc_get(const struct ref_slice_FoliageValPc *slice,
+                                                      uintptr_t idx);
+
+uintptr_t ref_slice_FoliageValPc_len(const struct ref_slice_FoliageValPc *slice);
+
+const U32Pc *ref_slice_U32Pc_get(const struct ref_slice_U32Pc *slice, uintptr_t idx);
+
+uintptr_t ref_slice_U32Pc_len(const struct ref_slice_U32Pc *slice);
+
+const struct WeightPc *ref_slice_WeightPc_get(const struct ref_slice_WeightPc *slice,
+                                              uintptr_t idx);
+
+uintptr_t ref_slice_WeightPc_len(const struct ref_slice_WeightPc *slice);
+
+const struct AtlasUVValPc *ref_slice_AtlasUVValPc_get(const struct ref_slice_AtlasUVValPc *slice,
+                                                      uintptr_t idx);
+
+uintptr_t ref_slice_AtlasUVValPc_len(const struct ref_slice_AtlasUVValPc *slice);
+
+const struct SprayInstancePc *ref_slice_SprayInstancePc_get(const struct ref_slice_SprayInstancePc *slice,
+                                                            uintptr_t idx);
+
+uintptr_t ref_slice_SprayInstancePc_len(const struct ref_slice_SprayInstancePc *slice);
+
+const struct SprayValPc *ref_slice_SprayValPc_get(const struct ref_slice_SprayValPc *slice,
+                                                  uintptr_t idx);
+
+uintptr_t ref_slice_SprayValPc_len(const struct ref_slice_SprayValPc *slice);
+
+const struct TRSPc *ref_slice_TRSPc_get(const struct ref_slice_TRSPc *slice, uintptr_t idx);
+
+uintptr_t ref_slice_TRSPc_len(const struct ref_slice_TRSPc *slice);
+
+const f32Pc *ref_slice_f32Pc_get(const struct ref_slice_f32Pc *slice, uintptr_t idx);
+
+uintptr_t ref_slice_f32Pc_len(const struct ref_slice_f32Pc *slice);
+
+const i16Pc *ref_slice_i16Pc_get(const struct ref_slice_i16Pc *slice, uintptr_t idx);
+
+uintptr_t ref_slice_i16Pc_len(const struct ref_slice_i16Pc *slice);
+
+const struct CrowdValPc *ref_slice_CrowdValPc_get(const struct ref_slice_CrowdValPc *slice,
+                                                  uintptr_t idx);
+
+uintptr_t ref_slice_CrowdValPc_len(const struct ref_slice_CrowdValPc *slice);
+
+const struct RotationPolar32Pc *ref_slice_RotationPolar32Pc_get(const struct ref_slice_RotationPolar32Pc *slice,
+                                                                uintptr_t idx);
+
+uintptr_t ref_slice_RotationPolar32Pc_len(const struct ref_slice_RotationPolar32Pc *slice);
+
+const struct RotationStraight16Pc *ref_slice_RotationStraight16Pc_get(const struct ref_slice_RotationStraight16Pc *slice,
                                                                       uintptr_t idx);
 
-uintptr_t slice_RotationUncompressedPc_len(const struct slice_RotationUncompressedPc *slice);
+uintptr_t ref_slice_RotationStraight16Pc_len(const struct ref_slice_RotationStraight16Pc *slice);
+
+const struct RotationThreeComp24Pc *ref_slice_RotationThreeComp24Pc_get(const struct ref_slice_RotationThreeComp24Pc *slice,
+                                                                        uintptr_t idx);
+
+uintptr_t ref_slice_RotationThreeComp24Pc_len(const struct ref_slice_RotationThreeComp24Pc *slice);
+
+const struct RotationThreeComp40Pc *ref_slice_RotationThreeComp40Pc_get(const struct ref_slice_RotationThreeComp40Pc *slice,
+                                                                        uintptr_t idx);
+
+uintptr_t ref_slice_RotationThreeComp40Pc_len(const struct ref_slice_RotationThreeComp40Pc *slice);
+
+const struct RotationThreeComp48Pc *ref_slice_RotationThreeComp48Pc_get(const struct ref_slice_RotationThreeComp48Pc *slice,
+                                                                        uintptr_t idx);
+
+uintptr_t ref_slice_RotationThreeComp48Pc_len(const struct ref_slice_RotationThreeComp48Pc *slice);
+
+const struct RotationUncompressedPc *ref_slice_RotationUncompressedPc_get(const struct ref_slice_RotationUncompressedPc *slice,
+                                                                          uintptr_t idx);
+
+uintptr_t ref_slice_RotationUncompressedPc_len(const struct ref_slice_RotationUncompressedPc *slice);
+
+u32Pc *mut_slice_u32Pc_get(struct mut_slice_u32Pc *slice, uintptr_t idx);
+
+uintptr_t mut_slice_u32Pc_len(const struct slice_u32Pc *slice);
+
+struct AnimationBlockInfoPc *mut_slice_AnimationBlockInfoPc_get(struct mut_slice_AnimationBlockInfoPc *slice,
+                                                                uintptr_t idx);
+
+uintptr_t mut_slice_AnimationBlockInfoPc_len(const struct slice_AnimationBlockInfoPc *slice);
+
+struct AnimationInfoPc *mut_slice_AnimationInfoPc_get(struct mut_slice_AnimationInfoPc *slice,
+                                                      uintptr_t idx);
+
+uintptr_t mut_slice_AnimationInfoPc_len(const struct slice_AnimationInfoPc *slice);
+
+struct BufferInfoPc *mut_slice_BufferInfoPc_get(struct mut_slice_BufferInfoPc *slice,
+                                                uintptr_t idx);
+
+uintptr_t mut_slice_BufferInfoPc_len(const struct slice_BufferInfoPc *slice);
+
+struct EffectInfoPc *mut_slice_EffectInfoPc_get(struct mut_slice_EffectInfoPc *slice,
+                                                uintptr_t idx);
+
+uintptr_t mut_slice_EffectInfoPc_len(const struct slice_EffectInfoPc *slice);
+
+struct FoliageInfoPc *mut_slice_FoliageInfoPc_get(struct mut_slice_FoliageInfoPc *slice,
+                                                  uintptr_t idx);
+
+uintptr_t mut_slice_FoliageInfoPc_len(const struct slice_FoliageInfoPc *slice);
+
+struct GFXBlockInfoPc *mut_slice_GFXBlockInfoPc_get(struct mut_slice_GFXBlockInfoPc *slice,
+                                                    uintptr_t idx);
+
+uintptr_t mut_slice_GFXBlockInfoPc_len(const struct slice_GFXBlockInfoPc *slice);
+
+struct HkConstraintDataPc *mut_slice_HkConstraintDataPc_get(struct mut_slice_HkConstraintDataPc *slice,
+                                                            uintptr_t idx);
+
+uintptr_t mut_slice_HkConstraintDataPc_len(const struct slice_HkConstraintDataPc *slice);
+
+struct HkConstraintInfoPc *mut_slice_HkConstraintInfoPc_get(struct mut_slice_HkConstraintInfoPc *slice,
+                                                            uintptr_t idx);
+
+uintptr_t mut_slice_HkConstraintInfoPc_len(const struct slice_HkConstraintInfoPc *slice);
+
+struct HkShapeInfoPc *mut_slice_HkShapeInfoPc_get(struct mut_slice_HkShapeInfoPc *slice,
+                                                  uintptr_t idx);
+
+uintptr_t mut_slice_HkShapeInfoPc_len(const struct slice_HkShapeInfoPc *slice);
+
+struct IBuffInfoPc *mut_slice_IBuffInfoPc_get(struct mut_slice_IBuffInfoPc *slice, uintptr_t idx);
+
+uintptr_t mut_slice_IBuffInfoPc_len(const struct slice_IBuffInfoPc *slice);
+
+struct Mat1Pc *mut_slice_Mat1Pc_get(struct mut_slice_Mat1Pc *slice, uintptr_t idx);
+
+uintptr_t mut_slice_Mat1Pc_len(const struct slice_Mat1Pc *slice);
+
+struct Mat2Pc *mut_slice_Mat2Pc_get(struct mut_slice_Mat2Pc *slice, uintptr_t idx);
+
+uintptr_t mut_slice_Mat2Pc_len(const struct slice_Mat2Pc *slice);
+
+struct Mat3Pc *mut_slice_Mat3Pc_get(struct mut_slice_Mat3Pc *slice, uintptr_t idx);
+
+uintptr_t mut_slice_Mat3Pc_len(const struct slice_Mat3Pc *slice);
+
+struct Mat4Pc *mut_slice_Mat4Pc_get(struct mut_slice_Mat4Pc *slice, uintptr_t idx);
+
+uintptr_t mut_slice_Mat4Pc_len(const struct slice_Mat4Pc *slice);
+
+struct MatExtraPc *mut_slice_MatExtraPc_get(struct mut_slice_MatExtraPc *slice, uintptr_t idx);
+
+uintptr_t mut_slice_MatExtraPc_len(const struct slice_MatExtraPc *slice);
+
+struct ModelInfoPc *mut_slice_ModelInfoPc_get(struct mut_slice_ModelInfoPc *slice, uintptr_t idx);
+
+uintptr_t mut_slice_ModelInfoPc_len(const struct slice_ModelInfoPc *slice);
+
+struct Obj0Pc *mut_slice_Obj0Pc_get(struct mut_slice_Obj0Pc *slice, uintptr_t idx);
+
+uintptr_t mut_slice_Obj0Pc_len(const struct slice_Obj0Pc *slice);
+
+struct ObjAPc *mut_slice_ObjAPc_get(struct mut_slice_ObjAPc *slice, uintptr_t idx);
+
+uintptr_t mut_slice_ObjAPc_len(const struct slice_ObjAPc *slice);
+
+struct PFieldInfoPc *mut_slice_PFieldInfoPc_get(struct mut_slice_PFieldInfoPc *slice,
+                                                uintptr_t idx);
+
+uintptr_t mut_slice_PFieldInfoPc_len(const struct slice_PFieldInfoPc *slice);
+
+struct RadiosityValsInfoPc *mut_slice_RadiosityValsInfoPc_get(struct mut_slice_RadiosityValsInfoPc *slice,
+                                                              uintptr_t idx);
+
+uintptr_t mut_slice_RadiosityValsInfoPc_len(const struct slice_RadiosityValsInfoPc *slice);
+
+struct ShapeInfoPc *mut_slice_ShapeInfoPc_get(struct mut_slice_ShapeInfoPc *slice, uintptr_t idx);
+
+uintptr_t mut_slice_ShapeInfoPc_len(const struct slice_ShapeInfoPc *slice);
+
+struct TextureInfoPc *mut_slice_TextureInfoPc_get(struct mut_slice_TextureInfoPc *slice,
+                                                  uintptr_t idx);
+
+uintptr_t mut_slice_TextureInfoPc_len(const struct slice_TextureInfoPc *slice);
+
+struct VBuffInfoPc *mut_slice_VBuffInfoPc_get(struct mut_slice_VBuffInfoPc *slice, uintptr_t idx);
+
+uintptr_t mut_slice_VBuffInfoPc_len(const struct slice_VBuffInfoPc *slice);
 
 const struct HkConstraintRefPc *Option_HkConstraintRefPc_get(const struct Option_HkConstraintRefPc *slice);
 
@@ -9603,7 +11237,7 @@ const struct IndexBufferRefXbox *IndexMap_u32__IndexBufferRefXbox_get(const stru
 uintptr_t IndexMap_u32__IndexBufferRefXbox_len(const struct IndexMap_u32__IndexBufferRefXbox *map);
 
 void IndexMap_u32__IndexBufferRefXbox_keys(const struct IndexMap_u32__IndexBufferRefXbox *map,
-                                           uint32_t *keys);
+                                           struct mut_slice_u32 *keys);
 
 const struct VertexBufferRefXbox *IndexMap_u32__VertexBufferRefXbox_get(const struct IndexMap_u32__VertexBufferRefXbox *map,
                                                                         const uint32_t *key);
@@ -9611,21 +11245,23 @@ const struct VertexBufferRefXbox *IndexMap_u32__VertexBufferRefXbox_get(const st
 uintptr_t IndexMap_u32__VertexBufferRefXbox_len(const struct IndexMap_u32__VertexBufferRefXbox *map);
 
 void IndexMap_u32__VertexBufferRefXbox_keys(const struct IndexMap_u32__VertexBufferRefXbox *map,
-                                            uint32_t *keys);
+                                            struct mut_slice_u32 *keys);
 
 const struct MatRefXbox *IndexMap_u32__MatRefXbox_get(const struct IndexMap_u32__MatRefXbox *map,
                                                       const uint32_t *key);
 
 uintptr_t IndexMap_u32__MatRefXbox_len(const struct IndexMap_u32__MatRefXbox *map);
 
-void IndexMap_u32__MatRefXbox_keys(const struct IndexMap_u32__MatRefXbox *map, uint32_t *keys);
+void IndexMap_u32__MatRefXbox_keys(const struct IndexMap_u32__MatRefXbox *map,
+                                   struct mut_slice_u32 *keys);
 
 const struct ModelRefXbox *IndexMap_u32__ModelRefXbox_get(const struct IndexMap_u32__ModelRefXbox *map,
                                                           const uint32_t *key);
 
 uintptr_t IndexMap_u32__ModelRefXbox_len(const struct IndexMap_u32__ModelRefXbox *map);
 
-void IndexMap_u32__ModelRefXbox_keys(const struct IndexMap_u32__ModelRefXbox *map, uint32_t *keys);
+void IndexMap_u32__ModelRefXbox_keys(const struct IndexMap_u32__ModelRefXbox *map,
+                                     struct mut_slice_u32 *keys);
 
 const struct IBuffInfoXbox *const *IndexMap_u32_______IBuffInfoXbox_get(const struct IndexMap_u32_______IBuffInfoXbox *map,
                                                                         const uint32_t *key);
@@ -9633,7 +11269,7 @@ const struct IBuffInfoXbox *const *IndexMap_u32_______IBuffInfoXbox_get(const st
 uintptr_t IndexMap_u32_______IBuffInfoXbox_len(const struct IndexMap_u32_______IBuffInfoXbox *map);
 
 void IndexMap_u32_______IBuffInfoXbox_keys(const struct IndexMap_u32_______IBuffInfoXbox *map,
-                                           uint32_t *keys);
+                                           struct mut_slice_u32 *keys);
 
 const struct VBuffInfoXbox *const *IndexMap_u32_______VBuffInfoXbox_get(const struct IndexMap_u32_______VBuffInfoXbox *map,
                                                                         const uint32_t *key);
@@ -9641,7 +11277,7 @@ const struct VBuffInfoXbox *const *IndexMap_u32_______VBuffInfoXbox_get(const st
 uintptr_t IndexMap_u32_______VBuffInfoXbox_len(const struct IndexMap_u32_______VBuffInfoXbox *map);
 
 void IndexMap_u32_______VBuffInfoXbox_keys(const struct IndexMap_u32_______VBuffInfoXbox *map,
-                                           uint32_t *keys);
+                                           struct mut_slice_u32 *keys);
 
 const struct AnimationRefXbox *IndexMap_u32__AnimationRefXbox_get(const struct IndexMap_u32__AnimationRefXbox *map,
                                                                   const uint32_t *key);
@@ -9649,14 +11285,15 @@ const struct AnimationRefXbox *IndexMap_u32__AnimationRefXbox_get(const struct I
 uintptr_t IndexMap_u32__AnimationRefXbox_len(const struct IndexMap_u32__AnimationRefXbox *map);
 
 void IndexMap_u32__AnimationRefXbox_keys(const struct IndexMap_u32__AnimationRefXbox *map,
-                                         uint32_t *keys);
+                                         struct mut_slice_u32 *keys);
 
 const struct DataRefXbox *IndexMap_u32__DataRefXbox_get(const struct IndexMap_u32__DataRefXbox *map,
                                                         const uint32_t *key);
 
 uintptr_t IndexMap_u32__DataRefXbox_len(const struct IndexMap_u32__DataRefXbox *map);
 
-void IndexMap_u32__DataRefXbox_keys(const struct IndexMap_u32__DataRefXbox *map, uint32_t *keys);
+void IndexMap_u32__DataRefXbox_keys(const struct IndexMap_u32__DataRefXbox *map,
+                                    struct mut_slice_u32 *keys);
 
 const struct EffectRefXbox *IndexMap_u32__EffectRefXbox_get(const struct IndexMap_u32__EffectRefXbox *map,
                                                             const uint32_t *key);
@@ -9664,7 +11301,7 @@ const struct EffectRefXbox *IndexMap_u32__EffectRefXbox_get(const struct IndexMa
 uintptr_t IndexMap_u32__EffectRefXbox_len(const struct IndexMap_u32__EffectRefXbox *map);
 
 void IndexMap_u32__EffectRefXbox_keys(const struct IndexMap_u32__EffectRefXbox *map,
-                                      uint32_t *keys);
+                                      struct mut_slice_u32 *keys);
 
 const struct LangStringsRefXbox *IndexMap_u32__LangStringsRefXbox_get(const struct IndexMap_u32__LangStringsRefXbox *map,
                                                                       const uint32_t *key);
@@ -9672,21 +11309,23 @@ const struct LangStringsRefXbox *IndexMap_u32__LangStringsRefXbox_get(const stru
 uintptr_t IndexMap_u32__LangStringsRefXbox_len(const struct IndexMap_u32__LangStringsRefXbox *map);
 
 void IndexMap_u32__LangStringsRefXbox_keys(const struct IndexMap_u32__LangStringsRefXbox *map,
-                                           uint32_t *keys);
+                                           struct mut_slice_u32 *keys);
 
 const LuaRefXbox *IndexMap_u32__LuaRefXbox_get(const struct IndexMap_u32__LuaRefXbox *map,
                                                const uint32_t *key);
 
 uintptr_t IndexMap_u32__LuaRefXbox_len(const struct IndexMap_u32__LuaRefXbox *map);
 
-void IndexMap_u32__LuaRefXbox_keys(const struct IndexMap_u32__LuaRefXbox *map, uint32_t *keys);
+void IndexMap_u32__LuaRefXbox_keys(const struct IndexMap_u32__LuaRefXbox *map,
+                                   struct mut_slice_u32 *keys);
 
 const struct ObjRefXbox *IndexMap_u32__ObjRefXbox_get(const struct IndexMap_u32__ObjRefXbox *map,
                                                       const uint32_t *key);
 
 uintptr_t IndexMap_u32__ObjRefXbox_len(const struct IndexMap_u32__ObjRefXbox *map);
 
-void IndexMap_u32__ObjRefXbox_keys(const struct IndexMap_u32__ObjRefXbox *map, uint32_t *keys);
+void IndexMap_u32__ObjRefXbox_keys(const struct IndexMap_u32__ObjRefXbox *map,
+                                   struct mut_slice_u32 *keys);
 
 const struct RadiosityValsRefXbox *IndexMap_u32__RadiosityValsRefXbox_get(const struct IndexMap_u32__RadiosityValsRefXbox *map,
                                                                           const uint32_t *key);
@@ -9694,14 +11333,15 @@ const struct RadiosityValsRefXbox *IndexMap_u32__RadiosityValsRefXbox_get(const 
 uintptr_t IndexMap_u32__RadiosityValsRefXbox_len(const struct IndexMap_u32__RadiosityValsRefXbox *map);
 
 void IndexMap_u32__RadiosityValsRefXbox_keys(const struct IndexMap_u32__RadiosityValsRefXbox *map,
-                                             uint32_t *keys);
+                                             struct mut_slice_u32 *keys);
 
 const struct SSARefXbox *IndexMap_u32__SSARefXbox_get(const struct IndexMap_u32__SSARefXbox *map,
                                                       const uint32_t *key);
 
 uintptr_t IndexMap_u32__SSARefXbox_len(const struct IndexMap_u32__SSARefXbox *map);
 
-void IndexMap_u32__SSARefXbox_keys(const struct IndexMap_u32__SSARefXbox *map, uint32_t *keys);
+void IndexMap_u32__SSARefXbox_keys(const struct IndexMap_u32__SSARefXbox *map,
+                                   struct mut_slice_u32 *keys);
 
 const struct TextureRefXbox *IndexMap_u32__TextureRefXbox_get(const struct IndexMap_u32__TextureRefXbox *map,
                                                               const uint32_t *key);
@@ -9709,22 +11349,23 @@ const struct TextureRefXbox *IndexMap_u32__TextureRefXbox_get(const struct Index
 uintptr_t IndexMap_u32__TextureRefXbox_len(const struct IndexMap_u32__TextureRefXbox *map);
 
 void IndexMap_u32__TextureRefXbox_keys(const struct IndexMap_u32__TextureRefXbox *map,
-                                       uint32_t *keys);
+                                       struct mut_slice_u32 *keys);
 
 const struct TypeRefXbox *IndexMap_u32__TypeRefXbox_get(const struct IndexMap_u32__TypeRefXbox *map,
                                                         const uint32_t *key);
 
 uintptr_t IndexMap_u32__TypeRefXbox_len(const struct IndexMap_u32__TypeRefXbox *map);
 
-void IndexMap_u32__TypeRefXbox_keys(const struct IndexMap_u32__TypeRefXbox *map, uint32_t *keys);
+void IndexMap_u32__TypeRefXbox_keys(const struct IndexMap_u32__TypeRefXbox *map,
+                                    struct mut_slice_u32 *keys);
 
-const struct owned_slice_FoliageRefXbox *IndexMap_u32__owned_slice_FoliageRefXbox_get(const struct IndexMap_u32__owned_slice_FoliageRefXbox *map,
-                                                                                      const uint32_t *key);
+const struct slice_FoliageRefXbox *IndexMap_u32__slice_FoliageRefXbox_get(const struct IndexMap_u32__slice_FoliageRefXbox *map,
+                                                                          const uint32_t *key);
 
-uintptr_t IndexMap_u32__owned_slice_FoliageRefXbox_len(const struct IndexMap_u32__owned_slice_FoliageRefXbox *map);
+uintptr_t IndexMap_u32__slice_FoliageRefXbox_len(const struct IndexMap_u32__slice_FoliageRefXbox *map);
 
-void IndexMap_u32__owned_slice_FoliageRefXbox_keys(const struct IndexMap_u32__owned_slice_FoliageRefXbox *map,
-                                                   uint32_t *keys);
+void IndexMap_u32__slice_FoliageRefXbox_keys(const struct IndexMap_u32__slice_FoliageRefXbox *map,
+                                             struct mut_slice_u32 *keys);
 
 const struct BaseTypeRefXbox *IndexMap_u32__BaseTypeRefXbox_get(const struct IndexMap_u32__BaseTypeRefXbox *map,
                                                                 const uint32_t *key);
@@ -9732,337 +11373,465 @@ const struct BaseTypeRefXbox *IndexMap_u32__BaseTypeRefXbox_get(const struct Ind
 uintptr_t IndexMap_u32__BaseTypeRefXbox_len(const struct IndexMap_u32__BaseTypeRefXbox *map);
 
 void IndexMap_u32__BaseTypeRefXbox_keys(const struct IndexMap_u32__BaseTypeRefXbox *map,
-                                        uint32_t *keys);
+                                        struct mut_slice_u32 *keys);
 
-const struct slice_u16Xbox *IndexMap_u32__slice_u16Xbox_get(const struct IndexMap_u32__slice_u16Xbox *map,
-                                                            const uint32_t *key);
+const struct ref_slice_u16Xbox *IndexMap_u32__ref_slice_u16Xbox_get(const struct IndexMap_u32__ref_slice_u16Xbox *map,
+                                                                    const uint32_t *key);
 
-uintptr_t IndexMap_u32__slice_u16Xbox_len(const struct IndexMap_u32__slice_u16Xbox *map);
+uintptr_t IndexMap_u32__ref_slice_u16Xbox_len(const struct IndexMap_u32__ref_slice_u16Xbox *map);
 
-void IndexMap_u32__slice_u16Xbox_keys(const struct IndexMap_u32__slice_u16Xbox *map,
-                                      uint32_t *keys);
+void IndexMap_u32__ref_slice_u16Xbox_keys(const struct IndexMap_u32__ref_slice_u16Xbox *map,
+                                          struct mut_slice_u32 *keys);
 
-const struct BlockRefXbox *owned_slice_BlockRefXbox_get(const struct owned_slice_BlockRefXbox *slice,
-                                                        uintptr_t idx);
+const struct BlockRefXbox *slice_BlockRefXbox_get(const struct slice_BlockRefXbox *slice,
+                                                  uintptr_t idx);
 
-uintptr_t owned_slice_BlockRefXbox_len(const struct owned_slice_BlockRefXbox *slice);
+uintptr_t slice_BlockRefXbox_len(const struct slice_BlockRefXbox *slice);
 
-const struct ShapeRefXbox *owned_slice_ShapeRefXbox_get(const struct owned_slice_ShapeRefXbox *slice,
-                                                        uintptr_t idx);
+const struct ShapeRefXbox *slice_ShapeRefXbox_get(const struct slice_ShapeRefXbox *slice,
+                                                  uintptr_t idx);
 
-uintptr_t owned_slice_ShapeRefXbox_len(const struct owned_slice_ShapeRefXbox *slice);
+uintptr_t slice_ShapeRefXbox_len(const struct slice_ShapeRefXbox *slice);
 
-const struct HkShapeRefXbox *owned_slice_HkShapeRefXbox_get(const struct owned_slice_HkShapeRefXbox *slice,
+const struct HkShapeRefXbox *owned_slice_HkShapeRefXbox_get(const struct slice_HkShapeRefXbox *slice,
                                                             uintptr_t idx);
 
-uintptr_t owned_slice_HkShapeRefXbox_len(const struct owned_slice_HkShapeRefXbox *slice);
+uintptr_t owned_slice_HkShapeRefXbox_len(const struct slice_HkShapeRefXbox *slice);
 
-const struct FoliageRefXbox *owned_slice_FoliageRefXbox_get(const struct owned_slice_FoliageRefXbox *slice,
+const struct FoliageRefXbox *slice_FoliageRefXbox_get(const struct slice_FoliageRefXbox *slice,
+                                                      uintptr_t idx);
+
+uintptr_t slice_FoliageRefXbox_len(const struct slice_FoliageRefXbox *slice);
+
+const struct ref_slice_u16Xbox *slice_ref_slice_u16Xbox_get(const struct slice_ref_slice_u16Xbox *slice,
                                                             uintptr_t idx);
 
-uintptr_t owned_slice_FoliageRefXbox_len(const struct owned_slice_FoliageRefXbox *slice);
+uintptr_t slice_ref_slice_u16Xbox_len(const struct slice_ref_slice_u16Xbox *slice);
 
-const struct slice_u16Xbox *owned_slice_slice_u16Xbox_get(const struct owned_slice_slice_u16Xbox *slice,
+const struct BlockValRefXbox *slice_BlockValRefXbox_get(const struct slice_BlockValRefXbox *slice,
+                                                        uintptr_t idx);
+
+uintptr_t slice_BlockValRefXbox_len(const struct slice_BlockValRefXbox *slice);
+
+const struct CrowdItemRefXbox *slice_CrowdItemRefXbox_get(const struct slice_CrowdItemRefXbox *slice,
                                                           uintptr_t idx);
 
-uintptr_t owned_slice_slice_u16Xbox_len(const struct owned_slice_slice_u16Xbox *slice);
+uintptr_t slice_CrowdItemRefXbox_len(const struct slice_CrowdItemRefXbox *slice);
 
-const struct BlockValRefXbox *owned_slice_BlockValRefXbox_get(const struct owned_slice_BlockValRefXbox *slice,
+const struct HkConstraintBoneRefXbox *slice_HkConstraintBoneRefXbox_get(const struct slice_HkConstraintBoneRefXbox *slice,
+                                                                        uintptr_t idx);
+
+uintptr_t slice_HkConstraintBoneRefXbox_len(const struct slice_HkConstraintBoneRefXbox *slice);
+
+const struct BlockValARefXbox *slice_BlockValARefXbox_get(const struct slice_BlockValARefXbox *slice,
+                                                          uintptr_t idx);
+
+uintptr_t slice_BlockValARefXbox_len(const struct slice_BlockValARefXbox *slice);
+
+const struct Obj1RefXbox *slice_Obj1RefXbox_get(const struct slice_Obj1RefXbox *slice,
+                                                uintptr_t idx);
+
+uintptr_t slice_Obj1RefXbox_len(const struct slice_Obj1RefXbox *slice);
+
+const struct HkShapeRefXbox *slice_HkShapeRefXbox_get(const struct slice_HkShapeRefXbox *slice,
+                                                      uintptr_t idx);
+
+uintptr_t slice_HkShapeRefXbox_len(const struct slice_HkShapeRefXbox *slice);
+
+const struct BoundingBoxXbox *ref_slice_BoundingBoxXbox_get(const struct ref_slice_BoundingBoxXbox *slice,
+                                                            uintptr_t idx);
+
+uintptr_t ref_slice_BoundingBoxXbox_len(const struct ref_slice_BoundingBoxXbox *slice);
+
+const struct BufferInfoXbox *ref_slice_BufferInfoXbox_get(const struct ref_slice_BufferInfoXbox *slice,
+                                                          uintptr_t idx);
+
+uintptr_t ref_slice_BufferInfoXbox_len(const struct ref_slice_BufferInfoXbox *slice);
+
+const CrcXbox *ref_slice_CrcXbox_get(const struct ref_slice_CrcXbox *slice, uintptr_t idx);
+
+uintptr_t ref_slice_CrcXbox_len(const struct ref_slice_CrcXbox *slice);
+
+const struct HkConstraintDataXbox *ref_slice_HkConstraintDataXbox_get(const struct ref_slice_HkConstraintDataXbox *slice,
+                                                                      uintptr_t idx);
+
+uintptr_t ref_slice_HkConstraintDataXbox_len(const struct ref_slice_HkConstraintDataXbox *slice);
+
+const struct Key2Xbox *ref_slice_Key2Xbox_get(const struct ref_slice_Key2Xbox *slice,
+                                              uintptr_t idx);
+
+uintptr_t ref_slice_Key2Xbox_len(const struct ref_slice_Key2Xbox *slice);
+
+const struct Matrix4x4Xbox *ref_slice_Matrix4x4Xbox_get(const struct ref_slice_Matrix4x4Xbox *slice,
+                                                        uintptr_t idx);
+
+uintptr_t ref_slice_Matrix4x4Xbox_len(const struct ref_slice_Matrix4x4Xbox *slice);
+
+const struct Vector3Xbox *ref_slice_Vector3Xbox_get(const struct ref_slice_Vector3Xbox *slice,
+                                                    uintptr_t idx);
+
+uintptr_t ref_slice_Vector3Xbox_len(const struct ref_slice_Vector3Xbox *slice);
+
+const struct Vector4Xbox *ref_slice_Vector4Xbox_get(const struct ref_slice_Vector4Xbox *slice,
+                                                    uintptr_t idx);
+
+uintptr_t ref_slice_Vector4Xbox_len(const struct ref_slice_Vector4Xbox *slice);
+
+const i32Xbox *ref_slice_i32Xbox_get(const struct ref_slice_i32Xbox *slice, uintptr_t idx);
+
+uintptr_t ref_slice_i32Xbox_len(const struct ref_slice_i32Xbox *slice);
+
+const u16Xbox *ref_slice_u16Xbox_get(const struct ref_slice_u16Xbox *slice, uintptr_t idx);
+
+uintptr_t ref_slice_u16Xbox_len(const struct ref_slice_u16Xbox *slice);
+
+const u32Xbox *ref_slice_u32Xbox_get(const struct ref_slice_u32Xbox *slice, uintptr_t idx);
+
+uintptr_t ref_slice_u32Xbox_len(const struct ref_slice_u32Xbox *slice);
+
+const struct BlockValAXbox *ref_slice_BlockValAXbox_get(const struct ref_slice_BlockValAXbox *slice,
+                                                        uintptr_t idx);
+
+uintptr_t ref_slice_BlockValAXbox_len(const struct ref_slice_BlockValAXbox *slice);
+
+const struct BlockValBXbox *ref_slice_BlockValBXbox_get(const struct ref_slice_BlockValBXbox *slice,
+                                                        uintptr_t idx);
+
+uintptr_t ref_slice_BlockValBXbox_len(const struct ref_slice_BlockValBXbox *slice);
+
+const struct AnimationBlockInfoXbox *ref_slice_AnimationBlockInfoXbox_get(const struct ref_slice_AnimationBlockInfoXbox *slice,
+                                                                          uintptr_t idx);
+
+uintptr_t ref_slice_AnimationBlockInfoXbox_len(const struct ref_slice_AnimationBlockInfoXbox *slice);
+
+const struct AnimationInfoXbox *ref_slice_AnimationInfoXbox_get(const struct ref_slice_AnimationInfoXbox *slice,
+                                                                uintptr_t idx);
+
+uintptr_t ref_slice_AnimationInfoXbox_len(const struct ref_slice_AnimationInfoXbox *slice);
+
+const struct AssetHandleXbox *ref_slice_AssetHandleXbox_get(const struct ref_slice_AssetHandleXbox *slice,
+                                                            uintptr_t idx);
+
+uintptr_t ref_slice_AssetHandleXbox_len(const struct ref_slice_AssetHandleXbox *slice);
+
+const struct BlockAValXbox *ref_slice_BlockAValXbox_get(const struct ref_slice_BlockAValXbox *slice,
+                                                        uintptr_t idx);
+
+uintptr_t ref_slice_BlockAValXbox_len(const struct ref_slice_BlockAValXbox *slice);
+
+const struct EffectInfoXbox *ref_slice_EffectInfoXbox_get(const struct ref_slice_EffectInfoXbox *slice,
+                                                          uintptr_t idx);
+
+uintptr_t ref_slice_EffectInfoXbox_len(const struct ref_slice_EffectInfoXbox *slice);
+
+const struct FoliageInfoXbox *ref_slice_FoliageInfoXbox_get(const struct ref_slice_FoliageInfoXbox *slice,
+                                                            uintptr_t idx);
+
+uintptr_t ref_slice_FoliageInfoXbox_len(const struct ref_slice_FoliageInfoXbox *slice);
+
+const struct GFXBlockInfoXbox *ref_slice_GFXBlockInfoXbox_get(const struct ref_slice_GFXBlockInfoXbox *slice,
                                                               uintptr_t idx);
 
-uintptr_t owned_slice_BlockValRefXbox_len(const struct owned_slice_BlockValRefXbox *slice);
+uintptr_t ref_slice_GFXBlockInfoXbox_len(const struct ref_slice_GFXBlockInfoXbox *slice);
 
-const struct CrowdItemRefXbox *owned_slice_CrowdItemRefXbox_get(const struct owned_slice_CrowdItemRefXbox *slice,
-                                                                uintptr_t idx);
-
-uintptr_t owned_slice_CrowdItemRefXbox_len(const struct owned_slice_CrowdItemRefXbox *slice);
-
-const struct HkConstraintBoneRefXbox *owned_slice_HkConstraintBoneRefXbox_get(const struct owned_slice_HkConstraintBoneRefXbox *slice,
-                                                                              uintptr_t idx);
-
-uintptr_t owned_slice_HkConstraintBoneRefXbox_len(const struct owned_slice_HkConstraintBoneRefXbox *slice);
-
-const struct BlockValARefXbox *owned_slice_BlockValARefXbox_get(const struct owned_slice_BlockValARefXbox *slice,
-                                                                uintptr_t idx);
-
-uintptr_t owned_slice_BlockValARefXbox_len(const struct owned_slice_BlockValARefXbox *slice);
-
-const struct Obj1RefXbox *owned_slice_Obj1RefXbox_get(const struct owned_slice_Obj1RefXbox *slice,
-                                                      uintptr_t idx);
-
-uintptr_t owned_slice_Obj1RefXbox_len(const struct owned_slice_Obj1RefXbox *slice);
-
-const struct BoundingBoxXbox *slice_BoundingBoxXbox_get(const struct slice_BoundingBoxXbox *slice,
-                                                        uintptr_t idx);
-
-uintptr_t slice_BoundingBoxXbox_len(const struct slice_BoundingBoxXbox *slice);
-
-const struct BufferInfoXbox *slice_BufferInfoXbox_get(const struct slice_BufferInfoXbox *slice,
-                                                      uintptr_t idx);
-
-uintptr_t slice_BufferInfoXbox_len(const struct slice_BufferInfoXbox *slice);
-
-const CrcXbox *slice_CrcXbox_get(const struct slice_CrcXbox *slice, uintptr_t idx);
-
-uintptr_t slice_CrcXbox_len(const struct slice_CrcXbox *slice);
-
-const struct HkConstraintDataXbox *slice_HkConstraintDataXbox_get(const struct slice_HkConstraintDataXbox *slice,
-                                                                  uintptr_t idx);
-
-uintptr_t slice_HkConstraintDataXbox_len(const struct slice_HkConstraintDataXbox *slice);
-
-const struct Key2Xbox *slice_Key2Xbox_get(const struct slice_Key2Xbox *slice, uintptr_t idx);
-
-uintptr_t slice_Key2Xbox_len(const struct slice_Key2Xbox *slice);
-
-const struct Matrix4x4Xbox *slice_Matrix4x4Xbox_get(const struct slice_Matrix4x4Xbox *slice,
-                                                    uintptr_t idx);
-
-uintptr_t slice_Matrix4x4Xbox_len(const struct slice_Matrix4x4Xbox *slice);
-
-const struct Vector3Xbox *slice_Vector3Xbox_get(const struct slice_Vector3Xbox *slice,
-                                                uintptr_t idx);
-
-uintptr_t slice_Vector3Xbox_len(const struct slice_Vector3Xbox *slice);
-
-const struct Vector4Xbox *slice_Vector4Xbox_get(const struct slice_Vector4Xbox *slice,
-                                                uintptr_t idx);
-
-uintptr_t slice_Vector4Xbox_len(const struct slice_Vector4Xbox *slice);
-
-const i32Xbox *slice_i32Xbox_get(const struct slice_i32Xbox *slice, uintptr_t idx);
-
-uintptr_t slice_i32Xbox_len(const struct slice_i32Xbox *slice);
-
-const u16Xbox *slice_u16Xbox_get(const struct slice_u16Xbox *slice, uintptr_t idx);
-
-uintptr_t slice_u16Xbox_len(const struct slice_u16Xbox *slice);
-
-const u32Xbox *slice_u32Xbox_get(const struct slice_u32Xbox *slice, uintptr_t idx);
-
-uintptr_t slice_u32Xbox_len(const struct slice_u32Xbox *slice);
-
-const struct BlockValAXbox *slice_BlockValAXbox_get(const struct slice_BlockValAXbox *slice,
-                                                    uintptr_t idx);
-
-uintptr_t slice_BlockValAXbox_len(const struct slice_BlockValAXbox *slice);
-
-const struct BlockValBXbox *slice_BlockValBXbox_get(const struct slice_BlockValBXbox *slice,
-                                                    uintptr_t idx);
-
-uintptr_t slice_BlockValBXbox_len(const struct slice_BlockValBXbox *slice);
-
-const struct AnimationBlockInfoXbox *slice_AnimationBlockInfoXbox_get(const struct slice_AnimationBlockInfoXbox *slice,
+const struct HkConstraintInfoXbox *ref_slice_HkConstraintInfoXbox_get(const struct ref_slice_HkConstraintInfoXbox *slice,
                                                                       uintptr_t idx);
 
-uintptr_t slice_AnimationBlockInfoXbox_len(const struct slice_AnimationBlockInfoXbox *slice);
+uintptr_t ref_slice_HkConstraintInfoXbox_len(const struct ref_slice_HkConstraintInfoXbox *slice);
 
-const struct AnimationInfoXbox *slice_AnimationInfoXbox_get(const struct slice_AnimationInfoXbox *slice,
+const struct HkShapeInfoXbox *ref_slice_HkShapeInfoXbox_get(const struct ref_slice_HkShapeInfoXbox *slice,
                                                             uintptr_t idx);
 
-uintptr_t slice_AnimationInfoXbox_len(const struct slice_AnimationInfoXbox *slice);
+uintptr_t ref_slice_HkShapeInfoXbox_len(const struct ref_slice_HkShapeInfoXbox *slice);
 
-const struct AssetHandleXbox *slice_AssetHandleXbox_get(const struct slice_AssetHandleXbox *slice,
+const struct IBuffInfoXbox *ref_slice_IBuffInfoXbox_get(const struct ref_slice_IBuffInfoXbox *slice,
                                                         uintptr_t idx);
 
-uintptr_t slice_AssetHandleXbox_len(const struct slice_AssetHandleXbox *slice);
+uintptr_t ref_slice_IBuffInfoXbox_len(const struct ref_slice_IBuffInfoXbox *slice);
 
-const struct BlockAValXbox *slice_BlockAValXbox_get(const struct slice_BlockAValXbox *slice,
-                                                    uintptr_t idx);
+const struct Mat1Xbox *ref_slice_Mat1Xbox_get(const struct ref_slice_Mat1Xbox *slice,
+                                              uintptr_t idx);
 
-uintptr_t slice_BlockAValXbox_len(const struct slice_BlockAValXbox *slice);
+uintptr_t ref_slice_Mat1Xbox_len(const struct ref_slice_Mat1Xbox *slice);
 
-const struct EffectInfoXbox *slice_EffectInfoXbox_get(const struct slice_EffectInfoXbox *slice,
+const struct Mat2Xbox *ref_slice_Mat2Xbox_get(const struct ref_slice_Mat2Xbox *slice,
+                                              uintptr_t idx);
+
+uintptr_t ref_slice_Mat2Xbox_len(const struct ref_slice_Mat2Xbox *slice);
+
+const struct Mat3Xbox *ref_slice_Mat3Xbox_get(const struct ref_slice_Mat3Xbox *slice,
+                                              uintptr_t idx);
+
+uintptr_t ref_slice_Mat3Xbox_len(const struct ref_slice_Mat3Xbox *slice);
+
+const struct Mat4Xbox *ref_slice_Mat4Xbox_get(const struct ref_slice_Mat4Xbox *slice,
+                                              uintptr_t idx);
+
+uintptr_t ref_slice_Mat4Xbox_len(const struct ref_slice_Mat4Xbox *slice);
+
+const struct MatExtraXbox *ref_slice_MatExtraXbox_get(const struct ref_slice_MatExtraXbox *slice,
                                                       uintptr_t idx);
 
-uintptr_t slice_EffectInfoXbox_len(const struct slice_EffectInfoXbox *slice);
+uintptr_t ref_slice_MatExtraXbox_len(const struct ref_slice_MatExtraXbox *slice);
 
-const struct FoliageInfoXbox *slice_FoliageInfoXbox_get(const struct slice_FoliageInfoXbox *slice,
+const struct ModelInfoXbox *ref_slice_ModelInfoXbox_get(const struct ref_slice_ModelInfoXbox *slice,
                                                         uintptr_t idx);
 
-uintptr_t slice_FoliageInfoXbox_len(const struct slice_FoliageInfoXbox *slice);
+uintptr_t ref_slice_ModelInfoXbox_len(const struct ref_slice_ModelInfoXbox *slice);
 
-const struct GFXBlockInfoXbox *slice_GFXBlockInfoXbox_get(const struct slice_GFXBlockInfoXbox *slice,
+const struct Obj0Xbox *ref_slice_Obj0Xbox_get(const struct ref_slice_Obj0Xbox *slice,
+                                              uintptr_t idx);
+
+uintptr_t ref_slice_Obj0Xbox_len(const struct ref_slice_Obj0Xbox *slice);
+
+const struct ObjAXbox *ref_slice_ObjAXbox_get(const struct ref_slice_ObjAXbox *slice,
+                                              uintptr_t idx);
+
+uintptr_t ref_slice_ObjAXbox_len(const struct ref_slice_ObjAXbox *slice);
+
+const struct PFieldInfoXbox *ref_slice_PFieldInfoXbox_get(const struct ref_slice_PFieldInfoXbox *slice,
                                                           uintptr_t idx);
 
-uintptr_t slice_GFXBlockInfoXbox_len(const struct slice_GFXBlockInfoXbox *slice);
+uintptr_t ref_slice_PFieldInfoXbox_len(const struct ref_slice_PFieldInfoXbox *slice);
 
-const struct HkConstraintInfoXbox *slice_HkConstraintInfoXbox_get(const struct slice_HkConstraintInfoXbox *slice,
-                                                                  uintptr_t idx);
+const struct RadiosityValsInfoXbox *ref_slice_RadiosityValsInfoXbox_get(const struct ref_slice_RadiosityValsInfoXbox *slice,
+                                                                        uintptr_t idx);
 
-uintptr_t slice_HkConstraintInfoXbox_len(const struct slice_HkConstraintInfoXbox *slice);
+uintptr_t ref_slice_RadiosityValsInfoXbox_len(const struct ref_slice_RadiosityValsInfoXbox *slice);
 
-const struct HkShapeInfoXbox *slice_HkShapeInfoXbox_get(const struct slice_HkShapeInfoXbox *slice,
+const struct ShapeInfoXbox *ref_slice_ShapeInfoXbox_get(const struct ref_slice_ShapeInfoXbox *slice,
                                                         uintptr_t idx);
 
-uintptr_t slice_HkShapeInfoXbox_len(const struct slice_HkShapeInfoXbox *slice);
+uintptr_t ref_slice_ShapeInfoXbox_len(const struct ref_slice_ShapeInfoXbox *slice);
 
-const struct IBuffInfoXbox *slice_IBuffInfoXbox_get(const struct slice_IBuffInfoXbox *slice,
-                                                    uintptr_t idx);
-
-uintptr_t slice_IBuffInfoXbox_len(const struct slice_IBuffInfoXbox *slice);
-
-const struct Mat1Xbox *slice_Mat1Xbox_get(const struct slice_Mat1Xbox *slice, uintptr_t idx);
-
-uintptr_t slice_Mat1Xbox_len(const struct slice_Mat1Xbox *slice);
-
-const struct Mat2Xbox *slice_Mat2Xbox_get(const struct slice_Mat2Xbox *slice, uintptr_t idx);
-
-uintptr_t slice_Mat2Xbox_len(const struct slice_Mat2Xbox *slice);
-
-const struct Mat3Xbox *slice_Mat3Xbox_get(const struct slice_Mat3Xbox *slice, uintptr_t idx);
-
-uintptr_t slice_Mat3Xbox_len(const struct slice_Mat3Xbox *slice);
-
-const struct Mat4Xbox *slice_Mat4Xbox_get(const struct slice_Mat4Xbox *slice, uintptr_t idx);
-
-uintptr_t slice_Mat4Xbox_len(const struct slice_Mat4Xbox *slice);
-
-const struct MatExtraXbox *slice_MatExtraXbox_get(const struct slice_MatExtraXbox *slice,
-                                                  uintptr_t idx);
-
-uintptr_t slice_MatExtraXbox_len(const struct slice_MatExtraXbox *slice);
-
-const struct ModelInfoXbox *slice_ModelInfoXbox_get(const struct slice_ModelInfoXbox *slice,
-                                                    uintptr_t idx);
-
-uintptr_t slice_ModelInfoXbox_len(const struct slice_ModelInfoXbox *slice);
-
-const struct Obj0Xbox *slice_Obj0Xbox_get(const struct slice_Obj0Xbox *slice, uintptr_t idx);
-
-uintptr_t slice_Obj0Xbox_len(const struct slice_Obj0Xbox *slice);
-
-const struct ObjAXbox *slice_ObjAXbox_get(const struct slice_ObjAXbox *slice, uintptr_t idx);
-
-uintptr_t slice_ObjAXbox_len(const struct slice_ObjAXbox *slice);
-
-const struct PFieldInfoXbox *slice_PFieldInfoXbox_get(const struct slice_PFieldInfoXbox *slice,
-                                                      uintptr_t idx);
-
-uintptr_t slice_PFieldInfoXbox_len(const struct slice_PFieldInfoXbox *slice);
-
-const struct RadiosityValsInfoXbox *slice_RadiosityValsInfoXbox_get(const struct slice_RadiosityValsInfoXbox *slice,
-                                                                    uintptr_t idx);
-
-uintptr_t slice_RadiosityValsInfoXbox_len(const struct slice_RadiosityValsInfoXbox *slice);
-
-const struct ShapeInfoXbox *slice_ShapeInfoXbox_get(const struct slice_ShapeInfoXbox *slice,
-                                                    uintptr_t idx);
-
-uintptr_t slice_ShapeInfoXbox_len(const struct slice_ShapeInfoXbox *slice);
-
-const struct StringKeysValXbox *slice_StringKeysValXbox_get(const struct slice_StringKeysValXbox *slice,
-                                                            uintptr_t idx);
-
-uintptr_t slice_StringKeysValXbox_len(const struct slice_StringKeysValXbox *slice);
-
-const struct SubBlocksBlockHeaderXbox *slice_SubBlocksBlockHeaderXbox_get(const struct slice_SubBlocksBlockHeaderXbox *slice,
-                                                                          uintptr_t idx);
-
-uintptr_t slice_SubBlocksBlockHeaderXbox_len(const struct slice_SubBlocksBlockHeaderXbox *slice);
-
-const struct TextureInfoXbox *slice_TextureInfoXbox_get(const struct slice_TextureInfoXbox *slice,
-                                                        uintptr_t idx);
-
-uintptr_t slice_TextureInfoXbox_len(const struct slice_TextureInfoXbox *slice);
-
-const struct VBuffInfoXbox *slice_VBuffInfoXbox_get(const struct slice_VBuffInfoXbox *slice,
-                                                    uintptr_t idx);
-
-uintptr_t slice_VBuffInfoXbox_len(const struct slice_VBuffInfoXbox *slice);
-
-const struct Obj3Xbox *slice_Obj3Xbox_get(const struct slice_Obj3Xbox *slice, uintptr_t idx);
-
-uintptr_t slice_Obj3Xbox_len(const struct slice_Obj3Xbox *slice);
-
-const struct Obj5ValXbox *slice_Obj5ValXbox_get(const struct slice_Obj5ValXbox *slice,
-                                                uintptr_t idx);
-
-uintptr_t slice_Obj5ValXbox_len(const struct slice_Obj5ValXbox *slice);
-
-const struct SSAValXbox *slice_SSAValXbox_get(const struct slice_SSAValXbox *slice, uintptr_t idx);
-
-uintptr_t slice_SSAValXbox_len(const struct slice_SSAValXbox *slice);
-
-const struct TypeFieldXbox *slice_TypeFieldXbox_get(const struct slice_TypeFieldXbox *slice,
-                                                    uintptr_t idx);
-
-uintptr_t slice_TypeFieldXbox_len(const struct slice_TypeFieldXbox *slice);
-
-const struct FoliageValXbox *slice_FoliageValXbox_get(const struct slice_FoliageValXbox *slice,
-                                                      uintptr_t idx);
-
-uintptr_t slice_FoliageValXbox_len(const struct slice_FoliageValXbox *slice);
-
-const U32Xbox *slice_U32Xbox_get(const struct slice_U32Xbox *slice, uintptr_t idx);
-
-uintptr_t slice_U32Xbox_len(const struct slice_U32Xbox *slice);
-
-const struct WeightXbox *slice_WeightXbox_get(const struct slice_WeightXbox *slice, uintptr_t idx);
-
-uintptr_t slice_WeightXbox_len(const struct slice_WeightXbox *slice);
-
-const struct AtlasUVValXbox *slice_AtlasUVValXbox_get(const struct slice_AtlasUVValXbox *slice,
-                                                      uintptr_t idx);
-
-uintptr_t slice_AtlasUVValXbox_len(const struct slice_AtlasUVValXbox *slice);
-
-const struct SprayInstanceXbox *slice_SprayInstanceXbox_get(const struct slice_SprayInstanceXbox *slice,
-                                                            uintptr_t idx);
-
-uintptr_t slice_SprayInstanceXbox_len(const struct slice_SprayInstanceXbox *slice);
-
-const struct SprayValXbox *slice_SprayValXbox_get(const struct slice_SprayValXbox *slice,
-                                                  uintptr_t idx);
-
-uintptr_t slice_SprayValXbox_len(const struct slice_SprayValXbox *slice);
-
-const struct TRSXbox *slice_TRSXbox_get(const struct slice_TRSXbox *slice, uintptr_t idx);
-
-uintptr_t slice_TRSXbox_len(const struct slice_TRSXbox *slice);
-
-const f32Xbox *slice_f32Xbox_get(const struct slice_f32Xbox *slice, uintptr_t idx);
-
-uintptr_t slice_f32Xbox_len(const struct slice_f32Xbox *slice);
-
-const i16Xbox *slice_i16Xbox_get(const struct slice_i16Xbox *slice, uintptr_t idx);
-
-uintptr_t slice_i16Xbox_len(const struct slice_i16Xbox *slice);
-
-const struct CrowdValXbox *slice_CrowdValXbox_get(const struct slice_CrowdValXbox *slice,
-                                                  uintptr_t idx);
-
-uintptr_t slice_CrowdValXbox_len(const struct slice_CrowdValXbox *slice);
-
-const struct RotationPolar32Xbox *slice_RotationPolar32Xbox_get(const struct slice_RotationPolar32Xbox *slice,
+const struct StringKeysValXbox *ref_slice_StringKeysValXbox_get(const struct ref_slice_StringKeysValXbox *slice,
                                                                 uintptr_t idx);
 
-uintptr_t slice_RotationPolar32Xbox_len(const struct slice_RotationPolar32Xbox *slice);
+uintptr_t ref_slice_StringKeysValXbox_len(const struct ref_slice_StringKeysValXbox *slice);
 
-const struct RotationStraight16Xbox *slice_RotationStraight16Xbox_get(const struct slice_RotationStraight16Xbox *slice,
-                                                                      uintptr_t idx);
+const struct SubBlocksBlockHeaderXbox *ref_slice_SubBlocksBlockHeaderXbox_get(const struct ref_slice_SubBlocksBlockHeaderXbox *slice,
+                                                                              uintptr_t idx);
 
-uintptr_t slice_RotationStraight16Xbox_len(const struct slice_RotationStraight16Xbox *slice);
+uintptr_t ref_slice_SubBlocksBlockHeaderXbox_len(const struct ref_slice_SubBlocksBlockHeaderXbox *slice);
 
-const struct RotationThreeComp24Xbox *slice_RotationThreeComp24Xbox_get(const struct slice_RotationThreeComp24Xbox *slice,
-                                                                        uintptr_t idx);
+const struct TextureInfoXbox *ref_slice_TextureInfoXbox_get(const struct ref_slice_TextureInfoXbox *slice,
+                                                            uintptr_t idx);
 
-uintptr_t slice_RotationThreeComp24Xbox_len(const struct slice_RotationThreeComp24Xbox *slice);
+uintptr_t ref_slice_TextureInfoXbox_len(const struct ref_slice_TextureInfoXbox *slice);
 
-const struct RotationThreeComp40Xbox *slice_RotationThreeComp40Xbox_get(const struct slice_RotationThreeComp40Xbox *slice,
-                                                                        uintptr_t idx);
+const struct VBuffInfoXbox *ref_slice_VBuffInfoXbox_get(const struct ref_slice_VBuffInfoXbox *slice,
+                                                        uintptr_t idx);
 
-uintptr_t slice_RotationThreeComp40Xbox_len(const struct slice_RotationThreeComp40Xbox *slice);
+uintptr_t ref_slice_VBuffInfoXbox_len(const struct ref_slice_VBuffInfoXbox *slice);
 
-const struct RotationThreeComp48Xbox *slice_RotationThreeComp48Xbox_get(const struct slice_RotationThreeComp48Xbox *slice,
-                                                                        uintptr_t idx);
+const struct Obj3Xbox *ref_slice_Obj3Xbox_get(const struct ref_slice_Obj3Xbox *slice,
+                                              uintptr_t idx);
 
-uintptr_t slice_RotationThreeComp48Xbox_len(const struct slice_RotationThreeComp48Xbox *slice);
+uintptr_t ref_slice_Obj3Xbox_len(const struct ref_slice_Obj3Xbox *slice);
 
-const struct RotationUncompressedXbox *slice_RotationUncompressedXbox_get(const struct slice_RotationUncompressedXbox *slice,
+const struct Obj5ValXbox *ref_slice_Obj5ValXbox_get(const struct ref_slice_Obj5ValXbox *slice,
+                                                    uintptr_t idx);
+
+uintptr_t ref_slice_Obj5ValXbox_len(const struct ref_slice_Obj5ValXbox *slice);
+
+const struct SSAValXbox *ref_slice_SSAValXbox_get(const struct ref_slice_SSAValXbox *slice,
+                                                  uintptr_t idx);
+
+uintptr_t ref_slice_SSAValXbox_len(const struct ref_slice_SSAValXbox *slice);
+
+const struct TypeFieldXbox *ref_slice_TypeFieldXbox_get(const struct ref_slice_TypeFieldXbox *slice,
+                                                        uintptr_t idx);
+
+uintptr_t ref_slice_TypeFieldXbox_len(const struct ref_slice_TypeFieldXbox *slice);
+
+const struct FoliageValXbox *ref_slice_FoliageValXbox_get(const struct ref_slice_FoliageValXbox *slice,
+                                                          uintptr_t idx);
+
+uintptr_t ref_slice_FoliageValXbox_len(const struct ref_slice_FoliageValXbox *slice);
+
+const U32Xbox *ref_slice_U32Xbox_get(const struct ref_slice_U32Xbox *slice, uintptr_t idx);
+
+uintptr_t ref_slice_U32Xbox_len(const struct ref_slice_U32Xbox *slice);
+
+const struct WeightXbox *ref_slice_WeightXbox_get(const struct ref_slice_WeightXbox *slice,
+                                                  uintptr_t idx);
+
+uintptr_t ref_slice_WeightXbox_len(const struct ref_slice_WeightXbox *slice);
+
+const struct AtlasUVValXbox *ref_slice_AtlasUVValXbox_get(const struct ref_slice_AtlasUVValXbox *slice,
+                                                          uintptr_t idx);
+
+uintptr_t ref_slice_AtlasUVValXbox_len(const struct ref_slice_AtlasUVValXbox *slice);
+
+const struct SprayInstanceXbox *ref_slice_SprayInstanceXbox_get(const struct ref_slice_SprayInstanceXbox *slice,
+                                                                uintptr_t idx);
+
+uintptr_t ref_slice_SprayInstanceXbox_len(const struct ref_slice_SprayInstanceXbox *slice);
+
+const struct SprayValXbox *ref_slice_SprayValXbox_get(const struct ref_slice_SprayValXbox *slice,
+                                                      uintptr_t idx);
+
+uintptr_t ref_slice_SprayValXbox_len(const struct ref_slice_SprayValXbox *slice);
+
+const struct TRSXbox *ref_slice_TRSXbox_get(const struct ref_slice_TRSXbox *slice, uintptr_t idx);
+
+uintptr_t ref_slice_TRSXbox_len(const struct ref_slice_TRSXbox *slice);
+
+const f32Xbox *ref_slice_f32Xbox_get(const struct ref_slice_f32Xbox *slice, uintptr_t idx);
+
+uintptr_t ref_slice_f32Xbox_len(const struct ref_slice_f32Xbox *slice);
+
+const i16Xbox *ref_slice_i16Xbox_get(const struct ref_slice_i16Xbox *slice, uintptr_t idx);
+
+uintptr_t ref_slice_i16Xbox_len(const struct ref_slice_i16Xbox *slice);
+
+const struct CrowdValXbox *ref_slice_CrowdValXbox_get(const struct ref_slice_CrowdValXbox *slice,
+                                                      uintptr_t idx);
+
+uintptr_t ref_slice_CrowdValXbox_len(const struct ref_slice_CrowdValXbox *slice);
+
+const struct RotationPolar32Xbox *ref_slice_RotationPolar32Xbox_get(const struct ref_slice_RotationPolar32Xbox *slice,
+                                                                    uintptr_t idx);
+
+uintptr_t ref_slice_RotationPolar32Xbox_len(const struct ref_slice_RotationPolar32Xbox *slice);
+
+const struct RotationStraight16Xbox *ref_slice_RotationStraight16Xbox_get(const struct ref_slice_RotationStraight16Xbox *slice,
                                                                           uintptr_t idx);
 
-uintptr_t slice_RotationUncompressedXbox_len(const struct slice_RotationUncompressedXbox *slice);
+uintptr_t ref_slice_RotationStraight16Xbox_len(const struct ref_slice_RotationStraight16Xbox *slice);
+
+const struct RotationThreeComp24Xbox *ref_slice_RotationThreeComp24Xbox_get(const struct ref_slice_RotationThreeComp24Xbox *slice,
+                                                                            uintptr_t idx);
+
+uintptr_t ref_slice_RotationThreeComp24Xbox_len(const struct ref_slice_RotationThreeComp24Xbox *slice);
+
+const struct RotationThreeComp40Xbox *ref_slice_RotationThreeComp40Xbox_get(const struct ref_slice_RotationThreeComp40Xbox *slice,
+                                                                            uintptr_t idx);
+
+uintptr_t ref_slice_RotationThreeComp40Xbox_len(const struct ref_slice_RotationThreeComp40Xbox *slice);
+
+const struct RotationThreeComp48Xbox *ref_slice_RotationThreeComp48Xbox_get(const struct ref_slice_RotationThreeComp48Xbox *slice,
+                                                                            uintptr_t idx);
+
+uintptr_t ref_slice_RotationThreeComp48Xbox_len(const struct ref_slice_RotationThreeComp48Xbox *slice);
+
+const struct RotationUncompressedXbox *ref_slice_RotationUncompressedXbox_get(const struct ref_slice_RotationUncompressedXbox *slice,
+                                                                              uintptr_t idx);
+
+uintptr_t ref_slice_RotationUncompressedXbox_len(const struct ref_slice_RotationUncompressedXbox *slice);
+
+u32Xbox *mut_slice_u32Xbox_get(struct mut_slice_u32Xbox *slice, uintptr_t idx);
+
+uintptr_t mut_slice_u32Xbox_len(const struct slice_u32Xbox *slice);
+
+struct AnimationBlockInfoXbox *mut_slice_AnimationBlockInfoXbox_get(struct mut_slice_AnimationBlockInfoXbox *slice,
+                                                                    uintptr_t idx);
+
+uintptr_t mut_slice_AnimationBlockInfoXbox_len(const struct slice_AnimationBlockInfoXbox *slice);
+
+struct AnimationInfoXbox *mut_slice_AnimationInfoXbox_get(struct mut_slice_AnimationInfoXbox *slice,
+                                                          uintptr_t idx);
+
+uintptr_t mut_slice_AnimationInfoXbox_len(const struct slice_AnimationInfoXbox *slice);
+
+struct BufferInfoXbox *mut_slice_BufferInfoXbox_get(struct mut_slice_BufferInfoXbox *slice,
+                                                    uintptr_t idx);
+
+uintptr_t mut_slice_BufferInfoXbox_len(const struct slice_BufferInfoXbox *slice);
+
+struct EffectInfoXbox *mut_slice_EffectInfoXbox_get(struct mut_slice_EffectInfoXbox *slice,
+                                                    uintptr_t idx);
+
+uintptr_t mut_slice_EffectInfoXbox_len(const struct slice_EffectInfoXbox *slice);
+
+struct FoliageInfoXbox *mut_slice_FoliageInfoXbox_get(struct mut_slice_FoliageInfoXbox *slice,
+                                                      uintptr_t idx);
+
+uintptr_t mut_slice_FoliageInfoXbox_len(const struct slice_FoliageInfoXbox *slice);
+
+struct GFXBlockInfoXbox *mut_slice_GFXBlockInfoXbox_get(struct mut_slice_GFXBlockInfoXbox *slice,
+                                                        uintptr_t idx);
+
+uintptr_t mut_slice_GFXBlockInfoXbox_len(const struct slice_GFXBlockInfoXbox *slice);
+
+struct HkConstraintDataXbox *mut_slice_HkConstraintDataXbox_get(struct mut_slice_HkConstraintDataXbox *slice,
+                                                                uintptr_t idx);
+
+uintptr_t mut_slice_HkConstraintDataXbox_len(const struct slice_HkConstraintDataXbox *slice);
+
+struct HkConstraintInfoXbox *mut_slice_HkConstraintInfoXbox_get(struct mut_slice_HkConstraintInfoXbox *slice,
+                                                                uintptr_t idx);
+
+uintptr_t mut_slice_HkConstraintInfoXbox_len(const struct slice_HkConstraintInfoXbox *slice);
+
+struct HkShapeInfoXbox *mut_slice_HkShapeInfoXbox_get(struct mut_slice_HkShapeInfoXbox *slice,
+                                                      uintptr_t idx);
+
+uintptr_t mut_slice_HkShapeInfoXbox_len(const struct slice_HkShapeInfoXbox *slice);
+
+struct IBuffInfoXbox *mut_slice_IBuffInfoXbox_get(struct mut_slice_IBuffInfoXbox *slice,
+                                                  uintptr_t idx);
+
+uintptr_t mut_slice_IBuffInfoXbox_len(const struct slice_IBuffInfoXbox *slice);
+
+struct Mat1Xbox *mut_slice_Mat1Xbox_get(struct mut_slice_Mat1Xbox *slice, uintptr_t idx);
+
+uintptr_t mut_slice_Mat1Xbox_len(const struct slice_Mat1Xbox *slice);
+
+struct Mat2Xbox *mut_slice_Mat2Xbox_get(struct mut_slice_Mat2Xbox *slice, uintptr_t idx);
+
+uintptr_t mut_slice_Mat2Xbox_len(const struct slice_Mat2Xbox *slice);
+
+struct Mat3Xbox *mut_slice_Mat3Xbox_get(struct mut_slice_Mat3Xbox *slice, uintptr_t idx);
+
+uintptr_t mut_slice_Mat3Xbox_len(const struct slice_Mat3Xbox *slice);
+
+struct Mat4Xbox *mut_slice_Mat4Xbox_get(struct mut_slice_Mat4Xbox *slice, uintptr_t idx);
+
+uintptr_t mut_slice_Mat4Xbox_len(const struct slice_Mat4Xbox *slice);
+
+struct MatExtraXbox *mut_slice_MatExtraXbox_get(struct mut_slice_MatExtraXbox *slice,
+                                                uintptr_t idx);
+
+uintptr_t mut_slice_MatExtraXbox_len(const struct slice_MatExtraXbox *slice);
+
+struct ModelInfoXbox *mut_slice_ModelInfoXbox_get(struct mut_slice_ModelInfoXbox *slice,
+                                                  uintptr_t idx);
+
+uintptr_t mut_slice_ModelInfoXbox_len(const struct slice_ModelInfoXbox *slice);
+
+struct Obj0Xbox *mut_slice_Obj0Xbox_get(struct mut_slice_Obj0Xbox *slice, uintptr_t idx);
+
+uintptr_t mut_slice_Obj0Xbox_len(const struct slice_Obj0Xbox *slice);
+
+struct ObjAXbox *mut_slice_ObjAXbox_get(struct mut_slice_ObjAXbox *slice, uintptr_t idx);
+
+uintptr_t mut_slice_ObjAXbox_len(const struct slice_ObjAXbox *slice);
+
+struct PFieldInfoXbox *mut_slice_PFieldInfoXbox_get(struct mut_slice_PFieldInfoXbox *slice,
+                                                    uintptr_t idx);
+
+uintptr_t mut_slice_PFieldInfoXbox_len(const struct slice_PFieldInfoXbox *slice);
+
+struct RadiosityValsInfoXbox *mut_slice_RadiosityValsInfoXbox_get(struct mut_slice_RadiosityValsInfoXbox *slice,
+                                                                  uintptr_t idx);
+
+uintptr_t mut_slice_RadiosityValsInfoXbox_len(const struct slice_RadiosityValsInfoXbox *slice);
+
+struct ShapeInfoXbox *mut_slice_ShapeInfoXbox_get(struct mut_slice_ShapeInfoXbox *slice,
+                                                  uintptr_t idx);
+
+uintptr_t mut_slice_ShapeInfoXbox_len(const struct slice_ShapeInfoXbox *slice);
+
+struct TextureInfoXbox *mut_slice_TextureInfoXbox_get(struct mut_slice_TextureInfoXbox *slice,
+                                                      uintptr_t idx);
+
+uintptr_t mut_slice_TextureInfoXbox_len(const struct slice_TextureInfoXbox *slice);
+
+struct VBuffInfoXbox *mut_slice_VBuffInfoXbox_get(struct mut_slice_VBuffInfoXbox *slice,
+                                                  uintptr_t idx);
+
+uintptr_t mut_slice_VBuffInfoXbox_len(const struct slice_VBuffInfoXbox *slice);
 
 const struct HkConstraintRefXbox *Option_HkConstraintRefXbox_get(const struct Option_HkConstraintRefXbox *slice);
 
@@ -10084,7 +11853,7 @@ const struct IndexBufferRefPs3 *IndexMap_u32__IndexBufferRefPs3_get(const struct
 uintptr_t IndexMap_u32__IndexBufferRefPs3_len(const struct IndexMap_u32__IndexBufferRefPs3 *map);
 
 void IndexMap_u32__IndexBufferRefPs3_keys(const struct IndexMap_u32__IndexBufferRefPs3 *map,
-                                          uint32_t *keys);
+                                          struct mut_slice_u32 *keys);
 
 const struct VertexBufferRefPs3 *IndexMap_u32__VertexBufferRefPs3_get(const struct IndexMap_u32__VertexBufferRefPs3 *map,
                                                                       const uint32_t *key);
@@ -10092,21 +11861,23 @@ const struct VertexBufferRefPs3 *IndexMap_u32__VertexBufferRefPs3_get(const stru
 uintptr_t IndexMap_u32__VertexBufferRefPs3_len(const struct IndexMap_u32__VertexBufferRefPs3 *map);
 
 void IndexMap_u32__VertexBufferRefPs3_keys(const struct IndexMap_u32__VertexBufferRefPs3 *map,
-                                           uint32_t *keys);
+                                           struct mut_slice_u32 *keys);
 
 const struct MatRefPs3 *IndexMap_u32__MatRefPs3_get(const struct IndexMap_u32__MatRefPs3 *map,
                                                     const uint32_t *key);
 
 uintptr_t IndexMap_u32__MatRefPs3_len(const struct IndexMap_u32__MatRefPs3 *map);
 
-void IndexMap_u32__MatRefPs3_keys(const struct IndexMap_u32__MatRefPs3 *map, uint32_t *keys);
+void IndexMap_u32__MatRefPs3_keys(const struct IndexMap_u32__MatRefPs3 *map,
+                                  struct mut_slice_u32 *keys);
 
 const struct ModelRefPs3 *IndexMap_u32__ModelRefPs3_get(const struct IndexMap_u32__ModelRefPs3 *map,
                                                         const uint32_t *key);
 
 uintptr_t IndexMap_u32__ModelRefPs3_len(const struct IndexMap_u32__ModelRefPs3 *map);
 
-void IndexMap_u32__ModelRefPs3_keys(const struct IndexMap_u32__ModelRefPs3 *map, uint32_t *keys);
+void IndexMap_u32__ModelRefPs3_keys(const struct IndexMap_u32__ModelRefPs3 *map,
+                                    struct mut_slice_u32 *keys);
 
 const struct IBuffInfoPs3 *const *IndexMap_u32_______IBuffInfoPs3_get(const struct IndexMap_u32_______IBuffInfoPs3 *map,
                                                                       const uint32_t *key);
@@ -10114,7 +11885,7 @@ const struct IBuffInfoPs3 *const *IndexMap_u32_______IBuffInfoPs3_get(const stru
 uintptr_t IndexMap_u32_______IBuffInfoPs3_len(const struct IndexMap_u32_______IBuffInfoPs3 *map);
 
 void IndexMap_u32_______IBuffInfoPs3_keys(const struct IndexMap_u32_______IBuffInfoPs3 *map,
-                                          uint32_t *keys);
+                                          struct mut_slice_u32 *keys);
 
 const struct VBuffInfoPs3 *const *IndexMap_u32_______VBuffInfoPs3_get(const struct IndexMap_u32_______VBuffInfoPs3 *map,
                                                                       const uint32_t *key);
@@ -10122,7 +11893,7 @@ const struct VBuffInfoPs3 *const *IndexMap_u32_______VBuffInfoPs3_get(const stru
 uintptr_t IndexMap_u32_______VBuffInfoPs3_len(const struct IndexMap_u32_______VBuffInfoPs3 *map);
 
 void IndexMap_u32_______VBuffInfoPs3_keys(const struct IndexMap_u32_______VBuffInfoPs3 *map,
-                                          uint32_t *keys);
+                                          struct mut_slice_u32 *keys);
 
 const struct AnimationRefPs3 *IndexMap_u32__AnimationRefPs3_get(const struct IndexMap_u32__AnimationRefPs3 *map,
                                                                 const uint32_t *key);
@@ -10130,21 +11901,23 @@ const struct AnimationRefPs3 *IndexMap_u32__AnimationRefPs3_get(const struct Ind
 uintptr_t IndexMap_u32__AnimationRefPs3_len(const struct IndexMap_u32__AnimationRefPs3 *map);
 
 void IndexMap_u32__AnimationRefPs3_keys(const struct IndexMap_u32__AnimationRefPs3 *map,
-                                        uint32_t *keys);
+                                        struct mut_slice_u32 *keys);
 
 const struct DataRefPs3 *IndexMap_u32__DataRefPs3_get(const struct IndexMap_u32__DataRefPs3 *map,
                                                       const uint32_t *key);
 
 uintptr_t IndexMap_u32__DataRefPs3_len(const struct IndexMap_u32__DataRefPs3 *map);
 
-void IndexMap_u32__DataRefPs3_keys(const struct IndexMap_u32__DataRefPs3 *map, uint32_t *keys);
+void IndexMap_u32__DataRefPs3_keys(const struct IndexMap_u32__DataRefPs3 *map,
+                                   struct mut_slice_u32 *keys);
 
 const struct EffectRefPs3 *IndexMap_u32__EffectRefPs3_get(const struct IndexMap_u32__EffectRefPs3 *map,
                                                           const uint32_t *key);
 
 uintptr_t IndexMap_u32__EffectRefPs3_len(const struct IndexMap_u32__EffectRefPs3 *map);
 
-void IndexMap_u32__EffectRefPs3_keys(const struct IndexMap_u32__EffectRefPs3 *map, uint32_t *keys);
+void IndexMap_u32__EffectRefPs3_keys(const struct IndexMap_u32__EffectRefPs3 *map,
+                                     struct mut_slice_u32 *keys);
 
 const struct LangStringsRefPs3 *IndexMap_u32__LangStringsRefPs3_get(const struct IndexMap_u32__LangStringsRefPs3 *map,
                                                                     const uint32_t *key);
@@ -10152,21 +11925,23 @@ const struct LangStringsRefPs3 *IndexMap_u32__LangStringsRefPs3_get(const struct
 uintptr_t IndexMap_u32__LangStringsRefPs3_len(const struct IndexMap_u32__LangStringsRefPs3 *map);
 
 void IndexMap_u32__LangStringsRefPs3_keys(const struct IndexMap_u32__LangStringsRefPs3 *map,
-                                          uint32_t *keys);
+                                          struct mut_slice_u32 *keys);
 
 const LuaRefPs3 *IndexMap_u32__LuaRefPs3_get(const struct IndexMap_u32__LuaRefPs3 *map,
                                              const uint32_t *key);
 
 uintptr_t IndexMap_u32__LuaRefPs3_len(const struct IndexMap_u32__LuaRefPs3 *map);
 
-void IndexMap_u32__LuaRefPs3_keys(const struct IndexMap_u32__LuaRefPs3 *map, uint32_t *keys);
+void IndexMap_u32__LuaRefPs3_keys(const struct IndexMap_u32__LuaRefPs3 *map,
+                                  struct mut_slice_u32 *keys);
 
 const struct ObjRefPs3 *IndexMap_u32__ObjRefPs3_get(const struct IndexMap_u32__ObjRefPs3 *map,
                                                     const uint32_t *key);
 
 uintptr_t IndexMap_u32__ObjRefPs3_len(const struct IndexMap_u32__ObjRefPs3 *map);
 
-void IndexMap_u32__ObjRefPs3_keys(const struct IndexMap_u32__ObjRefPs3 *map, uint32_t *keys);
+void IndexMap_u32__ObjRefPs3_keys(const struct IndexMap_u32__ObjRefPs3 *map,
+                                  struct mut_slice_u32 *keys);
 
 const struct RadiosityValsRefPs3 *IndexMap_u32__RadiosityValsRefPs3_get(const struct IndexMap_u32__RadiosityValsRefPs3 *map,
                                                                         const uint32_t *key);
@@ -10174,14 +11949,15 @@ const struct RadiosityValsRefPs3 *IndexMap_u32__RadiosityValsRefPs3_get(const st
 uintptr_t IndexMap_u32__RadiosityValsRefPs3_len(const struct IndexMap_u32__RadiosityValsRefPs3 *map);
 
 void IndexMap_u32__RadiosityValsRefPs3_keys(const struct IndexMap_u32__RadiosityValsRefPs3 *map,
-                                            uint32_t *keys);
+                                            struct mut_slice_u32 *keys);
 
 const struct SSARefPs3 *IndexMap_u32__SSARefPs3_get(const struct IndexMap_u32__SSARefPs3 *map,
                                                     const uint32_t *key);
 
 uintptr_t IndexMap_u32__SSARefPs3_len(const struct IndexMap_u32__SSARefPs3 *map);
 
-void IndexMap_u32__SSARefPs3_keys(const struct IndexMap_u32__SSARefPs3 *map, uint32_t *keys);
+void IndexMap_u32__SSARefPs3_keys(const struct IndexMap_u32__SSARefPs3 *map,
+                                  struct mut_slice_u32 *keys);
 
 const struct TextureRefPs3 *IndexMap_u32__TextureRefPs3_get(const struct IndexMap_u32__TextureRefPs3 *map,
                                                             const uint32_t *key);
@@ -10189,22 +11965,23 @@ const struct TextureRefPs3 *IndexMap_u32__TextureRefPs3_get(const struct IndexMa
 uintptr_t IndexMap_u32__TextureRefPs3_len(const struct IndexMap_u32__TextureRefPs3 *map);
 
 void IndexMap_u32__TextureRefPs3_keys(const struct IndexMap_u32__TextureRefPs3 *map,
-                                      uint32_t *keys);
+                                      struct mut_slice_u32 *keys);
 
 const struct TypeRefPs3 *IndexMap_u32__TypeRefPs3_get(const struct IndexMap_u32__TypeRefPs3 *map,
                                                       const uint32_t *key);
 
 uintptr_t IndexMap_u32__TypeRefPs3_len(const struct IndexMap_u32__TypeRefPs3 *map);
 
-void IndexMap_u32__TypeRefPs3_keys(const struct IndexMap_u32__TypeRefPs3 *map, uint32_t *keys);
+void IndexMap_u32__TypeRefPs3_keys(const struct IndexMap_u32__TypeRefPs3 *map,
+                                   struct mut_slice_u32 *keys);
 
-const struct owned_slice_FoliageRefPs3 *IndexMap_u32__owned_slice_FoliageRefPs3_get(const struct IndexMap_u32__owned_slice_FoliageRefPs3 *map,
-                                                                                    const uint32_t *key);
+const struct slice_FoliageRefPs3 *IndexMap_u32__slice_FoliageRefPs3_get(const struct IndexMap_u32__slice_FoliageRefPs3 *map,
+                                                                        const uint32_t *key);
 
-uintptr_t IndexMap_u32__owned_slice_FoliageRefPs3_len(const struct IndexMap_u32__owned_slice_FoliageRefPs3 *map);
+uintptr_t IndexMap_u32__slice_FoliageRefPs3_len(const struct IndexMap_u32__slice_FoliageRefPs3 *map);
 
-void IndexMap_u32__owned_slice_FoliageRefPs3_keys(const struct IndexMap_u32__owned_slice_FoliageRefPs3 *map,
-                                                  uint32_t *keys);
+void IndexMap_u32__slice_FoliageRefPs3_keys(const struct IndexMap_u32__slice_FoliageRefPs3 *map,
+                                            struct mut_slice_u32 *keys);
 
 const struct BaseTypeRefPs3 *IndexMap_u32__BaseTypeRefPs3_get(const struct IndexMap_u32__BaseTypeRefPs3 *map,
                                                               const uint32_t *key);
@@ -10212,333 +11989,455 @@ const struct BaseTypeRefPs3 *IndexMap_u32__BaseTypeRefPs3_get(const struct Index
 uintptr_t IndexMap_u32__BaseTypeRefPs3_len(const struct IndexMap_u32__BaseTypeRefPs3 *map);
 
 void IndexMap_u32__BaseTypeRefPs3_keys(const struct IndexMap_u32__BaseTypeRefPs3 *map,
-                                       uint32_t *keys);
+                                       struct mut_slice_u32 *keys);
 
-const struct slice_u16Ps3 *IndexMap_u32__slice_u16Ps3_get(const struct IndexMap_u32__slice_u16Ps3 *map,
-                                                          const uint32_t *key);
+const struct ref_slice_u16Ps3 *IndexMap_u32__ref_slice_u16Ps3_get(const struct IndexMap_u32__ref_slice_u16Ps3 *map,
+                                                                  const uint32_t *key);
 
-uintptr_t IndexMap_u32__slice_u16Ps3_len(const struct IndexMap_u32__slice_u16Ps3 *map);
+uintptr_t IndexMap_u32__ref_slice_u16Ps3_len(const struct IndexMap_u32__ref_slice_u16Ps3 *map);
 
-void IndexMap_u32__slice_u16Ps3_keys(const struct IndexMap_u32__slice_u16Ps3 *map, uint32_t *keys);
+void IndexMap_u32__ref_slice_u16Ps3_keys(const struct IndexMap_u32__ref_slice_u16Ps3 *map,
+                                         struct mut_slice_u32 *keys);
 
-const struct BlockRefPs3 *owned_slice_BlockRefPs3_get(const struct owned_slice_BlockRefPs3 *slice,
-                                                      uintptr_t idx);
+const struct BlockRefPs3 *slice_BlockRefPs3_get(const struct slice_BlockRefPs3 *slice,
+                                                uintptr_t idx);
 
-uintptr_t owned_slice_BlockRefPs3_len(const struct owned_slice_BlockRefPs3 *slice);
+uintptr_t slice_BlockRefPs3_len(const struct slice_BlockRefPs3 *slice);
 
-const struct ShapeRefPs3 *owned_slice_ShapeRefPs3_get(const struct owned_slice_ShapeRefPs3 *slice,
-                                                      uintptr_t idx);
+const struct ShapeRefPs3 *slice_ShapeRefPs3_get(const struct slice_ShapeRefPs3 *slice,
+                                                uintptr_t idx);
 
-uintptr_t owned_slice_ShapeRefPs3_len(const struct owned_slice_ShapeRefPs3 *slice);
+uintptr_t slice_ShapeRefPs3_len(const struct slice_ShapeRefPs3 *slice);
 
-const struct HkShapeRefPs3 *owned_slice_HkShapeRefPs3_get(const struct owned_slice_HkShapeRefPs3 *slice,
+const struct HkShapeRefPs3 *owned_slice_HkShapeRefPs3_get(const struct slice_HkShapeRefPs3 *slice,
                                                           uintptr_t idx);
 
-uintptr_t owned_slice_HkShapeRefPs3_len(const struct owned_slice_HkShapeRefPs3 *slice);
+uintptr_t owned_slice_HkShapeRefPs3_len(const struct slice_HkShapeRefPs3 *slice);
 
-const struct FoliageRefPs3 *owned_slice_FoliageRefPs3_get(const struct owned_slice_FoliageRefPs3 *slice,
+const struct FoliageRefPs3 *slice_FoliageRefPs3_get(const struct slice_FoliageRefPs3 *slice,
+                                                    uintptr_t idx);
+
+uintptr_t slice_FoliageRefPs3_len(const struct slice_FoliageRefPs3 *slice);
+
+const struct ref_slice_u16Ps3 *slice_ref_slice_u16Ps3_get(const struct slice_ref_slice_u16Ps3 *slice,
                                                           uintptr_t idx);
 
-uintptr_t owned_slice_FoliageRefPs3_len(const struct owned_slice_FoliageRefPs3 *slice);
+uintptr_t slice_ref_slice_u16Ps3_len(const struct slice_ref_slice_u16Ps3 *slice);
 
-const struct slice_u16Ps3 *owned_slice_slice_u16Ps3_get(const struct owned_slice_slice_u16Ps3 *slice,
+const struct BlockValRefPs3 *slice_BlockValRefPs3_get(const struct slice_BlockValRefPs3 *slice,
+                                                      uintptr_t idx);
+
+uintptr_t slice_BlockValRefPs3_len(const struct slice_BlockValRefPs3 *slice);
+
+const struct CrowdItemRefPs3 *slice_CrowdItemRefPs3_get(const struct slice_CrowdItemRefPs3 *slice,
                                                         uintptr_t idx);
 
-uintptr_t owned_slice_slice_u16Ps3_len(const struct owned_slice_slice_u16Ps3 *slice);
+uintptr_t slice_CrowdItemRefPs3_len(const struct slice_CrowdItemRefPs3 *slice);
 
-const struct BlockValRefPs3 *owned_slice_BlockValRefPs3_get(const struct owned_slice_BlockValRefPs3 *slice,
+const struct HkConstraintBoneRefPs3 *slice_HkConstraintBoneRefPs3_get(const struct slice_HkConstraintBoneRefPs3 *slice,
+                                                                      uintptr_t idx);
+
+uintptr_t slice_HkConstraintBoneRefPs3_len(const struct slice_HkConstraintBoneRefPs3 *slice);
+
+const struct BlockValARefPs3 *slice_BlockValARefPs3_get(const struct slice_BlockValARefPs3 *slice,
+                                                        uintptr_t idx);
+
+uintptr_t slice_BlockValARefPs3_len(const struct slice_BlockValARefPs3 *slice);
+
+const struct Obj1RefPs3 *slice_Obj1RefPs3_get(const struct slice_Obj1RefPs3 *slice, uintptr_t idx);
+
+uintptr_t slice_Obj1RefPs3_len(const struct slice_Obj1RefPs3 *slice);
+
+const struct HkShapeRefPs3 *slice_HkShapeRefPs3_get(const struct slice_HkShapeRefPs3 *slice,
+                                                    uintptr_t idx);
+
+uintptr_t slice_HkShapeRefPs3_len(const struct slice_HkShapeRefPs3 *slice);
+
+const struct BoundingBoxPs3 *ref_slice_BoundingBoxPs3_get(const struct ref_slice_BoundingBoxPs3 *slice,
+                                                          uintptr_t idx);
+
+uintptr_t ref_slice_BoundingBoxPs3_len(const struct ref_slice_BoundingBoxPs3 *slice);
+
+const struct BufferInfoPs3 *ref_slice_BufferInfoPs3_get(const struct ref_slice_BufferInfoPs3 *slice,
+                                                        uintptr_t idx);
+
+uintptr_t ref_slice_BufferInfoPs3_len(const struct ref_slice_BufferInfoPs3 *slice);
+
+const CrcPs3 *ref_slice_CrcPs3_get(const struct ref_slice_CrcPs3 *slice, uintptr_t idx);
+
+uintptr_t ref_slice_CrcPs3_len(const struct ref_slice_CrcPs3 *slice);
+
+const struct HkConstraintDataPs3 *ref_slice_HkConstraintDataPs3_get(const struct ref_slice_HkConstraintDataPs3 *slice,
+                                                                    uintptr_t idx);
+
+uintptr_t ref_slice_HkConstraintDataPs3_len(const struct ref_slice_HkConstraintDataPs3 *slice);
+
+const struct Key2Ps3 *ref_slice_Key2Ps3_get(const struct ref_slice_Key2Ps3 *slice, uintptr_t idx);
+
+uintptr_t ref_slice_Key2Ps3_len(const struct ref_slice_Key2Ps3 *slice);
+
+const struct Matrix4x4Ps3 *ref_slice_Matrix4x4Ps3_get(const struct ref_slice_Matrix4x4Ps3 *slice,
+                                                      uintptr_t idx);
+
+uintptr_t ref_slice_Matrix4x4Ps3_len(const struct ref_slice_Matrix4x4Ps3 *slice);
+
+const struct Vector3Ps3 *ref_slice_Vector3Ps3_get(const struct ref_slice_Vector3Ps3 *slice,
+                                                  uintptr_t idx);
+
+uintptr_t ref_slice_Vector3Ps3_len(const struct ref_slice_Vector3Ps3 *slice);
+
+const struct Vector4Ps3 *ref_slice_Vector4Ps3_get(const struct ref_slice_Vector4Ps3 *slice,
+                                                  uintptr_t idx);
+
+uintptr_t ref_slice_Vector4Ps3_len(const struct ref_slice_Vector4Ps3 *slice);
+
+const i32Ps3 *ref_slice_i32Ps3_get(const struct ref_slice_i32Ps3 *slice, uintptr_t idx);
+
+uintptr_t ref_slice_i32Ps3_len(const struct ref_slice_i32Ps3 *slice);
+
+const u16Ps3 *ref_slice_u16Ps3_get(const struct ref_slice_u16Ps3 *slice, uintptr_t idx);
+
+uintptr_t ref_slice_u16Ps3_len(const struct ref_slice_u16Ps3 *slice);
+
+const u32Ps3 *ref_slice_u32Ps3_get(const struct ref_slice_u32Ps3 *slice, uintptr_t idx);
+
+uintptr_t ref_slice_u32Ps3_len(const struct ref_slice_u32Ps3 *slice);
+
+const struct BlockValAPs3 *ref_slice_BlockValAPs3_get(const struct ref_slice_BlockValAPs3 *slice,
+                                                      uintptr_t idx);
+
+uintptr_t ref_slice_BlockValAPs3_len(const struct ref_slice_BlockValAPs3 *slice);
+
+const struct BlockValBPs3 *ref_slice_BlockValBPs3_get(const struct ref_slice_BlockValBPs3 *slice,
+                                                      uintptr_t idx);
+
+uintptr_t ref_slice_BlockValBPs3_len(const struct ref_slice_BlockValBPs3 *slice);
+
+const struct AnimationBlockInfoPs3 *ref_slice_AnimationBlockInfoPs3_get(const struct ref_slice_AnimationBlockInfoPs3 *slice,
+                                                                        uintptr_t idx);
+
+uintptr_t ref_slice_AnimationBlockInfoPs3_len(const struct ref_slice_AnimationBlockInfoPs3 *slice);
+
+const struct AnimationInfoPs3 *ref_slice_AnimationInfoPs3_get(const struct ref_slice_AnimationInfoPs3 *slice,
+                                                              uintptr_t idx);
+
+uintptr_t ref_slice_AnimationInfoPs3_len(const struct ref_slice_AnimationInfoPs3 *slice);
+
+const struct AssetHandlePs3 *ref_slice_AssetHandlePs3_get(const struct ref_slice_AssetHandlePs3 *slice,
+                                                          uintptr_t idx);
+
+uintptr_t ref_slice_AssetHandlePs3_len(const struct ref_slice_AssetHandlePs3 *slice);
+
+const struct BlockAValPs3 *ref_slice_BlockAValPs3_get(const struct ref_slice_BlockAValPs3 *slice,
+                                                      uintptr_t idx);
+
+uintptr_t ref_slice_BlockAValPs3_len(const struct ref_slice_BlockAValPs3 *slice);
+
+const struct EffectInfoPs3 *ref_slice_EffectInfoPs3_get(const struct ref_slice_EffectInfoPs3 *slice,
+                                                        uintptr_t idx);
+
+uintptr_t ref_slice_EffectInfoPs3_len(const struct ref_slice_EffectInfoPs3 *slice);
+
+const struct FoliageInfoPs3 *ref_slice_FoliageInfoPs3_get(const struct ref_slice_FoliageInfoPs3 *slice,
+                                                          uintptr_t idx);
+
+uintptr_t ref_slice_FoliageInfoPs3_len(const struct ref_slice_FoliageInfoPs3 *slice);
+
+const struct GFXBlockInfoPs3 *ref_slice_GFXBlockInfoPs3_get(const struct ref_slice_GFXBlockInfoPs3 *slice,
                                                             uintptr_t idx);
 
-uintptr_t owned_slice_BlockValRefPs3_len(const struct owned_slice_BlockValRefPs3 *slice);
+uintptr_t ref_slice_GFXBlockInfoPs3_len(const struct ref_slice_GFXBlockInfoPs3 *slice);
 
-const struct CrowdItemRefPs3 *owned_slice_CrowdItemRefPs3_get(const struct owned_slice_CrowdItemRefPs3 *slice,
-                                                              uintptr_t idx);
-
-uintptr_t owned_slice_CrowdItemRefPs3_len(const struct owned_slice_CrowdItemRefPs3 *slice);
-
-const struct HkConstraintBoneRefPs3 *owned_slice_HkConstraintBoneRefPs3_get(const struct owned_slice_HkConstraintBoneRefPs3 *slice,
-                                                                            uintptr_t idx);
-
-uintptr_t owned_slice_HkConstraintBoneRefPs3_len(const struct owned_slice_HkConstraintBoneRefPs3 *slice);
-
-const struct BlockValARefPs3 *owned_slice_BlockValARefPs3_get(const struct owned_slice_BlockValARefPs3 *slice,
-                                                              uintptr_t idx);
-
-uintptr_t owned_slice_BlockValARefPs3_len(const struct owned_slice_BlockValARefPs3 *slice);
-
-const struct Obj1RefPs3 *owned_slice_Obj1RefPs3_get(const struct owned_slice_Obj1RefPs3 *slice,
-                                                    uintptr_t idx);
-
-uintptr_t owned_slice_Obj1RefPs3_len(const struct owned_slice_Obj1RefPs3 *slice);
-
-const struct BoundingBoxPs3 *slice_BoundingBoxPs3_get(const struct slice_BoundingBoxPs3 *slice,
-                                                      uintptr_t idx);
-
-uintptr_t slice_BoundingBoxPs3_len(const struct slice_BoundingBoxPs3 *slice);
-
-const struct BufferInfoPs3 *slice_BufferInfoPs3_get(const struct slice_BufferInfoPs3 *slice,
-                                                    uintptr_t idx);
-
-uintptr_t slice_BufferInfoPs3_len(const struct slice_BufferInfoPs3 *slice);
-
-const CrcPs3 *slice_CrcPs3_get(const struct slice_CrcPs3 *slice, uintptr_t idx);
-
-uintptr_t slice_CrcPs3_len(const struct slice_CrcPs3 *slice);
-
-const struct HkConstraintDataPs3 *slice_HkConstraintDataPs3_get(const struct slice_HkConstraintDataPs3 *slice,
-                                                                uintptr_t idx);
-
-uintptr_t slice_HkConstraintDataPs3_len(const struct slice_HkConstraintDataPs3 *slice);
-
-const struct Key2Ps3 *slice_Key2Ps3_get(const struct slice_Key2Ps3 *slice, uintptr_t idx);
-
-uintptr_t slice_Key2Ps3_len(const struct slice_Key2Ps3 *slice);
-
-const struct Matrix4x4Ps3 *slice_Matrix4x4Ps3_get(const struct slice_Matrix4x4Ps3 *slice,
-                                                  uintptr_t idx);
-
-uintptr_t slice_Matrix4x4Ps3_len(const struct slice_Matrix4x4Ps3 *slice);
-
-const struct Vector3Ps3 *slice_Vector3Ps3_get(const struct slice_Vector3Ps3 *slice, uintptr_t idx);
-
-uintptr_t slice_Vector3Ps3_len(const struct slice_Vector3Ps3 *slice);
-
-const struct Vector4Ps3 *slice_Vector4Ps3_get(const struct slice_Vector4Ps3 *slice, uintptr_t idx);
-
-uintptr_t slice_Vector4Ps3_len(const struct slice_Vector4Ps3 *slice);
-
-const i32Ps3 *slice_i32Ps3_get(const struct slice_i32Ps3 *slice, uintptr_t idx);
-
-uintptr_t slice_i32Ps3_len(const struct slice_i32Ps3 *slice);
-
-const u16Ps3 *slice_u16Ps3_get(const struct slice_u16Ps3 *slice, uintptr_t idx);
-
-uintptr_t slice_u16Ps3_len(const struct slice_u16Ps3 *slice);
-
-const u32Ps3 *slice_u32Ps3_get(const struct slice_u32Ps3 *slice, uintptr_t idx);
-
-uintptr_t slice_u32Ps3_len(const struct slice_u32Ps3 *slice);
-
-const struct BlockValAPs3 *slice_BlockValAPs3_get(const struct slice_BlockValAPs3 *slice,
-                                                  uintptr_t idx);
-
-uintptr_t slice_BlockValAPs3_len(const struct slice_BlockValAPs3 *slice);
-
-const struct BlockValBPs3 *slice_BlockValBPs3_get(const struct slice_BlockValBPs3 *slice,
-                                                  uintptr_t idx);
-
-uintptr_t slice_BlockValBPs3_len(const struct slice_BlockValBPs3 *slice);
-
-const struct AnimationBlockInfoPs3 *slice_AnimationBlockInfoPs3_get(const struct slice_AnimationBlockInfoPs3 *slice,
+const struct HkConstraintInfoPs3 *ref_slice_HkConstraintInfoPs3_get(const struct ref_slice_HkConstraintInfoPs3 *slice,
                                                                     uintptr_t idx);
 
-uintptr_t slice_AnimationBlockInfoPs3_len(const struct slice_AnimationBlockInfoPs3 *slice);
+uintptr_t ref_slice_HkConstraintInfoPs3_len(const struct ref_slice_HkConstraintInfoPs3 *slice);
 
-const struct AnimationInfoPs3 *slice_AnimationInfoPs3_get(const struct slice_AnimationInfoPs3 *slice,
+const struct HkShapeInfoPs3 *ref_slice_HkShapeInfoPs3_get(const struct ref_slice_HkShapeInfoPs3 *slice,
                                                           uintptr_t idx);
 
-uintptr_t slice_AnimationInfoPs3_len(const struct slice_AnimationInfoPs3 *slice);
+uintptr_t ref_slice_HkShapeInfoPs3_len(const struct ref_slice_HkShapeInfoPs3 *slice);
 
-const struct AssetHandlePs3 *slice_AssetHandlePs3_get(const struct slice_AssetHandlePs3 *slice,
+const struct IBuffInfoPs3 *ref_slice_IBuffInfoPs3_get(const struct ref_slice_IBuffInfoPs3 *slice,
                                                       uintptr_t idx);
 
-uintptr_t slice_AssetHandlePs3_len(const struct slice_AssetHandlePs3 *slice);
+uintptr_t ref_slice_IBuffInfoPs3_len(const struct ref_slice_IBuffInfoPs3 *slice);
 
-const struct BlockAValPs3 *slice_BlockAValPs3_get(const struct slice_BlockAValPs3 *slice,
-                                                  uintptr_t idx);
+const struct Mat1Ps3 *ref_slice_Mat1Ps3_get(const struct ref_slice_Mat1Ps3 *slice, uintptr_t idx);
 
-uintptr_t slice_BlockAValPs3_len(const struct slice_BlockAValPs3 *slice);
+uintptr_t ref_slice_Mat1Ps3_len(const struct ref_slice_Mat1Ps3 *slice);
 
-const struct EffectInfoPs3 *slice_EffectInfoPs3_get(const struct slice_EffectInfoPs3 *slice,
+const struct Mat2Ps3 *ref_slice_Mat2Ps3_get(const struct ref_slice_Mat2Ps3 *slice, uintptr_t idx);
+
+uintptr_t ref_slice_Mat2Ps3_len(const struct ref_slice_Mat2Ps3 *slice);
+
+const struct Mat3Ps3 *ref_slice_Mat3Ps3_get(const struct ref_slice_Mat3Ps3 *slice, uintptr_t idx);
+
+uintptr_t ref_slice_Mat3Ps3_len(const struct ref_slice_Mat3Ps3 *slice);
+
+const struct Mat4Ps3 *ref_slice_Mat4Ps3_get(const struct ref_slice_Mat4Ps3 *slice, uintptr_t idx);
+
+uintptr_t ref_slice_Mat4Ps3_len(const struct ref_slice_Mat4Ps3 *slice);
+
+const struct MatExtraPs3 *ref_slice_MatExtraPs3_get(const struct ref_slice_MatExtraPs3 *slice,
                                                     uintptr_t idx);
 
-uintptr_t slice_EffectInfoPs3_len(const struct slice_EffectInfoPs3 *slice);
+uintptr_t ref_slice_MatExtraPs3_len(const struct ref_slice_MatExtraPs3 *slice);
 
-const struct FoliageInfoPs3 *slice_FoliageInfoPs3_get(const struct slice_FoliageInfoPs3 *slice,
+const struct ModelInfoPs3 *ref_slice_ModelInfoPs3_get(const struct ref_slice_ModelInfoPs3 *slice,
                                                       uintptr_t idx);
 
-uintptr_t slice_FoliageInfoPs3_len(const struct slice_FoliageInfoPs3 *slice);
+uintptr_t ref_slice_ModelInfoPs3_len(const struct ref_slice_ModelInfoPs3 *slice);
 
-const struct GFXBlockInfoPs3 *slice_GFXBlockInfoPs3_get(const struct slice_GFXBlockInfoPs3 *slice,
+const struct Obj0Ps3 *ref_slice_Obj0Ps3_get(const struct ref_slice_Obj0Ps3 *slice, uintptr_t idx);
+
+uintptr_t ref_slice_Obj0Ps3_len(const struct ref_slice_Obj0Ps3 *slice);
+
+const struct ObjAPs3 *ref_slice_ObjAPs3_get(const struct ref_slice_ObjAPs3 *slice, uintptr_t idx);
+
+uintptr_t ref_slice_ObjAPs3_len(const struct ref_slice_ObjAPs3 *slice);
+
+const struct PFieldInfoPs3 *ref_slice_PFieldInfoPs3_get(const struct ref_slice_PFieldInfoPs3 *slice,
                                                         uintptr_t idx);
 
-uintptr_t slice_GFXBlockInfoPs3_len(const struct slice_GFXBlockInfoPs3 *slice);
+uintptr_t ref_slice_PFieldInfoPs3_len(const struct ref_slice_PFieldInfoPs3 *slice);
 
-const struct HkConstraintInfoPs3 *slice_HkConstraintInfoPs3_get(const struct slice_HkConstraintInfoPs3 *slice,
-                                                                uintptr_t idx);
+const struct RadiosityValsInfoPs3 *ref_slice_RadiosityValsInfoPs3_get(const struct ref_slice_RadiosityValsInfoPs3 *slice,
+                                                                      uintptr_t idx);
 
-uintptr_t slice_HkConstraintInfoPs3_len(const struct slice_HkConstraintInfoPs3 *slice);
+uintptr_t ref_slice_RadiosityValsInfoPs3_len(const struct ref_slice_RadiosityValsInfoPs3 *slice);
 
-const struct HkShapeInfoPs3 *slice_HkShapeInfoPs3_get(const struct slice_HkShapeInfoPs3 *slice,
+const struct ShapeInfoPs3 *ref_slice_ShapeInfoPs3_get(const struct ref_slice_ShapeInfoPs3 *slice,
                                                       uintptr_t idx);
 
-uintptr_t slice_HkShapeInfoPs3_len(const struct slice_HkShapeInfoPs3 *slice);
+uintptr_t ref_slice_ShapeInfoPs3_len(const struct ref_slice_ShapeInfoPs3 *slice);
 
-const struct IBuffInfoPs3 *slice_IBuffInfoPs3_get(const struct slice_IBuffInfoPs3 *slice,
-                                                  uintptr_t idx);
-
-uintptr_t slice_IBuffInfoPs3_len(const struct slice_IBuffInfoPs3 *slice);
-
-const struct Mat1Ps3 *slice_Mat1Ps3_get(const struct slice_Mat1Ps3 *slice, uintptr_t idx);
-
-uintptr_t slice_Mat1Ps3_len(const struct slice_Mat1Ps3 *slice);
-
-const struct Mat2Ps3 *slice_Mat2Ps3_get(const struct slice_Mat2Ps3 *slice, uintptr_t idx);
-
-uintptr_t slice_Mat2Ps3_len(const struct slice_Mat2Ps3 *slice);
-
-const struct Mat3Ps3 *slice_Mat3Ps3_get(const struct slice_Mat3Ps3 *slice, uintptr_t idx);
-
-uintptr_t slice_Mat3Ps3_len(const struct slice_Mat3Ps3 *slice);
-
-const struct Mat4Ps3 *slice_Mat4Ps3_get(const struct slice_Mat4Ps3 *slice, uintptr_t idx);
-
-uintptr_t slice_Mat4Ps3_len(const struct slice_Mat4Ps3 *slice);
-
-const struct MatExtraPs3 *slice_MatExtraPs3_get(const struct slice_MatExtraPs3 *slice,
-                                                uintptr_t idx);
-
-uintptr_t slice_MatExtraPs3_len(const struct slice_MatExtraPs3 *slice);
-
-const struct ModelInfoPs3 *slice_ModelInfoPs3_get(const struct slice_ModelInfoPs3 *slice,
-                                                  uintptr_t idx);
-
-uintptr_t slice_ModelInfoPs3_len(const struct slice_ModelInfoPs3 *slice);
-
-const struct Obj0Ps3 *slice_Obj0Ps3_get(const struct slice_Obj0Ps3 *slice, uintptr_t idx);
-
-uintptr_t slice_Obj0Ps3_len(const struct slice_Obj0Ps3 *slice);
-
-const struct ObjAPs3 *slice_ObjAPs3_get(const struct slice_ObjAPs3 *slice, uintptr_t idx);
-
-uintptr_t slice_ObjAPs3_len(const struct slice_ObjAPs3 *slice);
-
-const struct PFieldInfoPs3 *slice_PFieldInfoPs3_get(const struct slice_PFieldInfoPs3 *slice,
-                                                    uintptr_t idx);
-
-uintptr_t slice_PFieldInfoPs3_len(const struct slice_PFieldInfoPs3 *slice);
-
-const struct RadiosityValsInfoPs3 *slice_RadiosityValsInfoPs3_get(const struct slice_RadiosityValsInfoPs3 *slice,
-                                                                  uintptr_t idx);
-
-uintptr_t slice_RadiosityValsInfoPs3_len(const struct slice_RadiosityValsInfoPs3 *slice);
-
-const struct ShapeInfoPs3 *slice_ShapeInfoPs3_get(const struct slice_ShapeInfoPs3 *slice,
-                                                  uintptr_t idx);
-
-uintptr_t slice_ShapeInfoPs3_len(const struct slice_ShapeInfoPs3 *slice);
-
-const struct StringKeysValPs3 *slice_StringKeysValPs3_get(const struct slice_StringKeysValPs3 *slice,
-                                                          uintptr_t idx);
-
-uintptr_t slice_StringKeysValPs3_len(const struct slice_StringKeysValPs3 *slice);
-
-const struct SubBlocksBlockHeaderPs3 *slice_SubBlocksBlockHeaderPs3_get(const struct slice_SubBlocksBlockHeaderPs3 *slice,
-                                                                        uintptr_t idx);
-
-uintptr_t slice_SubBlocksBlockHeaderPs3_len(const struct slice_SubBlocksBlockHeaderPs3 *slice);
-
-const struct TextureInfoPs3 *slice_TextureInfoPs3_get(const struct slice_TextureInfoPs3 *slice,
-                                                      uintptr_t idx);
-
-uintptr_t slice_TextureInfoPs3_len(const struct slice_TextureInfoPs3 *slice);
-
-const struct VBuffInfoPs3 *slice_VBuffInfoPs3_get(const struct slice_VBuffInfoPs3 *slice,
-                                                  uintptr_t idx);
-
-uintptr_t slice_VBuffInfoPs3_len(const struct slice_VBuffInfoPs3 *slice);
-
-const struct Obj3Ps3 *slice_Obj3Ps3_get(const struct slice_Obj3Ps3 *slice, uintptr_t idx);
-
-uintptr_t slice_Obj3Ps3_len(const struct slice_Obj3Ps3 *slice);
-
-const struct Obj5ValPs3 *slice_Obj5ValPs3_get(const struct slice_Obj5ValPs3 *slice, uintptr_t idx);
-
-uintptr_t slice_Obj5ValPs3_len(const struct slice_Obj5ValPs3 *slice);
-
-const struct SSAValPs3 *slice_SSAValPs3_get(const struct slice_SSAValPs3 *slice, uintptr_t idx);
-
-uintptr_t slice_SSAValPs3_len(const struct slice_SSAValPs3 *slice);
-
-const struct TypeFieldPs3 *slice_TypeFieldPs3_get(const struct slice_TypeFieldPs3 *slice,
-                                                  uintptr_t idx);
-
-uintptr_t slice_TypeFieldPs3_len(const struct slice_TypeFieldPs3 *slice);
-
-const struct FoliageValPs3 *slice_FoliageValPs3_get(const struct slice_FoliageValPs3 *slice,
-                                                    uintptr_t idx);
-
-uintptr_t slice_FoliageValPs3_len(const struct slice_FoliageValPs3 *slice);
-
-const U32Ps3 *slice_U32Ps3_get(const struct slice_U32Ps3 *slice, uintptr_t idx);
-
-uintptr_t slice_U32Ps3_len(const struct slice_U32Ps3 *slice);
-
-const struct WeightPs3 *slice_WeightPs3_get(const struct slice_WeightPs3 *slice, uintptr_t idx);
-
-uintptr_t slice_WeightPs3_len(const struct slice_WeightPs3 *slice);
-
-const struct AtlasUVValPs3 *slice_AtlasUVValPs3_get(const struct slice_AtlasUVValPs3 *slice,
-                                                    uintptr_t idx);
-
-uintptr_t slice_AtlasUVValPs3_len(const struct slice_AtlasUVValPs3 *slice);
-
-const struct SprayInstancePs3 *slice_SprayInstancePs3_get(const struct slice_SprayInstancePs3 *slice,
-                                                          uintptr_t idx);
-
-uintptr_t slice_SprayInstancePs3_len(const struct slice_SprayInstancePs3 *slice);
-
-const struct SprayValPs3 *slice_SprayValPs3_get(const struct slice_SprayValPs3 *slice,
-                                                uintptr_t idx);
-
-uintptr_t slice_SprayValPs3_len(const struct slice_SprayValPs3 *slice);
-
-const struct TRSPs3 *slice_TRSPs3_get(const struct slice_TRSPs3 *slice, uintptr_t idx);
-
-uintptr_t slice_TRSPs3_len(const struct slice_TRSPs3 *slice);
-
-const f32Ps3 *slice_f32Ps3_get(const struct slice_f32Ps3 *slice, uintptr_t idx);
-
-uintptr_t slice_f32Ps3_len(const struct slice_f32Ps3 *slice);
-
-const i16Ps3 *slice_i16Ps3_get(const struct slice_i16Ps3 *slice, uintptr_t idx);
-
-uintptr_t slice_i16Ps3_len(const struct slice_i16Ps3 *slice);
-
-const struct CrowdValPs3 *slice_CrowdValPs3_get(const struct slice_CrowdValPs3 *slice,
-                                                uintptr_t idx);
-
-uintptr_t slice_CrowdValPs3_len(const struct slice_CrowdValPs3 *slice);
-
-const struct RotationPolar32Ps3 *slice_RotationPolar32Ps3_get(const struct slice_RotationPolar32Ps3 *slice,
+const struct StringKeysValPs3 *ref_slice_StringKeysValPs3_get(const struct ref_slice_StringKeysValPs3 *slice,
                                                               uintptr_t idx);
 
-uintptr_t slice_RotationPolar32Ps3_len(const struct slice_RotationPolar32Ps3 *slice);
+uintptr_t ref_slice_StringKeysValPs3_len(const struct ref_slice_StringKeysValPs3 *slice);
 
-const struct RotationStraight16Ps3 *slice_RotationStraight16Ps3_get(const struct slice_RotationStraight16Ps3 *slice,
-                                                                    uintptr_t idx);
+const struct SubBlocksBlockHeaderPs3 *ref_slice_SubBlocksBlockHeaderPs3_get(const struct ref_slice_SubBlocksBlockHeaderPs3 *slice,
+                                                                            uintptr_t idx);
 
-uintptr_t slice_RotationStraight16Ps3_len(const struct slice_RotationStraight16Ps3 *slice);
+uintptr_t ref_slice_SubBlocksBlockHeaderPs3_len(const struct ref_slice_SubBlocksBlockHeaderPs3 *slice);
 
-const struct RotationThreeComp24Ps3 *slice_RotationThreeComp24Ps3_get(const struct slice_RotationThreeComp24Ps3 *slice,
-                                                                      uintptr_t idx);
+const struct TextureInfoPs3 *ref_slice_TextureInfoPs3_get(const struct ref_slice_TextureInfoPs3 *slice,
+                                                          uintptr_t idx);
 
-uintptr_t slice_RotationThreeComp24Ps3_len(const struct slice_RotationThreeComp24Ps3 *slice);
+uintptr_t ref_slice_TextureInfoPs3_len(const struct ref_slice_TextureInfoPs3 *slice);
 
-const struct RotationThreeComp40Ps3 *slice_RotationThreeComp40Ps3_get(const struct slice_RotationThreeComp40Ps3 *slice,
-                                                                      uintptr_t idx);
+const struct VBuffInfoPs3 *ref_slice_VBuffInfoPs3_get(const struct ref_slice_VBuffInfoPs3 *slice,
+                                                      uintptr_t idx);
 
-uintptr_t slice_RotationThreeComp40Ps3_len(const struct slice_RotationThreeComp40Ps3 *slice);
+uintptr_t ref_slice_VBuffInfoPs3_len(const struct ref_slice_VBuffInfoPs3 *slice);
 
-const struct RotationThreeComp48Ps3 *slice_RotationThreeComp48Ps3_get(const struct slice_RotationThreeComp48Ps3 *slice,
-                                                                      uintptr_t idx);
+const struct Obj3Ps3 *ref_slice_Obj3Ps3_get(const struct ref_slice_Obj3Ps3 *slice, uintptr_t idx);
 
-uintptr_t slice_RotationThreeComp48Ps3_len(const struct slice_RotationThreeComp48Ps3 *slice);
+uintptr_t ref_slice_Obj3Ps3_len(const struct ref_slice_Obj3Ps3 *slice);
 
-const struct RotationUncompressedPs3 *slice_RotationUncompressedPs3_get(const struct slice_RotationUncompressedPs3 *slice,
+const struct Obj5ValPs3 *ref_slice_Obj5ValPs3_get(const struct ref_slice_Obj5ValPs3 *slice,
+                                                  uintptr_t idx);
+
+uintptr_t ref_slice_Obj5ValPs3_len(const struct ref_slice_Obj5ValPs3 *slice);
+
+const struct SSAValPs3 *ref_slice_SSAValPs3_get(const struct ref_slice_SSAValPs3 *slice,
+                                                uintptr_t idx);
+
+uintptr_t ref_slice_SSAValPs3_len(const struct ref_slice_SSAValPs3 *slice);
+
+const struct TypeFieldPs3 *ref_slice_TypeFieldPs3_get(const struct ref_slice_TypeFieldPs3 *slice,
+                                                      uintptr_t idx);
+
+uintptr_t ref_slice_TypeFieldPs3_len(const struct ref_slice_TypeFieldPs3 *slice);
+
+const struct FoliageValPs3 *ref_slice_FoliageValPs3_get(const struct ref_slice_FoliageValPs3 *slice,
+                                                        uintptr_t idx);
+
+uintptr_t ref_slice_FoliageValPs3_len(const struct ref_slice_FoliageValPs3 *slice);
+
+const U32Ps3 *ref_slice_U32Ps3_get(const struct ref_slice_U32Ps3 *slice, uintptr_t idx);
+
+uintptr_t ref_slice_U32Ps3_len(const struct ref_slice_U32Ps3 *slice);
+
+const struct WeightPs3 *ref_slice_WeightPs3_get(const struct ref_slice_WeightPs3 *slice,
+                                                uintptr_t idx);
+
+uintptr_t ref_slice_WeightPs3_len(const struct ref_slice_WeightPs3 *slice);
+
+const struct AtlasUVValPs3 *ref_slice_AtlasUVValPs3_get(const struct ref_slice_AtlasUVValPs3 *slice,
+                                                        uintptr_t idx);
+
+uintptr_t ref_slice_AtlasUVValPs3_len(const struct ref_slice_AtlasUVValPs3 *slice);
+
+const struct SprayInstancePs3 *ref_slice_SprayInstancePs3_get(const struct ref_slice_SprayInstancePs3 *slice,
+                                                              uintptr_t idx);
+
+uintptr_t ref_slice_SprayInstancePs3_len(const struct ref_slice_SprayInstancePs3 *slice);
+
+const struct SprayValPs3 *ref_slice_SprayValPs3_get(const struct ref_slice_SprayValPs3 *slice,
+                                                    uintptr_t idx);
+
+uintptr_t ref_slice_SprayValPs3_len(const struct ref_slice_SprayValPs3 *slice);
+
+const struct TRSPs3 *ref_slice_TRSPs3_get(const struct ref_slice_TRSPs3 *slice, uintptr_t idx);
+
+uintptr_t ref_slice_TRSPs3_len(const struct ref_slice_TRSPs3 *slice);
+
+const f32Ps3 *ref_slice_f32Ps3_get(const struct ref_slice_f32Ps3 *slice, uintptr_t idx);
+
+uintptr_t ref_slice_f32Ps3_len(const struct ref_slice_f32Ps3 *slice);
+
+const i16Ps3 *ref_slice_i16Ps3_get(const struct ref_slice_i16Ps3 *slice, uintptr_t idx);
+
+uintptr_t ref_slice_i16Ps3_len(const struct ref_slice_i16Ps3 *slice);
+
+const struct CrowdValPs3 *ref_slice_CrowdValPs3_get(const struct ref_slice_CrowdValPs3 *slice,
+                                                    uintptr_t idx);
+
+uintptr_t ref_slice_CrowdValPs3_len(const struct ref_slice_CrowdValPs3 *slice);
+
+const struct RotationPolar32Ps3 *ref_slice_RotationPolar32Ps3_get(const struct ref_slice_RotationPolar32Ps3 *slice,
+                                                                  uintptr_t idx);
+
+uintptr_t ref_slice_RotationPolar32Ps3_len(const struct ref_slice_RotationPolar32Ps3 *slice);
+
+const struct RotationStraight16Ps3 *ref_slice_RotationStraight16Ps3_get(const struct ref_slice_RotationStraight16Ps3 *slice,
                                                                         uintptr_t idx);
 
-uintptr_t slice_RotationUncompressedPs3_len(const struct slice_RotationUncompressedPs3 *slice);
+uintptr_t ref_slice_RotationStraight16Ps3_len(const struct ref_slice_RotationStraight16Ps3 *slice);
+
+const struct RotationThreeComp24Ps3 *ref_slice_RotationThreeComp24Ps3_get(const struct ref_slice_RotationThreeComp24Ps3 *slice,
+                                                                          uintptr_t idx);
+
+uintptr_t ref_slice_RotationThreeComp24Ps3_len(const struct ref_slice_RotationThreeComp24Ps3 *slice);
+
+const struct RotationThreeComp40Ps3 *ref_slice_RotationThreeComp40Ps3_get(const struct ref_slice_RotationThreeComp40Ps3 *slice,
+                                                                          uintptr_t idx);
+
+uintptr_t ref_slice_RotationThreeComp40Ps3_len(const struct ref_slice_RotationThreeComp40Ps3 *slice);
+
+const struct RotationThreeComp48Ps3 *ref_slice_RotationThreeComp48Ps3_get(const struct ref_slice_RotationThreeComp48Ps3 *slice,
+                                                                          uintptr_t idx);
+
+uintptr_t ref_slice_RotationThreeComp48Ps3_len(const struct ref_slice_RotationThreeComp48Ps3 *slice);
+
+const struct RotationUncompressedPs3 *ref_slice_RotationUncompressedPs3_get(const struct ref_slice_RotationUncompressedPs3 *slice,
+                                                                            uintptr_t idx);
+
+uintptr_t ref_slice_RotationUncompressedPs3_len(const struct ref_slice_RotationUncompressedPs3 *slice);
+
+u32Ps3 *mut_slice_u32Ps3_get(struct mut_slice_u32Ps3 *slice, uintptr_t idx);
+
+uintptr_t mut_slice_u32Ps3_len(const struct slice_u32Ps3 *slice);
+
+struct AnimationBlockInfoPs3 *mut_slice_AnimationBlockInfoPs3_get(struct mut_slice_AnimationBlockInfoPs3 *slice,
+                                                                  uintptr_t idx);
+
+uintptr_t mut_slice_AnimationBlockInfoPs3_len(const struct slice_AnimationBlockInfoPs3 *slice);
+
+struct AnimationInfoPs3 *mut_slice_AnimationInfoPs3_get(struct mut_slice_AnimationInfoPs3 *slice,
+                                                        uintptr_t idx);
+
+uintptr_t mut_slice_AnimationInfoPs3_len(const struct slice_AnimationInfoPs3 *slice);
+
+struct BufferInfoPs3 *mut_slice_BufferInfoPs3_get(struct mut_slice_BufferInfoPs3 *slice,
+                                                  uintptr_t idx);
+
+uintptr_t mut_slice_BufferInfoPs3_len(const struct slice_BufferInfoPs3 *slice);
+
+struct EffectInfoPs3 *mut_slice_EffectInfoPs3_get(struct mut_slice_EffectInfoPs3 *slice,
+                                                  uintptr_t idx);
+
+uintptr_t mut_slice_EffectInfoPs3_len(const struct slice_EffectInfoPs3 *slice);
+
+struct FoliageInfoPs3 *mut_slice_FoliageInfoPs3_get(struct mut_slice_FoliageInfoPs3 *slice,
+                                                    uintptr_t idx);
+
+uintptr_t mut_slice_FoliageInfoPs3_len(const struct slice_FoliageInfoPs3 *slice);
+
+struct GFXBlockInfoPs3 *mut_slice_GFXBlockInfoPs3_get(struct mut_slice_GFXBlockInfoPs3 *slice,
+                                                      uintptr_t idx);
+
+uintptr_t mut_slice_GFXBlockInfoPs3_len(const struct slice_GFXBlockInfoPs3 *slice);
+
+struct HkConstraintDataPs3 *mut_slice_HkConstraintDataPs3_get(struct mut_slice_HkConstraintDataPs3 *slice,
+                                                              uintptr_t idx);
+
+uintptr_t mut_slice_HkConstraintDataPs3_len(const struct slice_HkConstraintDataPs3 *slice);
+
+struct HkConstraintInfoPs3 *mut_slice_HkConstraintInfoPs3_get(struct mut_slice_HkConstraintInfoPs3 *slice,
+                                                              uintptr_t idx);
+
+uintptr_t mut_slice_HkConstraintInfoPs3_len(const struct slice_HkConstraintInfoPs3 *slice);
+
+struct HkShapeInfoPs3 *mut_slice_HkShapeInfoPs3_get(struct mut_slice_HkShapeInfoPs3 *slice,
+                                                    uintptr_t idx);
+
+uintptr_t mut_slice_HkShapeInfoPs3_len(const struct slice_HkShapeInfoPs3 *slice);
+
+struct IBuffInfoPs3 *mut_slice_IBuffInfoPs3_get(struct mut_slice_IBuffInfoPs3 *slice,
+                                                uintptr_t idx);
+
+uintptr_t mut_slice_IBuffInfoPs3_len(const struct slice_IBuffInfoPs3 *slice);
+
+struct Mat1Ps3 *mut_slice_Mat1Ps3_get(struct mut_slice_Mat1Ps3 *slice, uintptr_t idx);
+
+uintptr_t mut_slice_Mat1Ps3_len(const struct slice_Mat1Ps3 *slice);
+
+struct Mat2Ps3 *mut_slice_Mat2Ps3_get(struct mut_slice_Mat2Ps3 *slice, uintptr_t idx);
+
+uintptr_t mut_slice_Mat2Ps3_len(const struct slice_Mat2Ps3 *slice);
+
+struct Mat3Ps3 *mut_slice_Mat3Ps3_get(struct mut_slice_Mat3Ps3 *slice, uintptr_t idx);
+
+uintptr_t mut_slice_Mat3Ps3_len(const struct slice_Mat3Ps3 *slice);
+
+struct Mat4Ps3 *mut_slice_Mat4Ps3_get(struct mut_slice_Mat4Ps3 *slice, uintptr_t idx);
+
+uintptr_t mut_slice_Mat4Ps3_len(const struct slice_Mat4Ps3 *slice);
+
+struct MatExtraPs3 *mut_slice_MatExtraPs3_get(struct mut_slice_MatExtraPs3 *slice, uintptr_t idx);
+
+uintptr_t mut_slice_MatExtraPs3_len(const struct slice_MatExtraPs3 *slice);
+
+struct ModelInfoPs3 *mut_slice_ModelInfoPs3_get(struct mut_slice_ModelInfoPs3 *slice,
+                                                uintptr_t idx);
+
+uintptr_t mut_slice_ModelInfoPs3_len(const struct slice_ModelInfoPs3 *slice);
+
+struct Obj0Ps3 *mut_slice_Obj0Ps3_get(struct mut_slice_Obj0Ps3 *slice, uintptr_t idx);
+
+uintptr_t mut_slice_Obj0Ps3_len(const struct slice_Obj0Ps3 *slice);
+
+struct ObjAPs3 *mut_slice_ObjAPs3_get(struct mut_slice_ObjAPs3 *slice, uintptr_t idx);
+
+uintptr_t mut_slice_ObjAPs3_len(const struct slice_ObjAPs3 *slice);
+
+struct PFieldInfoPs3 *mut_slice_PFieldInfoPs3_get(struct mut_slice_PFieldInfoPs3 *slice,
+                                                  uintptr_t idx);
+
+uintptr_t mut_slice_PFieldInfoPs3_len(const struct slice_PFieldInfoPs3 *slice);
+
+struct RadiosityValsInfoPs3 *mut_slice_RadiosityValsInfoPs3_get(struct mut_slice_RadiosityValsInfoPs3 *slice,
+                                                                uintptr_t idx);
+
+uintptr_t mut_slice_RadiosityValsInfoPs3_len(const struct slice_RadiosityValsInfoPs3 *slice);
+
+struct ShapeInfoPs3 *mut_slice_ShapeInfoPs3_get(struct mut_slice_ShapeInfoPs3 *slice,
+                                                uintptr_t idx);
+
+uintptr_t mut_slice_ShapeInfoPs3_len(const struct slice_ShapeInfoPs3 *slice);
+
+struct TextureInfoPs3 *mut_slice_TextureInfoPs3_get(struct mut_slice_TextureInfoPs3 *slice,
+                                                    uintptr_t idx);
+
+uintptr_t mut_slice_TextureInfoPs3_len(const struct slice_TextureInfoPs3 *slice);
+
+struct VBuffInfoPs3 *mut_slice_VBuffInfoPs3_get(struct mut_slice_VBuffInfoPs3 *slice,
+                                                uintptr_t idx);
+
+uintptr_t mut_slice_VBuffInfoPs3_len(const struct slice_VBuffInfoPs3 *slice);
 
 const struct HkConstraintRefPs3 *Option_HkConstraintRefPs3_get(const struct Option_HkConstraintRefPs3 *slice);
 

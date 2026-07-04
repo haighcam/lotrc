@@ -4,5 +4,10 @@ include = ["lotrc"]
 
 [parse.expand]
 crates = ["lotrc", "ffi"]
+all_features = true
 
+[enum]
+prefix_with_name = true
 
+[cython]
+header = "\"lotrc.h\""

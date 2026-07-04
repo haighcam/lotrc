@@ -5,11 +5,11 @@ edition = "2024"
 
 [lib]
 name = "lotrc_ffi"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
-lotrc = { workspace = true }
+lotrc = { workspace = true, features = ["ffi"] }
 zerocopy = { workspace = true }
 anyhow = { workspace = true }
 stdint = "1"
-
+paste = "1.0.15"

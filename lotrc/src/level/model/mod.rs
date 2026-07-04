@@ -1,29 +1,27 @@
 use anyhow::{anyhow, Context, Result};
-use indexmap::IndexMap;
+use log::debug;
 use itertools::Itertools;
+use indexmap::IndexMap;
 use std::collections::HashMap;
-use std::ptr::NonNull;
 
-#[cfg(not(feature = "ffi"))]
 use crate::types::GetNative;
 use crate::{
-    types::{Crc, DumpData, Matrix4x4, RefFromData, Vector3, DumpSlice, align_offset, CompressedDataRef, OrderedData, OrderedDataStrict, BufType, slice, CompressedDataRefAlt, box_slice, Map, MapImpl, DumpCompressedData}, 
+    types::{Crc, DumpData, Matrix4x4, RefFromData, Vector3, DumpSlice, align_offset, OrderedData, OrderedDataStrict, ref_slice, CompressedDataRef, slice}, 
     level::{
         model::data::ModelData,
-        pak::objs::InfoCounts,
+        pak::block1::infos::InfoCounts,
     },
 };
 #[make_platforms]
 use crate::{
     level::{
         model::{
-            mat::{DumpMatVER, MatVER, MatRefVER},
-            shape::{DumpShapeVER, DumpHkConstraintVER, ShapeVER, ShapeInfoVER, ShapeRefVER, HkConstraintDataVER, DumpShapeExtraVER, HkConstraintVER, HkConstraintRefVER},
-            data::{ModelDataVER, BufferInfoVER, IBuffInfoVER, VBuffInfoVER, ModelDataRefVER, DumpModelDataVER},
+            mat::{DumpMatVER, MatRefVER},
+            shape::{DumpShapeVER, DumpHkConstraintVER, ShapeInfoVER, ShapeRefVER, HkConstraintDataVER, HkConstraintRefVER},
+            data::{BufferInfoVER, IBuffInfoVER, VBuffInfoVER, ModelDataRefVER, DumpModelDataVER},
         },
         pak::{
-            objs::{ObjsVER, DumpInfosVER},
-            PakHeaderVER
+            block1::infos::{DumpInfosVER, DumpInfoDataVER},
         },
     },
     types::{CrcVER, Matrix4x4VER, i32VER, u16VER, u32VER, Vector3VER, f32VER},
@@ -34,6 +32,7 @@ pub mod data;
 pub mod mat;
 pub mod shape;
 
+///gen_ffi:export
 #[derive(Debug, Default, Clone, OrderedData)]
 pub struct LodInfo {
     pub start: u32,
@@ -55,6 +54,7 @@ impl LodInfo {
     pub const LOD3: u32 = 256;
 }
 
+///gen_ffi:export
 #[derive(Default, Debug, Clone, OrderedData)]
 pub struct BoundingBox {
     center: Vector3,
@@ -63,6 +63,7 @@ pub struct BoundingBox {
     unk_7: f32,
 }
 
+///gen_ffi:export
 #[derive(Debug, Default, Clone, OrderedData)]
 pub struct ModelInfo {
     pub key: Crc,
@@ -117,6 +118,7 @@ pub struct ModelInfo {
     pub bone_bounding_boxes_offset: u32, // 8 ints
 }
 
+///gen_ffi:export
 #[derive(Debug, Default, Clone, OrderedData)]
 pub struct BlockHeader {
     pub a: u32,
@@ -126,6 +128,7 @@ pub struct BlockHeader {
     pub unk_4: u32,
 }
 
+///gen_ffi:export
 #[derive(Debug, Default, Clone, OrderedData)]
 pub struct BlockVal {
     pub unk_0: u32,
@@ -136,6 +139,7 @@ pub struct BlockVal {
     pub unk_5: u16,
 }
 
+///gen_ffi:export
 #[derive(Debug, Default, Clone, OrderedData)]
 pub struct BlockHeader1 {
     pub a: u32,
@@ -144,6 +148,7 @@ pub struct BlockHeader1 {
     pub unk_3: u32,
 }
 
+///gen_ffi:export
 #[derive(Debug, Default, Clone, OrderedData)]
 pub struct BlockHeader2 {
     pub n: u32,
@@ -153,6 +158,7 @@ pub struct BlockHeader2 {
     pub unk_4: u32,
 }
 
+///gen_ffi:export
 #[derive(Debug, Default, Clone, OrderedData)]
 pub struct BlockValA {
     pub unk_0: f32,
@@ -169,6 +175,7 @@ pub struct BlockValA {
     pub unk_11: u32,
 }
 
+///gen_ffi:export
 #[derive(Debug, Default, Clone, OrderedData)]
 pub struct BlockValB {
     pub unk_0: u16,
@@ -180,15 +187,15 @@ pub struct BlockValB {
 }
 
 #[make_platforms]
-#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
-#[repr(C)]
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
 pub struct BlockRefVER<'a> {
     info1: &'a BlockHeader1VER,
     info2: &'a BlockHeader2VER,
-    vals_a: slice<'a, BlockValAVER>,
-    vals_b: slice<'a, BlockValAVER>,
-    vals_c: slice<'a, BlockValBVER>,
-    pad: slice<'a, u8>,
+    vals_a: ref_slice<'a, BlockValAVER>,
+    vals_b: ref_slice<'a, BlockValAVER>,
+    vals_c: ref_slice<'a, BlockValBVER>,
+    pad: ref_slice<'a, u8>,
 }
 
 #[make_platforms]
@@ -209,82 +216,7 @@ impl<'a> BlockRefVER<'a> {
             .context("vals_c")?;
         offset += vals_c.size();
         let pad = &src[offset..];
-        Ok(Self {
-            info1: info1,
-            info2: info2,
-            vals_a: vals_a.into(),
-            vals_b: vals_b.into(),
-            vals_c: vals_c.into(),
-            pad: pad.into(),
-        })
-    }
-}
-
-#[make_platforms]
-#[derive(Debug, Clone)]
-pub struct BlockVER {
-    _ptr: BufType,
-    info1: NonNull<BlockHeader1VER>,
-    info2: NonNull<BlockHeader2VER>,
-    vals_a: NonNull<[BlockValAVER]>,
-    vals_b: NonNull<[BlockValAVER]>,
-    vals_c: NonNull<[BlockValBVER]>,
-    pad: NonNull<[u8]>,
-}
-
-#[make_platforms]
-unsafe impl Sync for BlockVER {}
-#[make_platforms]
-unsafe impl Send for BlockVER {}
-
-#[make_platforms]
-impl BlockVER {
-    pub fn from_bytes(src: &BufType, mut offset: usize, size: usize) -> Result<Self> {
-        let info1 = BlockHeader1VER::from_data(&src[offset..]).context("info1")?;
-        offset += info1.size();
-        let vals_a = BlockValAVER::slice_from_data(&src[offset..], info1.a.get() as usize)
-            .context("vals_a")?;
-        offset += vals_a.size();
-        let vals_b = BlockValAVER::slice_from_data(&src[offset..], info1.b.get() as usize)
-            .context("vals_b")?;
-        offset += vals_b.size();
-        let info2 = BlockHeader2VER::from_data(&src[offset..]).context("info2")?;
-        offset += info2.size();
-        let vals_c = BlockValBVER::slice_from_data(&src[offset..], info2.n.get() as usize)
-            .context("vals_c")?;
-        offset += vals_c.size();
-        let pad = &src[offset..offset + size];
-        Ok(Self {
-            _ptr: src.clone(),
-            info1: info1.into(),
-            info2: info2.into(),
-            vals_a: vals_a.into(),
-            vals_b: vals_b.into(),
-            vals_c: vals_c.into(),
-            pad: pad.into(),
-        })
-    }
-}
-
-#[make_platforms]
-impl BlockVER {
-    pub fn info1(&self) -> &BlockHeader1VER {
-        unsafe { self.info1.as_ref() }
-    }
-    pub fn info2(&self) -> &BlockHeader2VER {
-        unsafe { self.info2.as_ref() }
-    }
-    pub fn vals_a(&self) -> &[BlockValAVER] {
-        unsafe { self.vals_a.as_ref() }
-    }
-    pub fn vals_b(&self) -> &[BlockValAVER] {
-        unsafe { self.vals_b.as_ref() }
-    }
-    pub fn vals_c(&self) -> &[BlockValBVER] {
-        unsafe { self.vals_c.as_ref() }
-    }
-    pub fn pad(&self) -> &[u8] {
-        unsafe { self.pad.as_ref() }
+        Ok(Self { info1, info2, vals_a, vals_b, vals_c, pad })
     }
 }
 
@@ -299,15 +231,15 @@ pub struct Block {
 }
 
 #[make_platforms]
-impl From<&BlockVER> for Block {
-    fn from(val: &BlockVER) -> Self {
+impl From<&BlockRefVER<'_>> for Block {
+    fn from(val: &BlockRefVER) -> Self {
         Self {
-            info1: val.info1().conv(),
-            info2: val.info2().conv(),
-            vals_a: val.vals_a().iter().map(|x| x.conv()).collect(),
-            vals_b: val.vals_b().iter().map(|x| x.conv()).collect(),
-            vals_c: val.vals_c().iter().map(|x| x.conv()).collect(),
-            pad: val.pad().to_vec(),
+            info1: val.info1.conv(),
+            info2: val.info2.conv(),
+            vals_a: val.vals_a.iter().map(|x| x.conv()).collect(),
+            vals_b: val.vals_b.iter().map(|x| x.conv()).collect(),
+            vals_c: val.vals_c.iter().map(|x| x.conv()).collect(),
+            pad: val.pad.to_vec(),
         }
     }
 }
@@ -329,14 +261,14 @@ pub trait DumpBlockVER {
         let info1 = BlockHeader1VER::mut_from_data(dst).context("info1")?;
         self.write_info1(info1).context("write info1")?;
 
-        let info2 = BlockHeader2VER::mut_from_data(dst).context("info2")?;
-        self.write_info2(info2).context("write info2")?;
-
         let vals_a = BlockValAVER::mut_slice_from_data(dst, self.vals_a_num()).context("vals_a")?;
         self.write_vals_a(vals_a).context("write vals_a")?;
 
         let vals_b = BlockValAVER::mut_slice_from_data(dst, self.vals_b_num()).context("vals_b")?;
         self.write_vals_b(vals_b).context("write vals_b")?;
+
+        let info2 = BlockHeader2VER::mut_from_data(dst).context("info2")?;
+        self.write_info2(info2).context("write info2")?;
 
         let vals_c = BlockValBVER::mut_slice_from_data(dst, self.vals_c_num()).context("vals_c")?;
         self.write_vals_c(vals_c).context("write vals_c")?;
@@ -348,9 +280,9 @@ pub trait DumpBlockVER {
     fn add_size(&self, offset: usize) -> usize {
         offset 
             + BlockHeader1VER::size_of()
-            + BlockHeader2VER::size_of()
             + BlockValAVER::size_of() * self.vals_a_num() 
             + BlockValAVER::size_of() * self.vals_b_num()
+            + BlockHeader2VER::size_of()
             + BlockValBVER::size_of() * self.vals_c_num()
             + self.pad_num()
     }
@@ -391,6 +323,7 @@ impl DumpBlockVER for BlockRefVER<'_> {
 
 }
 
+///gen_ffi:export
 #[derive(Debug, Default, Clone, OrderedData)]
 pub struct Key2 {
     pub key: Crc,
@@ -398,13 +331,13 @@ pub struct Key2 {
 }
 
 #[make_platforms]
-#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
-#[repr(C)]
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
 pub struct BonesRefVER<'a> {
-    pub names:  slice<'a, CrcVER>,
-    pub parents: slice<'a, i32VER>,
-    pub transforms: slice<'a, Matrix4x4VER>,
-    pub bounding_boxes: slice<'a, BoundingBoxVER>,
+    pub names:  ref_slice<'a, CrcVER>,
+    pub parents: ref_slice<'a, i32VER>,
+    pub transforms: ref_slice<'a, Matrix4x4VER>,
+    pub bounding_boxes: ref_slice<'a, BoundingBoxVER>,
 }
 
 #[make_platforms]
@@ -435,71 +368,11 @@ impl<'a> BonesRefVER<'a> {
             &src[info.bone_transforms_offset.get() as usize..],
             size,
         ).context("transforms")?;
-        Ok(Self {
-            names: names.into(),
-            parents: parents.into(),
-            transforms: transforms.into(),
-            bounding_boxes: bounding_boxes.into(),
-        })
+        Ok(Self { names, parents, transforms, bounding_boxes })
     }
     #[inline(always)]
     pub fn len(&self) -> usize {
         self.transforms.len()
-    }
-}
-
-#[make_platforms]
-#[derive(Debug, Clone)]
-pub struct BonesVER {
-    names: Option<NonNull<CrcVER>>,
-    parents: Option<NonNull<i32VER>>,
-    transforms: Option<NonNull<Matrix4x4VER>>,
-    bounding_boxes: Option<NonNull<BoundingBoxVER>>,
-    size: usize
-}
-
-#[make_platforms]
-impl BonesVER {
-    pub fn from_bytes(src: &BufType, info: &ModelInfoVER) -> Result<Self> {
-        let size = info.bones_num.get() as usize;
-        let parents = i32VER::slice_from_data(
-            &src[info.bone_parents_offset.get() as usize..],
-            size,
-        ).context("parents")?;
-        if parents[0].get() != -1 {
-            return Err(anyhow!("first bone should be the root, but parent != -1"));
-        }
-        let names_off = info.bones_offset.get() as usize;
-        
-        let names = if names_off != 0 {
-            Some(u32VER::slice_from_data(&src[names_off..], size).context("names")?)
-        } else {
-            None
-        };
-        let transforms = Matrix4x4VER::slice_from_data(
-            &src[info.bone_transforms_offset.get() as usize..],
-            size,
-        ).context("transforms")?;
-        let bounding_boxes = BoundingBoxVER::slice_from_data(
-            &src[info.bone_bounding_boxes_offset.get() as usize..],
-            info.bones_num.get() as usize,
-        ).context("bounding_boxes")?;
-        Ok(Self {
-            names: names.and_then(|x| x.first().map(|x| x.into())),
-            parents: parents.first().map(|x| x.into()),
-            transforms: transforms.first().map(|x| x.into()),
-            bounding_boxes: bounding_boxes.first().map(|x| x.into()),
-            size
-        })
-    }
-
-    pub unsafe fn as_ref(&self) -> BonesRefVER<'_> {
-        BonesRefVER {
-            names: self.names.map(|x| unsafe { NonNull::slice_from_raw_parts(x, self.size).as_ref() }).unwrap_or(&[]).into(),
-            parents: self.parents.map(|x| unsafe { NonNull::slice_from_raw_parts(x, self.size).as_ref() }).unwrap_or(&[]).into(),
-            transforms: self.transforms.map(|x| unsafe { NonNull::slice_from_raw_parts(x, self.size).as_ref() }).unwrap_or(&[]).into(),
-            bounding_boxes: self.bounding_boxes.map(|x| unsafe { NonNull::slice_from_raw_parts(x, self.size).as_ref() }).unwrap_or(&[]).into(),
-        }
     }
 }
 
@@ -512,8 +385,8 @@ pub struct Bones {
 }
 
 #[make_platforms]
-impl From<BonesRefVER<'_>> for Bones {
-    fn from(val: BonesRefVER<'_>) -> Self {
+impl From<&BonesRefVER<'_>> for Bones {
+    fn from(val: &BonesRefVER<'_>) -> Self {
         Self {
             names: val.names.iter().map(|x| x.conv()).collect(),
             parents: val.parents.iter().map(|x| x.conv()).collect(),
@@ -532,72 +405,71 @@ pub struct BonesDumpVER<'a> {
 }
 
 #[make_platforms]
-#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
-#[repr(C)]
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
 pub struct ModelRefVER<'a> {
     pub info: &'a ModelInfoVER,
     pub bones: BonesRefVER<'a>,
-    pub mat_order: slice<'a, u32VER>,
-    pub mesh_order: slice<'a, u32VER>,
-    pub mesh_bounding_boxes: slice<'a, BoundingBoxVER>,
-    pub skin_binds: slice<'a, Matrix4x4VER>,
-    pub vals_j: slice<'a, u32VER>,
-    pub val_k_header: slice<'a, u16VER>,
-    pub vals_k: slice<'a, u32VER>,
-    pub skin_order: slice<'a, u32VER>,
-    pub slots: slice<'a, Key2VER>,
-    pub slot_map: slice<'a, u32VER>,
+    pub mat_order: ref_slice<'a, u32VER>,
+    pub mesh_order: ref_slice<'a, u32VER>,
+    pub mesh_bounding_boxes: ref_slice<'a, BoundingBoxVER>,
+    pub skin_binds: ref_slice<'a, Matrix4x4VER>,
+    pub vals_j: ref_slice<'a, u32VER>,
+    pub val_k_header: ref_slice<'a, u16VER>,
+    pub vals_k: ref_slice<'a, u32VER>,
+    pub skin_order: ref_slice<'a, u32VER>,
+    pub slots: ref_slice<'a, Key2VER>,
+    pub slot_map: ref_slice<'a, u32VER>,
     pub block_header: Option<&'a u32VER>,
-    pub block_offsets: slice<'a, u32VER>,
-    pub blocks: box_slice<BlockRefVER<'a>>,
-    pub val: slice<'a, u32VER>,
-    pub buffer_infos: slice<'a, BufferInfoVER>,
-    pub vbuff_order: slice<'a, u32VER>,
-    pub ibuff_order: slice<'a, u32VER>,
-    pub vbuffs: Map<u32, &'a VBuffInfoVER>,
-    pub ibuffs: Map<u32, &'a IBuffInfoVER>,
-    pub mats: Map<u32, MatRefVER<'a>>,
+    pub block_offsets: ref_slice<'a, u32VER>,
+    pub blocks: slice<BlockRefVER<'a>>,
+    pub buffer_infos: ref_slice<'a, BufferInfoVER>,
+    pub vbuff_order: ref_slice<'a, u32VER>,
+    pub ibuff_order: ref_slice<'a, u32VER>,
+    pub vbuffs: IndexMap<u32, &'a VBuffInfoVER>,
+    pub ibuffs: IndexMap<u32, &'a IBuffInfoVER>,
+    pub mats: IndexMap<u32, MatRefVER<'a>>,
     pub hk_constraint: Option<HkConstraintRefVER<'a>>, // stores bone transforms used for ragdoll
-    pub hk_constraint_datas: slice<'a, HkConstraintDataVER>,
-    pub shapes: box_slice<ShapeRefVER<'a>>,
+    pub hk_constraint_datas: ref_slice<'a, HkConstraintDataVER>,
+    pub shapes: slice<ShapeRefVER<'a>>,
     pub data: ModelDataRefVER<'a>,
 }
 
 #[make_platforms]
 impl<'a> ModelRefVER<'a> {
-    pub fn from_data(src: &'a [u8], info: &'a ModelInfoVER, model_data: &Map<u32, &'a CompressedDataRefAlt<'a>>) -> Result<Self> {
+    pub fn from_data(src: &'a [u8], info: &'a ModelInfoVER, model_data: &IndexMap<u32, &'a CompressedDataRef<'a>>) -> Result<Self> {
         let bones = BonesRefVER::from_data(src, info).context("bones")?;
         let mat_order = u32VER::slice_from_data(
             &src[info.mat_offset.get() as usize..],
             info.mat_num.get() as usize,
         )
-        .context("vals")?;
+        .context("mat order")?;
         let mesh_order = u32VER::slice_from_data(
             &src[info.mesh_order_offset.get() as usize..],
             info.lod3.breakable_end.get() as usize,
         )
-        .context("vals")?;
+        .context("mesh order")?;
         let mesh_bounding_boxes = BoundingBoxVER::slice_from_data(
             &src[info.mesh_bounding_boxes_offset.get() as usize..],
             info.lod3.breakable_end.get() as usize,
         )
-        .context("vals")?;
+        .context("mesh bounding boxes")?;
         let skin_binds = Matrix4x4VER::slice_from_data(
             &src[info.skin_binds_offset.get() as usize..],
             info.skin_binds_num.get() as usize,
         )
-        .context("vals")?;
+        .context("skin binds")?;
         let vals_j = u32VER::slice_from_data(
             &src[info.vals_j_offset.get() as usize..],
             info.vals_j_num.get() as usize,
         )
-        .context("vals")?;
+        .context("vals j")?;
         let (val_k_header, vals_k) = if info.vals_k_offset.get() != 0 {
             (
                 u16VER::slice_from_data(&src[info.vals_k_offset.get() as usize..], 2)
-                    .context("vals")?,
+                    .context("vals k header")?,
                 u32VER::slice_from_data(&src[info.vals_k_offset.get() as usize + 4..], 35)
-                    .context("vals")?,
+                    .context("vals k")?,
             )
         } else {
             (&[] as _, &[] as _)
@@ -607,7 +479,7 @@ impl<'a> ModelRefVER<'a> {
                 &src[info.skin_order_offset.get() as usize..],
                 info.skin_binds_num.get() as usize,
             )
-            .context("vals")?
+            .context("skin order")?
         } else {
             &[] as _
         };
@@ -619,7 +491,7 @@ impl<'a> ModelRefVER<'a> {
             {
                 while {
                     let val = u32VER::from_data(&src[info.slots_offset.get() as usize + i * 8..])
-                        .context("vals")?;
+                        .context("slot end")?;
                     val.get() != 0
                 } {
                     i += 1;
@@ -627,25 +499,25 @@ impl<'a> ModelRefVER<'a> {
                 i += 1;
             }
             let slots = Key2VER::slice_from_data(&src[info.slots_offset.get() as usize..], i)
-                .context("vals")?;
+                .context("slot")?;
             (
                 slots,
                 u32VER::slice_from_data(
                     &src[info.slot_map_offset.get() as usize..],
                     slots.last().unwrap().val.get() as usize,
                 )
-                .context("vals")?,
+                .context("slot map")?,
             )
         } else {
             (&[] as _, &[] as _)
         };
         let (block_header, block_offsets, blocks) = if info.block_offset.get() != 0 {
             let block_header =
-                u32VER::from_data(&src[info.block_offset.get() as usize..]).context("vals")?;
+                u32VER::from_data(&src[info.block_offset.get() as usize..]).context("block header")?;
             let n = ((info.lod0.physics_end.get() - info.lod0.skinned_end.get()) as usize).max(0);
             let block_offsets =
                 u32VER::slice_from_data(&src[info.block_offset.get() as usize + 4..], n + 1)
-                    .context("vals")?;
+                    .context("block offsets")?;
             let mut blocks = Vec::with_capacity(n);
             for i in 0..n {
                 let size = (block_offsets[i + 1].get() - block_offsets[i].get()) as usize;
@@ -657,8 +529,6 @@ impl<'a> ModelRefVER<'a> {
         } else {
             (None, &[] as _, Box::default())
         };
-        let val = u32VER::slice_from_data(&src[info.mesh_order_offset.get() as usize..], 4)
-            .context("vals")?;
         let hk_constraint = if info.hk_constraint_offset.get() != 0 {
             Some(
                 HkConstraintRefVER::from_data(src, info.hk_constraint_offset.get() as usize)
@@ -690,12 +560,12 @@ impl<'a> ModelRefVER<'a> {
                         .with_context(|| format!("mat {}", i))?,
                 ))
             })
-            .collect::<Result<MapImpl<_, _>>>()?;
+            .collect::<Result<IndexMap<_, _>>>()?;
         let buffer_infos = data::BufferInfoVER::slice_from_data(&src[info.buffer_info_offset.get() as usize..], info.mat_num.get() as usize).context("buffer infos")?;
         let vbuff_order = u32VER::slice_from_data(&src[info.vbuff_offset.get() as usize..], info.vbuff_num.get() as usize).context("vbuff order")?;
         let ibuff_order = u32VER::slice_from_data(&src[info.ibuff_offset.get() as usize..], info.ibuff_num.get() as usize).context("vbuff order")?;
-        let vbuffs = vbuff_order.iter().map(|x| Ok((x.get(), data::VBuffInfoVER::from_data(&src[x.get() as usize..]).with_context(|| format!("vbuff info {}", x.get()))?))).collect::<Result<MapImpl<_, _>>>()?;
-        let ibuffs = ibuff_order.iter().map(|x| Ok((x.get(), data::IBuffInfoVER::from_data(&src[x.get() as usize..]).with_context(|| format!("ibuff info {}", x.get()))?))).collect::<Result<MapImpl<_, _>>>()?;
+        let vbuffs = vbuff_order.iter().map(|x| Ok((x.get(), data::VBuffInfoVER::from_data(&src[x.get() as usize..]).with_context(|| format!("vbuff info {}", x.get()))?))).collect::<Result<IndexMap<_, _>>>()?;
+        let ibuffs = ibuff_order.iter().map(|x| Ok((x.get(), data::IBuffInfoVER::from_data(&src[x.get() as usize..]).with_context(|| format!("ibuff info {}", x.get()))?))).collect::<Result<IndexMap<_, _>>>()?;
         let data = ModelDataRefVER::from_data(src, info, model_data).context("model data")?;
         Ok(Self {
             info: info,
@@ -719,336 +589,11 @@ impl<'a> ModelRefVER<'a> {
             ibuff_order: ibuff_order.into(),
             vbuffs: vbuffs.into(),
             ibuffs: ibuffs.into(),
-            val: val.into(),
-            hk_constraint,
+            hk_constraint: hk_constraint.into(),
             hk_constraint_datas: hk_constraint_datas.into(),
             shapes: shapes.into(),
             data
         })
-    }
-}
-
-#[make_platforms]
-pub struct ModelRawVER {
-    _ptr: BufType,
-    info: NonNull<ModelInfoVER>,
-    bones: BonesVER,
-    mat_order: NonNull<[u32VER]>,
-    mesh_order: NonNull<[u32VER]>,
-    mesh_bounding_boxes: NonNull<[BoundingBoxVER]>,
-    skin_binds: NonNull<[Matrix4x4VER]>,
-    vals_j: NonNull<[u32VER]>,
-    val_k_header: NonNull<[u16VER]>,
-    vals_k: NonNull<[u32VER]>,
-    skin_order: NonNull<[u32VER]>,
-    slots: NonNull<[Key2VER]>,
-    slot_map: NonNull<[u32VER]>,
-    block_header: Option<u32VER>,
-    block_offsets: NonNull<[u32VER]>,
-    blocks: Box<[BlockVER]>,
-    val: NonNull<[u32VER]>,
-    buffer_infos: NonNull<[BufferInfoVER]>,
-    vbuff_order: NonNull<[u32VER]>,
-    ibuff_order: NonNull<[u32VER]>,
-    _vbuffs: IndexMap<u32, NonNull<VBuffInfoVER>>,
-    _ibuffs: IndexMap<u32, NonNull<IBuffInfoVER>>,
-    mats: IndexMap<u32, MatVER>,
-    hk_constraint: Option<HkConstraintVER>, // stores bone transforms used for ragdoll ??
-    hk_constraint_datas: NonNull<[HkConstraintDataVER]>,
-    shapes: Box<[ShapeVER]>,
-    data: CompressedDataRef,
-}
-
-#[make_platforms]
-impl ModelRawVER {
-    pub fn from_bytes(src: &BufType, model_data: &IndexMap<u32, CompressedDataRef>, offset: usize) -> Result<Self> {
-        let info = ModelInfoVER::from_data(&src[offset..]).context("info")?;
-        let bones = BonesVER::from_bytes(src, info).context("bones")?;
-        let mat_order = u32VER::slice_from_data(
-            &src[info.mat_offset.get() as usize..],
-            info.mat_num.get() as usize,
-        )
-        .context("vals")?;
-        let mesh_order = u32VER::slice_from_data(
-            &src[info.mesh_order_offset.get() as usize..],
-            info.lod3.breakable_end.get() as usize,
-        )
-        .context("vals")?;
-        let mesh_bounding_boxes = BoundingBoxVER::slice_from_data(
-            &src[info.mesh_bounding_boxes_offset.get() as usize..],
-            info.lod3.breakable_end.get() as usize,
-        )
-        .context("vals")?;
-        let skin_binds = Matrix4x4VER::slice_from_data(
-            &src[info.skin_binds_offset.get() as usize..],
-            info.skin_binds_num.get() as usize,
-        )
-        .context("vals")?;
-        let vals_j = u32VER::slice_from_data(
-            &src[info.vals_j_offset.get() as usize..],
-            info.vals_j_num.get() as usize,
-        )
-        .context("vals")?;
-        let (val_k_header, vals_k) = if info.vals_k_offset.get() != 0 {
-            (
-                u16VER::slice_from_data(&src[info.vals_k_offset.get() as usize..], 2)
-                    .context("vals")?,
-                u32VER::slice_from_data(&src[info.vals_k_offset.get() as usize + 4..], 35)
-                    .context("vals")?,
-            )
-        } else {
-            (&[] as _, &[] as _)
-        };
-        let skin_order = if info.skin_order_offset.get() != 0 {
-            u32VER::slice_from_data(
-                &src[info.skin_order_offset.get() as usize..],
-                info.skin_binds_num.get() as usize,
-            )
-            .context("vals")?
-        } else {
-            &[] as _
-        };
-        let (slots, slot_map) = if info.slots_offset.get() != 0 {
-            if info.slot_map_offset.get() == 0 {
-                return Err(anyhow!("expected non zero slot_map_offset"));
-            }
-            let mut i = 0;
-            {
-                while {
-                    let val = u32VER::from_data(&src[info.slots_offset.get() as usize + i * 8..])
-                        .context("vals")?;
-                    val.get() != 0
-                } {
-                    i += 1;
-                }
-                i += 1;
-            }
-            let slots = Key2VER::slice_from_data(&src[info.slots_offset.get() as usize..], i)
-                .context("vals")?;
-            (
-                slots,
-                u32VER::slice_from_data(
-                    &src[info.slot_map_offset.get() as usize..],
-                    slots.last().unwrap().val.get() as usize,
-                )
-                .context("vals")?,
-            )
-        } else {
-            (&[] as _, &[] as _)
-        };
-        let (block_header, block_offsets, blocks) = if info.block_offset.get() != 0 {
-            let block_header =
-                u32VER::from_data(&src[info.block_offset.get() as usize..]).context("vals")?;
-            let n = ((info.lod0.physics_end.get() - info.lod0.skinned_end.get()) as usize).max(0);
-            let block_offsets =
-                u32VER::slice_from_data(&src[info.block_offset.get() as usize + 4..], n + 1)
-                    .context("vals")?;
-            let mut blocks = Vec::with_capacity(n);
-            for i in 0..n {
-                let size = (block_offsets[i + 1].get() - block_offsets[i].get()) as usize;
-                let offset = (block_offsets[i].get() + info.block_offset.get()) as usize;
-                let block = BlockVER::from_bytes(src, offset, size)?;
-                blocks.push(block);
-            }
-            (Some(*block_header), block_offsets, blocks)
-        } else {
-            (None, &[] as _, vec![])
-        };
-        let val = u32VER::slice_from_data(&src[info.mesh_order_offset.get() as usize..], 4)
-            .context("vals")?;
-        let hk_constraint = if info.hk_constraint_offset.get() != 0 {
-            Some(
-                shape::HkConstraintVER::from_bytes(src, info.hk_constraint_offset.get() as usize)
-                    .context("hk_constarint")?,
-            )
-        } else {
-            None
-        };
-        let hk_constraint_datas = shape::HkConstraintDataVER::slice_from_data(
-            &src[info.hk_constraint_data_offset.get() as usize..],
-            info.hk_constraint_data_num.get() as usize,
-        )
-        .context("hk_constraint_datas")?;
-        let shapes = (0..info.shape_num.get() as usize)
-            .map(|i| {
-                shape::ShapeVER::from_bytes(
-                    src,
-                    info.shape_offset.get() as usize + i * shape::ShapeInfoVER::size_of(),
-                )
-                .with_context(|| format!("shape {}", i))
-            })
-            .collect::<Result<Vec<_>>>()?;
-        let mats = mat_order
-            .iter()
-            .enumerate()
-            .map(|(i, x)| {
-                Ok((
-                    x.get(),
-                    mat::MatVER::from_bytes(src, x.get() as usize)
-                        .with_context(|| format!("mat {}", i))?,
-                ))
-            })
-            .collect::<Result<_>>()?;
-        let buffer_infos = data::BufferInfoVER::slice_from_data(&src[info.buffer_info_offset.get() as usize..], info.mat_num.get() as usize).context("buffer infos")?;
-        let vbuff_order = u32VER::slice_from_data(&src[info.vbuff_offset.get() as usize..], info.vbuff_num.get() as usize).context("vbuff order")?;
-        let ibuff_order = u32VER::slice_from_data(&src[info.ibuff_offset.get() as usize..], info.ibuff_num.get() as usize).context("vbuff order")?;
-        let _vbuffs = vbuff_order.iter().map(|x| Ok((x.get(), NonNull::from_ref(data::VBuffInfoVER::from_data(&src[x.get() as usize..]).with_context(|| format!("vbuff info {}", x.get()))?)))).collect::<Result<_>>()?;
-        let _ibuffs = ibuff_order.iter().map(|x| Ok((x.get(), NonNull::from_ref(data::IBuffInfoVER::from_data(&src[x.get() as usize..]).with_context(|| format!("ibuff info {}", x.get()))?)))).collect::<Result<_>>()?;
-        let data = model_data.get(&info.asset_key.get()).cloned().unwrap_or_default();
-        Ok(Self {
-            _ptr: src.clone(),
-            info: info.into(),
-            bones,
-            mat_order: mat_order.into(),
-            mesh_order: mesh_order.into(),
-            mesh_bounding_boxes: mesh_bounding_boxes.into(),
-            skin_binds: skin_binds.into(),
-            vals_j: vals_j.into(),
-            val_k_header: val_k_header.into(),
-            vals_k: vals_k.into(),
-            skin_order: skin_order.into(),
-            slots: slots.into(),
-            slot_map: slot_map.into(),
-            block_header: block_header.into(),
-            block_offsets: block_offsets.into(),
-            blocks: blocks.into(),
-            mats,
-            buffer_infos: buffer_infos.into(),
-            vbuff_order: vbuff_order.into(),
-            ibuff_order: ibuff_order.into(),
-            _vbuffs,
-            _ibuffs,
-            val: val.into(),
-            hk_constraint,
-            hk_constraint_datas: hk_constraint_datas.into(),
-            shapes: shapes.into(),
-            data
-        })
-    }
-    pub fn info(&self) -> &ModelInfoVER {
-        unsafe { self.info.as_ref() }
-    }
-}
-
-#[make_platforms]
-#[derive(Debug, Clone)]
-pub struct ModelVER {
-    _ptr: BufType,
-    info: NonNull<ModelInfoVER>,
-    bones: BonesVER,
-    mat_order: NonNull<[u32VER]>,
-    mesh_order: NonNull<[u32VER]>,
-    mesh_bounding_boxes: NonNull<[BoundingBoxVER]>,
-    skin_binds: NonNull<[Matrix4x4VER]>,
-    vals_j: NonNull<[u32VER]>,
-    val_k_header: NonNull<[u16VER]>,
-    vals_k: NonNull<[u32VER]>,
-    skin_order: NonNull<[u32VER]>,
-    slots: NonNull<[Key2VER]>,
-    slot_map: NonNull<[u32VER]>,
-    block_header: Option<u32VER>,
-    block_offsets: NonNull<[u32VER]>,
-    blocks: Box<[BlockVER]>,
-    val: NonNull<[u32VER]>,
-    mats: IndexMap<u32, mat::MatVER>,
-    hk_constraint: Option<shape::HkConstraintVER>, // stores bone transforms used for ragdoll ??
-    hk_constraint_datas: NonNull<[shape::HkConstraintDataVER]>,
-    shapes: Box<[shape::ShapeVER]>,
-    data: data::ModelDataVER
-}
-
-#[make_platforms]
-unsafe impl Sync for ModelVER {}
-#[make_platforms]
-unsafe impl Send for ModelVER {}
-
-#[make_platforms]
-impl TryFrom<ModelRawVER> for ModelVER {
-    type Error = anyhow::Error;
-    fn try_from(val: ModelRawVER) -> Result<Self> {
-        let data = data::ModelDataVER::try_from(&val).context("data")?;
-        Ok(Self {
-            _ptr: val._ptr,
-            info: val.info,
-            bones: val.bones,
-            mat_order: val.mat_order,
-            mesh_order: val.mesh_order,
-            mesh_bounding_boxes: val.mesh_bounding_boxes,
-            skin_binds: val.skin_binds,
-            vals_j: val.vals_j,
-            val_k_header: val.val_k_header,
-            vals_k: val.vals_k,
-            skin_order: val.skin_order,
-            slots: val.slots,
-            slot_map: val.slot_map,
-            block_header: val.block_header,
-            block_offsets: val.block_offsets,
-            blocks: val.blocks,
-            mats: val.mats,
-            val: val.val,
-            hk_constraint: val.hk_constraint,
-            hk_constraint_datas: val.hk_constraint_datas,
-            shapes: val.shapes,
-            data
-        })
-    }
-}
-
-#[make_platforms]
-impl ModelVER {
-    pub fn info(&self) -> &ModelInfoVER {
-        unsafe { self.info.as_ref() }
-    }
-    pub fn bones(&self) -> BonesRefVER<'_> {
-        unsafe { self.bones.as_ref() }
-    }
-    pub fn mat_order(&self) -> &[u32VER] {
-        unsafe { self.mat_order.as_ref() }
-    }
-    pub fn mesh_order(&self) -> &[u32VER] {
-        unsafe { self.mesh_order.as_ref() }
-    }
-    pub fn mesh_bounding_boxes(&self) -> &[BoundingBoxVER] {
-        unsafe { self.mesh_bounding_boxes.as_ref() }
-    }
-    pub fn skin_binds(&self) -> &[Matrix4x4VER] {
-        unsafe { self.skin_binds.as_ref() }
-    }
-    pub fn vals_j(&self) -> &[u32VER] {
-        unsafe { self.vals_j.as_ref() }
-    }
-    pub fn val_k_header(&self) -> &[u16VER] {
-        unsafe { self.val_k_header.as_ref() }
-    }
-    pub fn vals_k(&self) -> &[u32VER] {
-        unsafe { self.vals_k.as_ref() }
-    }
-    pub fn skin_order(&self) -> &[u32VER] {
-        unsafe { self.skin_order.as_ref() }
-    }
-    pub fn slots(&self) -> &[Key2VER] {
-        unsafe { self.slots.as_ref() }
-    }
-    pub fn slot_map(&self) -> &[u32VER] {
-        unsafe { self.slot_map.as_ref() }
-    }
-    pub fn block_header(&self) -> Option<&u32VER> {
-        self.block_header.as_ref()
-    }
-    pub fn block_offsets(&self) -> &[u32VER] {
-        unsafe { self.block_offsets.as_ref() }
-    }
-    pub fn blocks(&self) -> &[BlockVER] {
-        &self.blocks
-    }
-    pub fn val(&self) -> &[u32VER] {
-        unsafe { self.val.as_ref() }
-    }
-    pub fn hk_constraint_datas(&self) -> &[shape::HkConstraintDataVER] {
-        unsafe { self.hk_constraint_datas.as_ref() }
-    }
-    pub fn data(&self) -> &ModelDataVER {
-        &self.data
     }
 }
 
@@ -1076,84 +621,43 @@ pub struct Model {
 }
 
 #[make_platforms]
-impl From<&ModelVER> for Model {
-    fn from(val: &ModelVER) -> Self {
+impl From<&ModelRefVER<'_>> for Model {
+    fn from(val: &ModelRefVER) -> Self {
         Self {
-            info: val.info().conv(),
-            bones: val.bones().into(),
+            info: val.info.conv(),
+            bones: (&val.bones).into(),
             mat_order: val
-                .mat_order()
+                .mat_order
                 .iter()
                 .map(|x| val.mats.get_index_of(&x.get()).unwrap() as u32)
                 .collect(),
-            mesh_order: val.mesh_order().iter().map(|x| x.conv()).collect(),
-            mesh_bounding_boxes: val.mesh_bounding_boxes().iter().map(|x| x.conv()).collect(),
-            skin_binds: val.skin_binds().iter().map(|x| x.conv()).collect(),
-            vals_j: val.vals_j().iter().map(|x| x.conv()).collect(),
-            val_k_header: val.val_k_header().iter().map(|x| x.conv()).collect(),
-            vals_k: val.vals_k().iter().map(|x| x.conv()).collect(),
-            skin_order: val.skin_order().iter().map(|x| x.conv()).collect(),
-            slots: val.slots().iter().map(|x| x.conv()).collect(),
-            slot_map: val.slot_map().iter().map(|x| x.conv()).collect(),
-            block_header: val.block_header().map(|x| x.conv()),
+            mesh_order: val.mesh_order.iter().map(|x| x.conv()).collect(),
+            mesh_bounding_boxes: val.mesh_bounding_boxes.iter().map(|x| x.conv()).collect(),
+            skin_binds: val.skin_binds.iter().map(|x| x.conv()).collect(),
+            vals_j: val.vals_j.iter().map(|x| x.conv()).collect(),
+            val_k_header: val.val_k_header.iter().map(|x| x.conv()).collect(),
+            vals_k: val.vals_k.iter().map(|x| x.conv()).collect(),
+            skin_order: val.skin_order.iter().map(|x| x.conv()).collect(),
+            slots: val.slots.iter().map(|x| x.conv()).collect(),
+            slot_map: val.slot_map.iter().map(|x| x.conv()).collect(),
+            block_header: val.block_header.map(|x| x.conv()),
             blocks: val.blocks.iter().map(|x| x.into()).collect(),
             mats: val
                 .mats
                 .values()
-                .map(|x| unsafe { x.as_ref() }.into())
+                .map(|x| x.into())
                 .collect(),
             hk_constraint: val.hk_constraint.as_ref().map(|x| x.into()),
-            hk_constraint_datas: val.hk_constraint_datas().iter().map(|x| x.conv()).collect(),
+            hk_constraint_datas: val.hk_constraint_datas.iter().map(|x| x.conv()).collect(),
             shapes: val.shapes.iter().map(|x| x.into()).collect(),
-            data: val.data().into()
+            data: (&val.data).into()
         }
     }
-}
-
-impl Model {
-    #[make_platforms]
-    pub fn from_ver(val: &ModelVER, _pak_header: &PakHeaderVER, _objs: &ObjsVER) -> Self {
-        Self {
-            info: val.info().conv(),
-            bones: val.bones().into(),
-            mat_order: val
-                .mat_order()
-                .iter()
-                .map(|x| val.mats.get_index_of(&x.get()).unwrap() as u32)
-                .collect(),
-            mesh_order: val.mesh_order().iter().map(|x| x.conv()).collect(),
-            mesh_bounding_boxes: val.mesh_bounding_boxes().iter().map(|x| x.conv()).collect(),
-            skin_binds: val.skin_binds().iter().map(|x| x.conv()).collect(),
-            vals_j: val.vals_j().iter().map(|x| x.conv()).collect(),
-            val_k_header: val.val_k_header().iter().map(|x| x.conv()).collect(),
-            vals_k: val.vals_k().iter().map(|x| x.conv()).collect(),
-            skin_order: val.skin_order().iter().map(|x| x.conv()).collect(),
-            slots: val.slots().iter().map(|x| x.conv()).collect(),
-            slot_map: val.slot_map().iter().map(|x| x.conv()).collect(),
-            block_header: val.block_header().map(|x| x.conv()),
-            blocks: val.blocks.iter().map(|x| x.into()).collect(),
-            mats: val
-                .mats
-                .values()
-                .map(|x| unsafe { x.as_ref() }.into())
-                .collect(),
-            hk_constraint: val.hk_constraint.as_ref().map(|x| x.into()),
-            hk_constraint_datas: val.hk_constraint_datas().iter().map(|x| x.conv()).collect(),
-            shapes: val.shapes.iter().map(|x| x.into()).collect(),
-            data: val.data().into()
-        }
-    }
-}
-
-#[make_platforms]
-pub enum ModelPatchVER {
-    Raw(ModelRawVER),
-    Parsed(Model)
 }
 
 #[make_platforms]
 pub trait DumpModelVER {
-    type Data;
+    fn info(&self) -> &ModelInfoVER;
     fn key(&self) -> u32;
     fn bone_num(&self) -> usize;
     fn vals_j_num(&self) -> usize;
@@ -1191,17 +695,18 @@ pub trait DumpModelVER {
     fn hk_constraint<'a>(&'a self) -> Option<&'a (impl DumpHkConstraintVER + 'a)>;
     fn block_header(&self) -> Option<impl Into<u32VER>>;
     fn blocks<'a>(&'a self) -> impl Iterator<Item=&'a (impl DumpBlockVER + 'a)>;
-    fn data(&self) -> &impl DumpModelDataVER<Data=Self::Data>;
+    fn data(&self) -> &impl DumpModelDataVER;
     fn asset_info(&self) -> (u32VER, u32VER);
+    fn write_info(&self, info: &mut ModelInfoVER);
 
-    fn dump_misc(&self, dst: &mut DumpSlice, infos: &mut DumpInfosVER<Self::Data>, info: &mut ModelInfoVER, info_off: usize) -> Result<()> {
+    fn dump_misc(&self, dst: &mut DumpSlice, infos: &mut DumpInfosVER, info: &mut ModelInfoVER, info_off: usize) -> Result<()> {
         if self.has_vals_k() {
-            dst.align(16);
+            dst.align(16)?;
             info.vals_k_offset = dst.offset.conv();
             let vals_k_header = u16VER::mut_slice_from_data(dst, 2).context("val_k_header")?;
             let vals_k = u32VER::mut_slice_from_data(dst, 35).context("vals_k")?;
             self.write_vals_k(vals_k_header, vals_k).context("vals_k")?;
-            *infos.offsets.next() = (info_off + std::mem::offset_of!(ModelInfoVER, vals_k_offset)).conv();
+            *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(ModelInfoVER, vals_k_offset)).conv();
         } else {
             info.vals_k_offset = 0u32.conv();
         }
@@ -1213,46 +718,46 @@ pub trait DumpModelVER {
             info.slot_map_offset = dst.offset.conv();
             let slot_map = u32VER::mut_slice_from_data(dst, self.slot_map_num()).context("slot_map")?;
             self.write_slot_map(slot_map).context("write slot_map")?;
-            *infos.offsets.next() = (info_off + std::mem::offset_of!(ModelInfoVER, slots_offset)).conv();
-            *infos.offsets.next() = (info_off + std::mem::offset_of!(ModelInfoVER, slot_map_offset)).conv();
+            *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(ModelInfoVER, slots_offset)).conv();
+            *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(ModelInfoVER, slot_map_offset)).conv();
         } else {
             info.slots_offset = 0u32.conv();
         }
 
         if let Some(block_header) = self.block_header() {
-            dst.align(16);
+            dst.align(16)?;
             let start = dst.offset;
             info.block_offset = start.conv();
             *u32VER::mut_from_data(dst).context("block_header")? = block_header.into();
             let block_offsets = u32VER::mut_slice_from_data(dst, self.block_num() + 1).context("block_offsets")?;
             for (i, (block, off)) in self.blocks().zip(block_offsets.iter_mut()).enumerate() {
-                dst.align(16);
+                dst.align(16)?;
                 *off = (dst.offset - start).conv();
                 block.dump_into(dst).with_context(|| format!("block {}", i))?;
             }
             if let Some(off) = block_offsets.last_mut() {
                 *off = (dst.offset - start).conv();
             }
-            *infos.offsets.next() = (info_off + std::mem::offset_of!(ModelInfoVER, block_offset)).conv();
+            *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(ModelInfoVER, block_offset)).conv();
         }
 
         info.hk_constraint_data_num = self.hk_constraint_data_num().conv();
         if info.hk_constraint_data_num.get() != 0 {
             info.hk_constraint_data_offset = infos.hk_constraint_datas.offset.conv();
             self.write_hk_constraint_datas(infos.hk_constraint_datas.next_slice(self.hk_constraint_data_num())).context("hk_constraint_datas")?;
-            *infos.offsets.next() = (info_off + std::mem::offset_of!(ModelInfoVER, hk_constraint_data_offset)).conv();
+            *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(ModelInfoVER, hk_constraint_data_offset)).conv();
         }
 
-        *infos.offsets.next() = (info_off + std::mem::offset_of!(ModelInfoVER, mat_offset)).conv();
-        *infos.offsets.next() = (info_off + std::mem::offset_of!(ModelInfoVER, buffer_info_offset)).conv();
-        *infos.offsets.next() = (info_off + std::mem::offset_of!(ModelInfoVER, mesh_order_offset)).conv();
-        *infos.offsets.next() = (info_off + std::mem::offset_of!(ModelInfoVER, bone_parents_offset)).conv();
-        *infos.offsets.next() = (info_off + std::mem::offset_of!(ModelInfoVER, bone_transforms_offset)).conv();
-        *infos.offsets.next() = (info_off + std::mem::offset_of!(ModelInfoVER, skin_binds_offset)).conv();
-        *infos.offsets.next() = (info_off + std::mem::offset_of!(ModelInfoVER, vbuff_offset)).conv();
-        *infos.offsets.next() = (info_off + std::mem::offset_of!(ModelInfoVER, ibuff_offset)).conv();
-        *infos.offsets.next() = (info_off + std::mem::offset_of!(ModelInfoVER, mesh_bounding_boxes_offset)).conv();
-        *infos.offsets.next() = (info_off + std::mem::offset_of!(ModelInfoVER, bone_bounding_boxes_offset)).conv();
+        *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(ModelInfoVER, mat_offset)).conv();
+        *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(ModelInfoVER, buffer_info_offset)).conv();
+        *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(ModelInfoVER, mesh_order_offset)).conv();
+        *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(ModelInfoVER, bone_parents_offset)).conv();
+        *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(ModelInfoVER, bone_transforms_offset)).conv();
+        *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(ModelInfoVER, skin_binds_offset)).conv();
+        *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(ModelInfoVER, vbuff_offset)).conv();
+        *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(ModelInfoVER, ibuff_offset)).conv();
+        *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(ModelInfoVER, mesh_bounding_boxes_offset)).conv();
+        *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(ModelInfoVER, bone_bounding_boxes_offset)).conv();
 
         Ok(())
     }
@@ -1287,37 +792,42 @@ pub trait DumpModelVER {
         offset
     }
 
-    fn dump_mats(&self, dst: &mut DumpSlice, infos: &mut DumpInfosVER<Self::Data>, info: &mut ModelInfoVER) -> Result<()> {
+    fn dump_mats(&self, dst: &mut DumpSlice, infos: &mut DumpInfosVER, info: &mut ModelInfoVER) -> Result<()> {
         let mut off = dst.offset;
         info.mat_offset = off.conv();
-        let mat_map = self.mats().map(|(i, mat)| Ok((i, mat.dump_infos(infos)?))).collect::<Result<HashMap<_,_>>>().context("mats")?;
+        let mat_map = self.mats().sorted_by_key(|(k, _)| k.clone()).map(|(i, mat)| Ok((i, mat.dump_infos(infos)?))).collect::<Result<HashMap<_,_>>>().context("mats")?;
         let mat_order = u32VER::mut_slice_from_data(dst, self.mat_num()).context("mat_order")?;
         info.mat_num = mat_order.len().conv();
+        let mut j = 0;
         for (i, mat) in self.mat_order().zip(mat_order) {
             *mat = mat_map.get(&i).ok_or(anyhow!("mats is missing item {}", i))?.conv(); 
-            *infos.offsets.next() = off.conv();
+            *infos.offsets.next().context("offsets")? = off.conv();
             off += 4;
+            j += 1;
         }
+        assert!(j == self.mat_num());
         Ok(())
     }
 
-    fn add_mat_counts(&self, counts: &mut InfoCounts) {
+    fn add_mat_counts(&self, offset: usize, counts: &mut InfoCounts) -> usize {
         for mat in self.mats() {
             mat.1.add_counts(counts);
         }
         counts.offsets += self.mat_num();
+        offset + self.mat_num() * std::mem::size_of::<u32VER>()
     }
 
-    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfosVER<Self::Data>) -> Result<()> {
+    fn dump_into<'a>(&'a self, dst: &mut DumpSlice, infos: &mut DumpInfosVER<'_, 'a>) -> Result<()> {
         let info_off = infos.models.offset;
-        let info = infos.models.next();
+        let info = infos.models.next().context("models")?;
+        self.write_info(info);
         
         info.bones_offset = dst.offset.conv();
         let bones = CrcVER::mut_slice_from_data(dst, self.bone_num()).context("bones")?;
         info.bones_num = bones.len().conv();
-        *infos.offsets.next() = (info_off + std::mem::offset_of!(ModelInfoVER, bones_offset)).conv();
+        *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(ModelInfoVER, bones_offset)).conv();
 
-        dst.align(16);
+        dst.align(16)?;
         info.bone_bounding_boxes_offset = dst.offset.conv();
         let bone_bboxes = BoundingBoxVER::mut_slice_from_data(dst, bones.len()).context("bone_bounding_boxes")?;
 
@@ -1325,17 +835,17 @@ pub trait DumpModelVER {
         let vals_j = u32VER::mut_slice_from_data(dst, self.vals_j_num()).context("vals_j")?;
         info.vals_j_num = vals_j.len().conv();
         self.write_vals_j(vals_j).context("write vals_j")?;
-        *infos.offsets.next() = (info_off + std::mem::offset_of!(ModelInfoVER, vals_j_offset)).conv();
+        *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(ModelInfoVER, vals_j_offset)).conv();
 
         if let Some(hk_constraint) = self.hk_constraint() {
             info.hk_constraint_offset = infos.hk_constraints.offset.conv();
-            hk_constraint.dump_into(dst, infos, info.bones_offset.get() as u16, info.bones_num.get()).context("hk_constraint")?;
-            *infos.offsets.next() = (info_off + std::mem::offset_of!(ModelInfoVER, hk_constraint_offset)).conv();
+            hk_constraint.dump_into(dst, infos, info.bones_num.get() as u16, info.bones_offset.get()).context("hk_constraint")?;
+            *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(ModelInfoVER, hk_constraint_offset)).conv();
         } else {
             info.hk_constraint_offset = 0u32.conv();
         }
 
-        dst.align(16);
+        dst.align(16)?;
         info.skin_binds_offset = dst.offset.conv();
         let skin_binds = Matrix4x4VER::mut_slice_from_data(dst, self.skin_bind_num()).context("skin_binds")?;
         info.skin_binds_num = skin_binds.len().conv();
@@ -1345,7 +855,7 @@ pub trait DumpModelVER {
             info.skin_order_offset = dst.offset.conv();
             let skin_order = u32VER::mut_slice_from_data(dst, skin_binds.len()).context("skin_order")?;
             self.write_skin_order(skin_order).context("write skin_order")?;
-            *infos.offsets.next() = (info_off + std::mem::offset_of!(ModelInfoVER, skin_order_offset)).conv();
+            *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(ModelInfoVER, skin_order_offset)).conv();
         } else {
             info.skin_order_offset = 0u32.conv();
         }
@@ -1353,7 +863,7 @@ pub trait DumpModelVER {
         info.bone_parents_offset = dst.offset.conv();
         let bone_parents = i32VER::mut_slice_from_data(dst, bones.len()).context("bone_parents")?;
 
-        dst.align(16);
+        dst.align(16)?;
         info.bone_transforms_offset = dst.offset.conv();
         let bone_transforms = Matrix4x4VER::mut_slice_from_data(dst, bones.len()).context("bone_transforms")?;
         self.write_bones(BonesDumpVER {
@@ -1371,7 +881,7 @@ pub trait DumpModelVER {
             for (i, shape) in self.shapes().enumerate() {
                 shape.dump_into(dst, infos, None).with_context(|| format!("shape {}", i))?;
             }
-            *infos.offsets.next() = (info_off + std::mem::offset_of!(ModelInfoVER, shape_offset)).conv();
+            *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(ModelInfoVER, shape_offset)).conv();
         } else {
             info.shape_offset = 0u32.conv();
         }
@@ -1382,14 +892,18 @@ pub trait DumpModelVER {
         // info.lod3.breakable_end = mesh_order.len();
         self.write_mesh_order(mesh_order).context("write mesh_order")?;
 
-        dst.align(16);
+        dst.align(16)?;
         info.mesh_bounding_boxes_offset = dst.offset.conv();
         let mesh_bboxes = BoundingBoxVER::mut_slice_from_data(dst, mesh_order.len()).context("mesh_bounding_boxes")?;
         self.write_mesh_bounding_boxes(mesh_bboxes).context("write mesh_bounding_boxes")?;
 
         let data = self.data().dump_into(dst, infos, info)?;
         let (asset_key, asset_type) = self.asset_info();
-        infos.model_data.push((asset_key, asset_type, data));
+        infos.model_data.push(DumpInfoDataVER {
+            key: asset_key,
+            kind: asset_type,
+            data
+        });
 
         self.dump_misc(dst, infos, info, info_off)?;
         Ok(())
@@ -1420,25 +934,32 @@ pub trait DumpModelVER {
         offset += i32VER::size_of() * self.bone_num();
         offset = align_offset(offset, 16) + Matrix4x4VER::size_of() * self.bone_num();
 
-        self.add_mat_counts(counts);
+        offset = self.add_mat_counts(offset, counts);
 
+        let mut has_shape = false;
         for shape in self.shapes() {
             offset = shape.add_size(offset, counts);
+            has_shape = true;
+        }
+        if has_shape {
             counts.offsets += 1;
         }
 
         offset += u32VER::size_of() * self.mesh_order_num();
         offset = align_offset(offset, 16) + BoundingBoxVER::size_of() * self.mesh_order_num();
 
+
         offset = self.data().add_size(offset, counts).0;
 
-        self.add_misc_size(offset, counts)
+        offset = self.add_misc_size(offset, counts);
+        offset
     }
 
-    fn dump_terrain_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfosVER<Self::Data>, indices_offset: usize) -> Result<()> {
+    fn dump_terrain_into<'a>(&'a self, dst: &mut DumpSlice, infos: &mut DumpInfosVER<'_, 'a>, indices_offset: usize) -> Result<()> {
         let bone_bbox_offset = infos.models.offset + 16;
         let info_off = infos.models.offset;
-        let info = infos.models.next();
+        let info = infos.models.next().context("models")?;
+        self.write_info(info);
 
         info.bones_offset = 0u32.conv();
         info.bones_num = self.bone_num().conv();
@@ -1451,23 +972,18 @@ pub trait DumpModelVER {
 
         if let Some(hk_constraint) = self.hk_constraint() {
             info.hk_constraint_offset = infos.hk_constraints.offset.conv();
-            hk_constraint.dump_into(dst, infos, info.bones_offset.get() as u16, info.bones_num.get()).context("hk_constraint")?;
-            *infos.offsets.next() = (info_off + std::mem::offset_of!(ModelInfoVER, hk_constraint_offset)).conv();
+            hk_constraint.dump_into(dst, infos, info.bones_num.get() as u16, info.bones_offset.get()).context("hk_constraint")?;
+            *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(ModelInfoVER, hk_constraint_offset)).conv();
         } else {
             info.hk_constraint_offset = 0u32.conv();
         }
 
         let mut shape_offsets = Vec::with_capacity(self.shape_num());
         for (i, shape) in self.shapes().enumerate() {
-            if let Some(extra) = shape.extra() {
-                shape_offsets.push(Some(dst.offset));
-                extra.dump_into(dst).with_context(|| format!("shape {} extra", i))?;
-            } else {
-                shape_offsets.push(None);
-            }
+            shape_offsets.push(shape.dump_extra_into(dst).with_context(|| format!("shape {} extra", i))?);
         }
         
-        dst.align(16);
+        dst.align(16)?;
         info.mesh_bounding_boxes_offset = dst.offset.conv();
         let mesh_bboxes = BoundingBoxVER::mut_slice_from_data(dst, self.mesh_order_num()).context("mesh_bounding_boxes")?;
         self.write_mesh_bounding_boxes(mesh_bboxes).context("write mesh_bounding_boxes")?;
@@ -1491,13 +1007,17 @@ pub trait DumpModelVER {
 
         let data = self.data().dump_into(dst, infos, info)?;
         let (asset_key, asset_type) = self.asset_info();
-        infos.model_data.push((asset_key, asset_type, data));
+        infos.model_data.push(DumpInfoDataVER {
+            key: asset_key,
+            kind: asset_type,
+            data
+        });
         let off_dest = info.ibuff_offset.get() as usize + 320;
 
         self.dump_misc(dst, infos, info, info_off)?;
 
         if dst.offset < off_dest {
-            dst.split(off_dest - dst.offset);
+            dst.split(off_dest - dst.offset).context("model pad")?;
             //*dst = dst.split(off_dest - dst.offset)?;
         }
 
@@ -1507,7 +1027,7 @@ pub trait DumpModelVER {
             for ((i, shape), off) in self.shapes().enumerate().zip(shape_offsets) {
                 shape.dump_into(dst, infos, off).with_context(|| format!("shape {}", i))?;
             }
-            *infos.offsets.next() = (info_off + std::mem::offset_of!(ModelInfoVER, shape_offset)).conv();
+            *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(ModelInfoVER, shape_offset)).conv();
         } else {
             info.shape_offset = 0u32.conv();
         }
@@ -1522,24 +1042,28 @@ pub trait DumpModelVER {
             counts.offsets += 1;
         }
 
+        let mut has_shape = false;
         for shape in self.shapes() {
-            if let Some(extra) = shape.extra() {
-                offset = extra.add_size(offset);
-            }
+            offset = shape.add_extra_size(offset);
+            has_shape = true;
+        }
+        if has_shape {
             counts.offsets += 1;
         }
         
         offset = align_offset(offset, 16) + BoundingBoxVER::size_of() * self.mesh_order_num();
         offset += Matrix4x4VER::size_of() * self.bone_num();
 
-        self.add_mat_counts(counts);
+        offset = self.add_mat_counts(offset, counts);
 
         offset += u32VER::size_of() * self.mesh_order_num();
 
         let (mut offset, off_dest) = self.data().add_size(offset, counts);
 
-        offset += self.add_misc_size(offset, counts);
-        offset = off_dest.max(offset);
+
+        offset = self.add_misc_size(offset, counts);
+
+        offset = (off_dest + 320).max(offset);
 
         for shape in self.shapes() {
             offset = shape.add_size(offset, counts);
@@ -1550,7 +1074,9 @@ pub trait DumpModelVER {
 
 #[make_platforms]
 impl<'a> DumpModelVER for ModelRefVER<'a> {
-    type Data = &'a CompressedDataRefAlt<'a>;
+    fn info(&self) -> &ModelInfoVER {
+        self.info
+    }
     fn key(&self) -> u32 {
         self.info.key.get()
     }
@@ -1567,7 +1093,7 @@ impl<'a> DumpModelVER for ModelRefVER<'a> {
         !self.skin_order.is_empty()
     }
     fn mat_num(&self) -> usize {
-        self.mats.len()
+        self.mat_order.len()
     }
     fn shape_num(&self) -> usize {
         self.shapes.len()
@@ -1674,10 +1200,13 @@ impl<'a> DumpModelVER for ModelRefVER<'a> {
     fn blocks(&self) -> impl Iterator<Item=&impl DumpBlockVER> {
         self.blocks.iter()
     }
-    fn data(&self) -> &impl DumpModelDataVER<Data=Self::Data> {
+    fn data(&self) -> &impl DumpModelDataVER {
         &self.data
     }
     fn asset_info(&self) -> (u32VER, u32VER) {
         (self.info.asset_key, self.info.asset_type)
+    }
+    fn write_info(&self, info: &mut ModelInfoVER) {
+        *info = self.info.clone();
     }
 }

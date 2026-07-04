@@ -2,11 +2,152 @@ use proc_macro2::{TokenStream, Group, TokenTree, Span};
 use quote::{format_ident, quote, quote_spanned, ToTokens};
 use syn::punctuated::Punctuated;
 use syn::{
-    parse_macro_input, spanned::Spanned, Data, DeriveInput, Fields, Ident, Index, 
-    Token
+    parse_macro_input, spanned::Spanned, Data, DeriveInput, Fields, Ident, Index, Type, 
+    Token, parse::{Parse, ParseStream, Parser}, ItemFn, ItemMod, ItemImpl, Item, Meta, ItemStruct
 };
 use syn::{Attribute, Visibility};
 use indexmap::IndexMap;
+
+type ExportAttrs = Punctuated<Meta, Token![,]>;
+
+
+
+#[proc_macro_attribute]
+pub fn export_slice(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let attr = parse_macro_input!(attr with ExportAttrs::parse_terminated);
+    let item = parse_macro_input!(item as ItemStruct);
+    let name = &item.ident;
+    let mod_name = format_ident!("ffi_{}", name);
+
+    quote! {
+
+        mod #mod_name { 
+        /// This is a proxy struct for correct size and alignment only
+        /// don't construct this directly and use the provided methods to access
+        #[repr(C)]
+        pub struct $name {
+            align: u64,
+            pad: [u8; $n]
+        }
+        assert_layout!(Option<$t>, $name);
+        #[lotrc::macros::export(base_only)]
+        impl $name {
+            fn get<'a>(slice: Option<&'a Option<$t>>) -> Option<&'a $t> {
+                slice.and_then(|x| x.as_ref())
+            }
+        }
+        }
+        #item
+    }.into()
+}
+
+enum ExportInput {
+    Impl(ItemImpl),
+    Mod(ItemMod),
+    Fn(ItemFn)
+}
+
+impl ToTokens for ExportInput {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match self {
+            ExportInput::Impl(val) => val.to_tokens(tokens),
+            ExportInput::Mod(val) => val.to_tokens(tokens),
+            ExportInput::Fn(val) => val.to_tokens(tokens)
+        }
+    }
+}
+
+impl Parse for ExportInput {
+    fn parse(input: ParseStream) -> Result<Self, syn::Error> {
+        if let Ok(val) = ItemImpl::parse(input) {
+            Ok(Self::Impl(val))
+        } else if let Ok(val) = ItemMod::parse(input) {
+            Ok(Self::Mod(val))
+        } else if let Ok(val) = ItemFn::parse(input) {
+            Ok(Self::Fn(val))
+        } else {
+            Err(input.error("expected impl, mod, or fn"))
+        }
+    }
+}
+
+fn export_impl(input: &mut ItemImpl, path: &str, attr: &ExportAttrs) {
+    let mut path = path.to_string();
+    let mut ty_name = input.self_ty.to_token_stream().to_string();
+    if let Some(Meta::NameValue(val)) = attr.iter().find(|x| x.path().is_ident("impl_name")) {
+        ty_name = val.value.to_token_stream().to_string();
+    }
+    if attr.iter().any(|x| x.path().is_ident("base_only")) {
+        path = ty_name;
+    } else {
+        path = path + "_" + ty_name.as_str();
+    }
+    for item in input.items.iter_mut() {
+        if let syn::ImplItem::Fn(f) = item {
+            let name = f.sig.ident.to_string();
+            f.sig.ident = format_ident!("{}_{}", path, name);
+            f.sig.abi.replace(syn::Abi { 
+                extern_token: syn::token::Extern {
+                    span: f.sig.span() 
+                },
+                name: Some(syn::LitStr::new("C", f.sig.span()))
+            });
+            if !f.attrs.iter().any(|x| x.path().is_ident("no_mangle")) {
+                let mut no_mangle = Attribute::parse_outer.parse_str("#[unsafe(no_mangle)]").unwrap();
+                f.attrs.append(&mut no_mangle);
+            }
+        }
+    }
+}
+
+fn export_mod(input: &mut ItemMod, path: &str, attr: &ExportAttrs) {
+    let mut path = path.to_string() + input.ident.to_string().as_str() + "_";
+    if let Some(Meta::NameValue(val)) = attr.iter().find(|x| x.path().is_ident("mod_name")) {
+        path = val.value.to_token_stream().to_string() + "_";
+    }
+    if let Some((_, vals)) = &mut input.content {
+        for val in vals {
+            match val {
+                Item::Fn(val) => export_fn(val, &path, attr),
+                _ => ()
+            }
+        }
+    }
+}
+
+fn export_fn(input: &mut ItemFn, path: &str, _attr: &ExportAttrs) {
+    let name = input.sig.ident.to_string();
+    input.sig.ident = format_ident!("{}{}", path, name);
+    input.sig.abi.replace(syn::Abi { 
+        extern_token: syn::token::Extern {
+            span: input.sig.span() 
+        },
+        name: Some(syn::LitStr::new("C", input.sig.span()))
+    });
+    if !input.attrs.iter().any(|x| x.path().is_ident("no_mangle")) {
+        let mut no_mangle = Attribute::parse_outer.parse_str("#[unsafe(no_mangle)]").unwrap();
+        input.attrs.append(&mut no_mangle);
+    }
+}
+
+#[proc_macro_attribute]
+pub fn export(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let mut input = parse_macro_input!(item as ExportInput);
+    let attr = parse_macro_input!(attr with ExportAttrs::parse_terminated);
+    let module_path = "";
+    match &mut input {
+        ExportInput::Impl(val) => export_impl(val, &module_path, &attr),
+        ExportInput::Mod(val) => export_mod(val, &module_path, &attr),
+        ExportInput::Fn(val) => export_fn(val, &module_path, &attr)
+    }
+    input.into_token_stream().into()
+}
 
 fn make_platform(ver: &str, item: TokenStream) -> TokenStream {
     TokenStream::from_iter(item.into_iter().map(|x| match x {
@@ -45,15 +186,10 @@ pub fn make_platforms(
 
     let s = item.to_string();
     if s.contains("VER") || s.contains("_ver") {
-        let pc = make_platform("Pc", item.clone());
-        let xbox = make_platform("Xbox", item.clone());
-        let ps3 = make_platform("Ps3", item);
-        quote! {
-            #pc
-            #xbox
-            #ps3
-        }
-        .into()
+        let mut out = make_platform("Pc", item.clone());
+        out.extend(make_platform("Xbox", item.clone()));
+        out.extend(make_platform("Ps3", item));
+        out.into()
     } else {
         item.into()
     }
@@ -89,18 +225,21 @@ fn process_attrs(attrs: &Vec<Attribute>, ver: &str) -> (bool, Option<Ident>) {
     let mut name = None;
     let skip_name = format_ident!("skip_{}", ver.to_lowercase());
     let name_name = format_ident!("name_{}", ver.to_lowercase());
-    for a in attrs.iter() {
-        if a.path().is_ident("ordered_data") {
-            skip = a.parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)
-                .unwrap()
-                .into_iter()
-                .find(|i| i==&skip_name)
-                .is_some();
-        } else if a.path().is_ident(&name_name) {
-            name = a.parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)
-                .unwrap()
-                .into_iter()
-                .next();
+    if let Some(attr) = attrs.iter().find(|x| x.path().is_ident("ordered_data")) {
+        if let Meta::List(val) = &attr.meta {
+            if let Some(vals) = ExportAttrs::parse_terminated.parse(val.tokens.clone().into()).ok() {
+                for val in vals {
+                    match val {
+                        Meta::Path(x) if x.is_ident(&skip_name) => {
+                            skip = true;
+                        },
+                        Meta::NameValue(x) if x.path.is_ident(&name_name) => {
+                            name.replace(format_ident!("{}", x.value.to_token_stream().to_string()));
+                        }
+                        _ => ()
+                    }
+                }
+            }
         }
     }
     (skip, name)
@@ -208,9 +347,9 @@ fn get_ver_impl(name: &Ident, vis: &Visibility, info: &VersionStruct, ver: &str)
     let from_impl = alt_info.get_conv_impl("val");
 
     let expanded = quote! {
+        ///gen_ffi:export
         #[repr(C)]
-        #[derive(Default, Debug, Clone, zerocopy::KnownLayout, zerocopy::FromBytes, zerocopy::IntoBytes, zerocopy::Immutable)]
-        #[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+        #[derive(PartialEq, Default, Debug, Clone, zerocopy::KnownLayout, zerocopy::FromBytes, zerocopy::IntoBytes, zerocopy::Immutable)]
         #vis #def_impl
         impl From<#alt_name> for #name {
             fn from(val: #alt_name) -> Self {
@@ -257,192 +396,4 @@ pub fn derive_ordered_data_fn(input: proc_macro::TokenStream) -> proc_macro::Tok
         }
     }.into()
 }
-/*
-fn filter_attrs(attrs: &Vec<Attribute>, ver: &Ident, name: Ident) -> (Ident, bool, Ident) {
-    let mut val_ver = ver.clone();
-    let mut skip = false;
-    for val in attrs
-        .iter()
-        .filter(|a| a.path().is_ident("ordered_data"))
-        .flat_map(|a| {
-            a.parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)
-                .unwrap()
-        })
-    {
-        if val == "Pc" || val == "Xbox" || val == "Ps3" {
-            val_ver = val;
-        } else if val == "skipPC" && ver == "Pc" {
-            skip = true;
-        } else if val == "skipXBOX" && ver == "Xbox" {
-            skip = true;
-        } else if val == "skipPS3" && ver == "Ps3" {
-            skip = true;
-        }
-    }
-    let alt_name = if ver == "Pc" {
-        attrs
-            .iter()
-            .filter(|a| a.path().is_ident("name_pc"))
-            .flat_map(|a| {
-                a.parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)
-                    .unwrap()
-            })
-            .next()
-    } else if ver == "Xbox" {
-        attrs
-            .iter()
-            .filter(|a| a.path().is_ident("name_xbox"))
-            .flat_map(|a| {
-                a.parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)
-                    .unwrap()
-            })
-            .next()
-    } else if ver == "Ps3" {
-        attrs
-            .iter()
-            .filter(|a| a.path().is_ident("name_ps3"))
-            .flat_map(|a| {
-                a.parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)
-                    .unwrap()
-            })
-            .next()
-    } else {
-        None
-    }
-    .unwrap_or(name);
 
-    (val_ver, skip, alt_name)
-}
-
-fn conv_def(data: &Data, ver: &Ident) -> TokenStream {
-    match *data {
-        Data::Struct(ref data) => match data.fields {
-            Fields::Named(ref fields) => {
-                let recurse = fields.named.iter().filter_map(|f| {
-                    let name = &f.ident;
-                    let (_, skip, alt_name) = filter_attrs(&f.attrs, ver, name.clone().unwrap());
-                    if !skip {
-                        Some(quote_spanned! {
-                            f.span() => #alt_name: OrderedData::conv(&value.#alt_name)
-                        })
-                    } else {
-                        None
-                    }
-                });
-                quote! {
-                    {
-                        #(#recurse),*,
-                        ..Default::default()
-                    }
-                }
-            }
-            Fields::Unnamed(ref fields) => {
-                let recurse = fields.unnamed.iter().enumerate().map(|(i, f)| {
-                    let index = Index::from(i);
-                    quote_spanned! {
-                        f.span() => OrderedData::conv(&value.#index)
-                    }
-                });
-                quote! {
-                    (
-                        #(#recurse),*
-                    )
-                }
-            }
-            Fields::Unit => {
-                quote! {}
-            }
-        },
-        Data::Enum(_) | Data::Union(_) => unimplemented!(),
-    }
-}
-
-fn conv_back_def(data: &Data, ver: &Ident) -> TokenStream {
-    match *data {
-        Data::Struct(ref data) => match data.fields {
-            Fields::Named(ref fields) => {
-                let recurse = fields.named.iter().filter_map(|f| {
-                    let name = &f.ident;
-                    let (_, skip, alt_name) = filter_attrs(&f.attrs, ver, name.clone().unwrap());
-                    if !skip {
-                        Some(quote_spanned! {
-                            f.span() => #alt_name: OrderedData::conv(&value.#alt_name)
-                        })
-                    } else {
-                        None
-                    }
-                });
-                quote! {
-                    {
-                        #(#recurse),*,
-                        ..Default::default()
-                    }
-                }
-            }
-            Fields::Unnamed(ref fields) => {
-                let recurse = fields.unnamed.iter().enumerate().map(|(i, f)| {
-                    let index = Index::from(i);
-                    quote_spanned! {
-                        f.span() => OrderedData::conv(&value.#index)
-                    }
-                });
-                quote! {
-                    (
-                        #(#recurse),*
-                    )
-                }
-            }
-            Fields::Unit => {
-                quote! {}
-            }
-        },
-        Data::Enum(_) | Data::Union(_) => unimplemented!(),
-    }
-}
-
-fn alt_class_def(data: &Data, classname: &Ident, ver: &Ident, vis: &Visibility) -> TokenStream {
-    match *data {
-        Data::Struct(ref data) => match data.fields {
-            Fields::Named(ref fields) => {
-                let recurse = fields.named.iter().filter_map(|f| {
-                    let name = &f.ident;
-                    let ty = &f.ty;
-                    let (val, skip, alt_name) =
-                        filter_attrs(&f.attrs, ver, name.clone().unwrap());
-                    if !skip {
-                        Some(quote_spanned! {
-                            f.span() => #vis #alt_name: <#ty as OrderedDataStrict>::#val
-                        })
-                    } else {
-                        None
-                    }
-                });
-                quote! {
-                    struct #classname {
-                        #(#recurse),*
-                    }
-                }
-            }
-            Fields::Unnamed(ref fields) => {
-                let recurse = fields.unnamed.iter().map(|f| {
-                    let ty = &f.ty;
-                    quote_spanned! {
-                        f.span() => #vis <#ty as OrderedDataStrict>::#ver
-                    }
-                });
-                quote! {
-                    struct #classname (
-                        #(#recurse),*
-                    );
-                }
-            }
-            Fields::Unit => {
-                quote! {
-                    struct #classname;
-                }
-            }
-        },
-        Data::Enum(_) | Data::Union(_) => unimplemented!(),
-    }
-}
-*/

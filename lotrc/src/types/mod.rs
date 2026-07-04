@@ -3,38 +3,25 @@ use lotrc_proc::{make_platforms, OrderedData};
 use parking_lot::{MappedMutexGuard, Mutex, MutexGuard};
 use std::collections::HashMap;
 use std::io::Read;
-use std::ptr::NonNull;
-use std::sync::Arc;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
+use enum_dispatch::enum_dispatch;
 
+pub mod sub_blocks;
 mod wrappers;
 pub use wrappers::*;
 
-//pub const BUF_ALIGN: usize = 2048;
-pub const BUF_ALIGN: usize = 4;
-pub type BufType = aligned_buffer::SharedAlignedBuffer<BUF_ALIGN>;
-
-//#[repr(transparent)]
-//#[derive(Default, Clone)]
-//pub struct BufType(aligned_buffer::SharedAlignedBuffer<BUF_ALIGN>);
-
-#[derive(Copy, Clone, Default, zerocopy::FromBytes, zerocopy::IntoBytes, zerocopy::Immutable, zerocopy::KnownLayout)]
-#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
-//#[repr(C, align(4))]
-#[repr(C)]
-#[repr(align(4))]
-struct AlignmentHelper {
-    a: u8,
-    b: u8,
-    c: u8,
-    d: u8
+#[derive(Copy, Clone, Default, zerocopy::FromBytes, zerocopy::IntoBytes, zerocopy::Immutable, zerocopy::KnownLayout, PartialEq)]
+#[cfg_attr(feature = "ffi", repr(C))]
+pub struct AlignmentHelper {
+    a: u32,
 }
 
-#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
-#[repr(C)]
-#[derive(Default)]
+const _: () = assert!(std::mem::align_of::<AlignmentHelper>() == 4);
+
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(Default, PartialEq)]
 pub struct AlignedBuf {
-    data: box_slice<AlignmentHelper>,
+    data: slice<AlignmentHelper>,
     size: usize
 }
 
@@ -67,20 +54,9 @@ impl AlignedBuf {
 }
 
 #[derive(Default)]
-pub struct ParseSlice {
-    pub src: BufType,
-    pub offset: usize,
-}
-
-impl From<BufType> for ParseSlice {
-    fn from(src: BufType) -> Self {
-        Self { src, offset: 0 }
-    }
-}
-
-#[derive(Default)]
+#[cfg_attr(feature = "ffi", repr(C))]
 pub struct DumpSlice<'a> {
-    pub vals: &'a mut [u8],
+    pub vals: mut_slice<'a, u8>,
     pub offset: usize,
 }
 
@@ -105,17 +81,24 @@ impl<'a> DumpSlice<'a> {
             offset: self.offset + off,
         }
     }
-    pub fn split(&mut self, off: usize) -> Self {
+    // return a new DumpSlice of [offset, offset + off) leaving this one with [offset + off, ...)
+    pub fn split(&mut self, off: usize) -> Result<Self> {
         let Self { vals, mut offset } = std::mem::take(self);
-        let (vals, rem) = vals.split_at_mut(off);
+        let (vals, rem) = vals.split_at_mut_checked(off).ok_or(anyhow::anyhow!("dump slice too small"))?;
         let res = Self { vals, offset };
         offset += off;
         *self = Self { vals: rem, offset };
-        res
+        Ok(res)
     }
-    pub fn align(&mut self, size: usize) {
+    pub fn align(&mut self, size: usize) -> Result<()> {
         let new_off = align_offset(self.offset, size);
-        self.split(new_off - self.offset);
+        self.split(new_off - self.offset).context("align")?;
+        Ok(())
+    }
+    pub fn adjusted_align(&mut self, size: usize, adj: usize) -> Result<()> {
+        let new_off = align_offset(self.offset - adj, size) + adj;
+        self.split(new_off - self.offset).context("align")?;
+        Ok(())
     }
 }
 
@@ -139,7 +122,7 @@ impl<T: Sized + KnownLayout + Immutable + IntoBytes + FromBytes> DumpData for T 
     fn dump_into<'a>(&self, dst: &mut DumpSlice) -> Result<()> {
         self.write_to_prefix(dst.vals)
             .map_err(|e| anyhow!(e.to_string()))?;
-        dst.split(std::mem::size_of::<T>());
+        dst.split(std::mem::size_of::<T>())?;
         Ok(())
     }
     fn size(&self) -> usize {
@@ -155,7 +138,7 @@ impl<T: Sized + KnownLayout + Immutable + IntoBytes + FromBytes> DumpData for [T
     fn dump_into<'a>(&self, dst: &mut DumpSlice) -> Result<()> {
         self.write_to_prefix(dst.vals)
             .map_err(|e| anyhow!(e.to_string()))?;
-        dst.split(std::mem::size_of_val(self));
+        dst.split(std::mem::size_of_val(self))?;
         Ok(())
     }
     fn size(&self) -> usize {
@@ -185,13 +168,13 @@ where
         std::mem::size_of::<Self>()
     }
     fn mut_from_data<'a>(src: &mut DumpSlice<'a>) -> Result<&'a mut Self> {
-        let val = FromBytes::mut_from_bytes(src.split(std::mem::size_of::<Self>()).vals)
+        let val = FromBytes::mut_from_bytes(src.split(std::mem::size_of::<Self>())?.vals)
             .map_err(|e| anyhow!(e.to_string()))?;
         Ok(val)
     }
     fn mut_slice_from_data<'a>(src: &mut DumpSlice<'a>, count: usize) -> Result<&'a mut [Self]> {
         let val = FromBytes::mut_from_bytes_with_elems(
-            src.split(std::mem::size_of::<Self>() * count).vals,
+            src.split(std::mem::size_of::<Self>() * count)?.vals,
             count,
         )
         .map_err(|e| anyhow!(e.to_string()))?;
@@ -231,8 +214,19 @@ impl From<Crc> for u32 {
     }
 }
 
+impl indexmap::Equivalent<u32> for Crc {
+    fn equivalent(&self, key: &u32) -> bool {
+        self.val.eq(key)
+    }
+}
+impl indexmap::Equivalent<Crc> for u32 {
+    fn equivalent(&self, key: &Crc) -> bool {
+        self.eq(&key.val)
+    }
+}
+
 #[derive(Debug, Default, Clone, OrderedData)]
-#[repr(C)]
+#[cfg_attr(feature = "ffi", repr(C))]
 pub struct Vector2 {
     pub x: f32,
     pub y: f32,
@@ -254,7 +248,7 @@ impl From<Vector2> for Vec<f32> {
 }
 
 #[derive(Debug, Default, Clone, OrderedData)]
-#[repr(C)]
+#[cfg_attr(feature = "ffi", repr(C))]
 pub struct Vector3 {
     pub x: f32,
     pub y: f32,
@@ -277,7 +271,7 @@ impl From<Vector3> for Vec<f32> {
 }
 
 #[derive(Debug, Default, Clone, OrderedData)]
-#[repr(C)]
+#[cfg_attr(feature = "ffi", repr(C))]
 pub struct Vector4 {
     pub x: f32,
     pub y: f32,
@@ -394,22 +388,6 @@ pub fn get_str_debug(val: &u32) -> String {
         .unwrap_or_else(|| format!("unknown string {}", val))
 }
 
-pub fn decompress_block(data: &[u8], size_comp: usize, size: usize) -> Result<BufType> {
-    let mut res = aligned_buffer::UniqueAlignedBuffer::<BUF_ALIGN>::with_capacity(size);
-    unsafe { res.set_len(size) }
-    match size_comp {
-        0 => res.copy_from_slice(&data[..size]),
-        _ => {
-            let mut off = 0;
-            let mut reader = flate2::read::ZlibDecoder::new(&data[..size_comp]);
-            while off < size {
-                off += reader.read(&mut res[off..])?;
-            }
-        }
-    }
-    Ok(res.into())
-}
-
 pub fn decompress_block_into(src: &[u8], dst: &mut [u8], size_comp: usize) -> Result<()> {
     match size_comp {
         0 => dst.copy_from_slice(&src[..dst.len()]),
@@ -422,6 +400,40 @@ pub fn decompress_block_into(src: &[u8], dst: &mut [u8], size_comp: usize) -> Re
         }
     }
     Ok(())
+}
+
+pub fn compress_block(src: &[u8], is_pak: bool, c: flate2::Compression) -> Result<Vec<u8>> {
+    use std::io::Write; 
+    Ok(if c.level() == 0 && is_pak {
+        src.to_vec()
+    } else {
+        // let mut z = ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
+        let mut z = flate2::write::ZlibEncoder::new(Vec::new(), c);
+        z.write_all(src)?;
+        let data = z.finish()?;
+        if data.len() > 0xffffff {
+            return Err(anyhow!("Could not compress data to be smaller than 1048575 bytes, try again with a higher compression ratio"))
+        }
+        data
+    })
+}
+
+pub fn compress_segmented<'a>(src: impl Iterator<Item=&'a [u8]>, is_pak: bool, c: flate2::Compression) -> Result<Vec<u8>> {
+    use std::io::Write; 
+    Ok(if c.level() == 0 && is_pak {
+        src.flatten().copied().collect()
+    } else {
+        // let mut z = ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
+        let mut z = flate2::write::ZlibEncoder::new(Vec::new(), c);
+        for val in src {
+            z.write_all(val)?;
+        }
+        let data = z.finish()?;
+        if data.len() > 0xffffff {
+            return Err(anyhow!("Could not compress data to be smaller than 1048575 bytes, try again with a higher compression ratio"))
+        }
+        data
+    })
 }
 
 #[macro_export]
@@ -503,10 +515,9 @@ pub const fn hash_string(string: &[u8], mask: Option<u32>) -> u32 {
 
 #[make_platforms]
 #[derive(Default)]
-#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
 #[repr(transparent)]
 pub struct StringsRefVER<'a> {
-    pub strings: box_slice<str_ref<'a>>
+    pub strings: slice<string<'a>>
 }
 
 #[make_platforms]
@@ -533,48 +544,6 @@ impl<'a> StringsRefVER<'a> {
     }
 }
 
-#[make_platforms]
-#[derive(Debug, Clone)]
-pub struct StringsVER {
-    _ptr: BufType,
-    strings: Box<[NonNull<str>]>,
-}
-
-#[make_platforms]
-unsafe impl Sync for StringsVER {}
-#[make_platforms]
-unsafe impl Send for StringsVER {}
-
-#[make_platforms]
-impl StringsVER {
-    pub fn from_bytes(src: &BufType, mut offset: usize, num: usize) -> Result<Self> {
-        let mut strings = Vec::with_capacity(num);
-        for i in 0..num {
-            let k = U32VER::from_data(&src[offset..]).context("size")?;
-            offset += 4;
-            strings.push(NonNull::from_ref(
-                std::str::from_utf8(&src[offset..offset + k.get() as usize])
-                    .with_context(|| format!("string {} of size {}", i, k.get()))?,
-            ));
-            offset += k.get() as usize;
-        }
-        Ok(Self {
-            _ptr: src.clone(),
-            strings: strings.into(),
-        })
-    }
-}
-
-#[make_platforms]
-impl StringsVER {
-    pub fn len(&self) -> usize {
-        self.strings.len()
-    }
-    pub fn strings(&self) -> Vec<&str> {
-        self.strings.iter().map(|x| unsafe { x.as_ref() }).collect()
-    }
-}
-
 #[derive(Debug, Clone)]
 #[repr(transparent)]
 pub struct Strings {
@@ -582,8 +551,8 @@ pub struct Strings {
 }
 
 #[make_platforms]
-impl From<&StringsVER> for Strings {
-    fn from(val: &StringsVER) -> Self {
+impl From<&StringsRefVER<'_>> for Strings {
+    fn from(val: &StringsRefVER) -> Self {
         Self {
             strings: val.strings().into_iter().map(|x| x.to_string()).collect(),
         }
@@ -618,15 +587,6 @@ impl DumpStringsVER for StringsRefVER<'_> {
 }
 
 #[make_platforms]
-impl DumpStringsVER for StringsVER {
-    fn num_strings(&self) -> usize {
-        self.strings.len()
-    }
-    fn strings(&self) -> impl Iterator<Item = &str> {
-        self.strings.iter().map(|x| unsafe { x.as_ref() })
-    }
-}
-#[make_platforms]
 impl DumpStringsVER for Strings {
     fn num_strings(&self) -> usize {
         self.strings.len()
@@ -653,13 +613,12 @@ pub struct StringKeysVal {
 }
 
 #[make_platforms]
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
-#[repr(C)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "ffi", repr(C))]
 pub struct StringKeysRefVER<'a> {
     pub header: &'a StringKeysHeaderVER,
-    pub vals: slice<'a, StringKeysValVER>,
-    pub pad: slice<'a, u32VER>,
+    pub vals: ref_slice<'a, StringKeysValVER>,
+    pub pad: ref_slice<'a, u32VER>,
 }
 
 #[make_platforms]
@@ -667,8 +626,8 @@ impl Default for StringKeysRefVER<'_> {
     fn default() -> Self {
         Self {
             header: get_default_ref(),
-            vals: slice::default(),
-            pad: slice::default()
+            vals: ref_slice::default(),
+            pad: ref_slice::default()
         }
     }
 }
@@ -694,52 +653,6 @@ impl<'a> StringKeysRefVER<'a> {
     }
 }
 
-#[make_platforms]
-#[derive(Debug, Clone)]
-pub struct StringKeysVER {
-    _ptr: BufType,
-    header: NonNull<StringKeysHeaderVER>,
-    vals: NonNull<[StringKeysValVER]>,
-    pad: NonNull<[u32VER]>,
-}
-
-#[make_platforms]
-unsafe impl Sync for StringKeysVER {}
-#[make_platforms]
-unsafe impl Send for StringKeysVER {}
-
-#[make_platforms]
-impl StringKeysVER {
-    pub fn from_bytes(src: &BufType, mut offset: usize) -> Result<Self> {
-        let header = StringKeysHeaderVER::from_data(&src[offset..]).context("header")?;
-        assert!(header.num_a.get() == header.num_b.get(), "Seems to be true");
-        offset += header.size();
-        let vals = StringKeysValVER::slice_from_data(&src[offset..], header.num_a.get() as usize)
-            .context("vals")?;
-        offset += vals.size();
-        let pad = u32VER::slice_from_data(&src[offset..], vals.len()).context("pad")?;
-        Ok(Self {
-            _ptr: src.clone(),
-            header: header.into(),
-            vals: vals.into(),
-            pad: pad.into(),
-        })
-    }
-}
-
-#[make_platforms]
-impl StringKeysVER {
-    pub fn header(&self) -> &StringKeysHeaderVER {
-        unsafe { self.header.as_ref() }
-    }
-    pub fn vals(&self) -> &[StringKeysValVER] {
-        unsafe { self.vals.as_ref() }
-    }
-    pub fn pad(&self) -> &[u32VER] {
-        unsafe { self.pad.as_ref() }
-    }
-}
-
 #[derive(Debug, Clone)]
 #[repr(transparent)]
 pub struct StringKeys {
@@ -747,10 +660,10 @@ pub struct StringKeys {
 }
 
 #[make_platforms]
-impl From<&StringKeysVER> for StringKeys {
-    fn from(val: &StringKeysVER) -> Self {
+impl From<&StringKeysRefVER<'_>> for StringKeys {
+    fn from(val: &StringKeysRefVER) -> Self {
         Self {
-            vals: val.vals().iter().map(|x| x.key.conv()).collect(),
+            vals: val.vals.iter().map(|x| x.key.conv()).collect(),
         }
     }
 }
@@ -767,11 +680,11 @@ pub trait DumpStringKeysVER {
         let num = self.num();
         let header = StringKeysHeaderVER::mut_from_data(dst).context("header")?;
         let vals = StringKeysValVER::mut_slice_from_data(dst, num).context("vals")?;
-        let mut off = dst.offset;
         u32VER::mut_slice_from_data(dst, num).context("pad")?;
 
         header.num_a = num.conv();
         header.num_b = num.conv();
+        let mut off = std::mem::size_of::<StringKeysHeaderVER>() + num * std::mem::size_of::<StringKeysValVER>();
         self.write_keys(vals.iter_mut().map(|x| &mut x.key));
         for val in vals {
             val.offset = off.conv();
@@ -794,15 +707,16 @@ impl DumpStringKeysVER for StringKeysRefVER<'_> {
 }
 
 #[make_platforms]
-impl DumpStringKeysVER for StringKeysVER {
+impl DumpStringKeysVER for [u32] {
     fn write_keys<'a>(&self, keys: impl Iterator<Item = &'a mut CrcVER>) {
-        for (key, val) in keys.zip(self.vals()) {
-            *key = val.key;
+        for (key, val) in keys.zip(self.iter()) {
+            *key = val.conv();
         }
     }
     fn num(&self) -> usize {
-        self.vals.len()
+        self.len()
     }
+    
 }
 
 #[make_platforms]
@@ -817,6 +731,7 @@ impl DumpStringKeysVER for StringKeys {
     }
 }
 
+#[cfg_attr(feature = "ffi", repr(C))]
 pub struct CompressedBlock {
     pub data: AlignedBuf,
     pub compressed: Vec<u8> 
@@ -829,81 +744,25 @@ impl CompressedBlock {
             compressed: vec![]
         }
     }
-    pub fn dump_slice(&mut self) -> DumpSlice<'_> {
-        (&mut self.data[..]).into()
-    }
     pub fn compress(&mut self) -> Result<()> {
         Ok(())
     }
 }
 
-#[derive(Debug)]
-struct CompressedDataImpl {
-    _ptr: BufType,
-    data: NonNull<[u8]>,
-    size: usize,
-    size_comp: usize,
-    data_decomp: std::sync::OnceLock<BufType>
-}
-
-unsafe impl Sync for CompressedDataImpl {}
-unsafe impl Send for CompressedDataImpl {}
-
-#[derive(Clone, Debug)]
-pub struct CompressedDataRef(Arc<CompressedDataImpl>);
-
-impl Default for CompressedDataRef {
-    fn default() -> Self {
-        Self(Arc::new(CompressedDataImpl {
-            _ptr: BufType::new(), 
-            data: NonNull::from_ref(&[]),
-            size: 0,
-            size_comp: 0,
-            data_decomp: std::sync::OnceLock::new()
-        }))
-    }
-}
-
-impl CompressedDataRef {
-    pub fn from_bytes(src: &BufType, offset: usize, size: usize, size_comp: usize) -> Self {
-        let data = if size_comp == 0 {
-            &src[offset..offset+size]
-        } else {
-            &src[offset..offset+size_comp]
-        };
-        Self(Arc::new(CompressedDataImpl{
-            _ptr: src.clone(),
-            data: data.into(),
-            size,
-            size_comp,
-            data_decomp: std::sync::OnceLock::new()
-        }))
-    }
-    pub fn decomp(&self) -> Result<()> {
-        let data_comp = unsafe { self.0.data.as_ref() };
-        self.0.data_decomp.set(decompress_block(data_comp, self.0.size_comp,  self.0.size)?).ok();
-        Ok(())
-    }
-    pub fn get(&self) -> Result<&BufType> {
-        let val = self.0.data_decomp.get();
-        Ok(if val.is_none() {
-            self.decomp()?;
-            self.0.data_decomp.get().unwrap()
-        } else {
-            val.unwrap()
-        })
-    }
-}
-
 #[derive(Default)]
-#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
-#[repr(C)]
-pub struct CompressedDataRefAlt<'a> {
-    pub data: slice<'a, u8>,
+#[cfg_attr(feature = "ffi", repr(C))]
+pub struct CompressedDataRef<'a> {
+    pub data: ref_slice<'a, u8>,
     pub data_decomp: AlignedBuf
 }
 
-impl<'a> CompressedDataRefAlt<'a> {
+impl PartialEq for CompressedDataRef<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.data_decomp == other.data_decomp
+    }
+}
+
+impl<'a> CompressedDataRef<'a> {
     pub fn from_data(src: &'a [u8], size_comp: usize, size: usize) -> Self {
         let mut data_decomp = AlignedBuf::with_capacity(size);
         let data = if size_comp == 0 {
@@ -925,15 +784,75 @@ impl<'a> CompressedDataRefAlt<'a> {
     }
 }
 
+#[cfg_attr(feature = "ffi", repr(C))]
+pub struct CompressedDataAlt<'a> {
+    pub data: ref_slice<'a, u8>,
+    pub compressed_data: Vec<u8>
+}
+
+#[cfg_attr(feature = "ffi", repr(C))]
+pub struct OwnedCompressedData {
+    pub data: AlignedBuf,
+    pub compressed_data: Vec<u8>
+}
+
+impl OwnedCompressedData {
+    pub fn with_capacity(size: usize) -> Self {
+        OwnedCompressedData { 
+            data: AlignedBuf::with_capacity(size),
+            compressed_data: Default::default() 
+        }
+    }
+    pub fn dump_slice(&mut self) -> DumpSlice<'_> {
+        (&mut self.data[..]).into()
+    }
+}
+
+#[enum_dispatch(DumpCompressedData)]
+#[cfg_attr(feature = "ffi", repr(C))]
+pub enum CompressedData<'a> {
+    Ref(&'a CompressedDataRef<'a>),
+    Alt(CompressedDataAlt<'a>),
+    Owned(OwnedCompressedData),
+    Texture0(crate::level::texture::DumpTexture0<'a>),
+    Texture1(crate::level::texture::DumpTexture1<'a>),
+    None(())
+}
+
+impl<'a> CompressedData<'a> {
+    pub fn is_some(&self) -> bool {
+        match self {
+            Self::None(_) => false,
+            _ => true
+        }
+    }
+}
+
+impl<'a> From<Option<&'a CompressedDataRef<'a>>> for CompressedData<'a> {
+    fn from(val: Option<&'a CompressedDataRef<'a>>) -> Self {
+        match val {
+            Some(val) if val.data_decomp.len() != 0 => val.into(),
+            _ => Self::None(())
+        }
+    }
+}
+
+impl<'a> From<&'a [u8]> for CompressedData<'a> {
+    fn from(val: &'a [u8]) -> Self {
+        Self::Alt(CompressedDataAlt { data: val, compressed_data: Default::default() })
+    }
+}
+
+#[enum_dispatch]
 pub trait DumpCompressedData {
-    fn compress(&mut self) -> Result<()>;
+    fn compress(&mut self, is_pak: bool, c: flate2::Compression) -> Result<()>;
     fn size_comp(&self) -> usize;
     fn size(&self) -> usize;
     fn dump_into(&self, dst: &mut DumpSlice) -> Result<()>;
 }
 
-impl DumpCompressedData for &'_ CompressedDataRefAlt<'_> {
-    fn compress(&mut self) -> Result<()> {
+impl DumpCompressedData for &'_ CompressedDataRef<'_> {
+    fn compress(&mut self, _is_pak: bool, _c: flate2::Compression) -> Result<()> {
         Ok(())
     }
     fn size_comp(&self) -> usize {
@@ -947,11 +866,67 @@ impl DumpCompressedData for &'_ CompressedDataRefAlt<'_> {
     }
 }
 
+impl DumpCompressedData for CompressedDataAlt<'_> {
+    fn compress(&mut self, is_pak: bool, c: flate2::Compression) -> Result<()> {
+        self.compressed_data = compress_block(self.data, is_pak, c)?;
+        Ok(())
+    }
+    fn size_comp(&self) -> usize {
+        self.compressed_data.len()
+    }
+    fn size(&self) -> usize {
+        self.data.len()
+    }
+    fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
+        (&self.compressed_data).dump_into(dst)
+    }
+}
+
+impl DumpCompressedData for OwnedCompressedData {
+    fn compress(&mut self, is_pak: bool, c: flate2::Compression) -> Result<()> {
+        self.compressed_data = compress_block(&self.data, is_pak, c)?;
+        Ok(())
+    }
+    fn size_comp(&self) -> usize {
+        self.compressed_data.len()
+    }
+    fn size(&self) -> usize {
+        self.data.len()
+    }
+    fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
+        (&self.compressed_data).dump_into(dst)
+    }
+}
+
+
+impl DumpCompressedData for () {
+    fn compress(&mut self, _is_pak: bool, _c: flate2::Compression) -> Result<()> {
+        Ok(())
+    }
+    fn size_comp(&self) -> usize {
+        0
+    }
+    fn size(&self) -> usize {
+        0
+    }
+    fn dump_into(&self, _dst: &mut DumpSlice) -> Result<()> {
+        Ok(())
+    }
+
+}
+
 #[make_platforms]
 pub struct DumpCompressedDataImplVER<'a, D: DumpCompressedData> {
     pub data: &'a mut D,
     pub offset: &'a mut u32VER,
     pub size: &'a mut u32VER,
     pub size_comp: &'a mut u32VER
+}
+
+#[cfg(feature="ffi")]
+pub unsafe fn c_str_ptr(s: Option<&std::ffi::c_char>) -> &str {
+    s.and_then(|s| 
+        unsafe { std::ffi::CStr::from_ptr(s as _) }.to_str().ok()
+    ).unwrap_or_default()
 }
 

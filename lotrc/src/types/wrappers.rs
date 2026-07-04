@@ -2,321 +2,50 @@
 use lotrc_proc::{make_platforms};
 use crate::types::Crc;
 
-#[cfg(feature = "ffi")]
-mod wrappers {
-    use std::hash::Hash;
-    use std::cmp::Eq;
-    use std::fmt::{Debug, Display};
-    use indexmap::{IndexMap, Equivalent, map::{Values, Keys, Iter}};
-    macro_rules! make_wrapper_unaligned {
-        ($name:ident, $base:path, $alt:path, $conv:ident) => {
-            #[derive(Copy, Clone, Default, zerocopy::Immutable, zerocopy::KnownLayout, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::Unaligned)]
-            #[allow(non_camel_case_types)]
-            #[repr(transparent)]
-            pub struct $name($base);
-            wrapper_impl!($name, $base, $alt, $conv);
-        }
-    }
-    macro_rules! make_wrapper {
-        ($name:ident, $base:path, $alt:path, $conv:ident) => {
-            #[derive(Copy, Clone, Default, zerocopy::Immutable, zerocopy::KnownLayout, zerocopy::IntoBytes, zerocopy::FromBytes)]
-            #[allow(non_camel_case_types)]
-            #[repr(transparent)]
-            pub struct $name($base);
-            wrapper_impl!($name, $base, $alt, $conv);
-        }
-    }
+pub type ref_slice<'a, T> = &'a [T];
+pub type mut_slice<'a, T> = &'a mut [T];
+pub type slice<T> = Box<[T]>;
+pub type string<'a> = &'a str;
 
-    macro_rules! wrapper_impl {
-        ($name:ident, $base:path, $alt:path, $conv:ident) => {
-            impl $name {
-                #[inline(always)]
-                pub fn get(&self) -> $alt {
-                    self.0.$conv()
-                }
+pub use rend::{
+    f32_le, u16_le, u32_le, u64_le, i16_le, i32_le,
+    f32_be, u16_be, u32_be, u64_be, i16_be, i32_be,
+};
+
+pub type U16LE = zerocopy::U16<zerocopy::LE>;
+pub type U16BE = zerocopy::U16<zerocopy::BE>;
+pub type U32LE = zerocopy::U32<zerocopy::LE>;
+pub type U32BE = zerocopy::U32<zerocopy::BE>;
+pub type I32LE = zerocopy::I32<zerocopy::LE>;
+pub type I32BE = zerocopy::I32<zerocopy::BE>;
+
+pub trait GetNative {
+    type Native;
+    fn get(&self) -> Self::Native;
+}
+macro_rules! impl_get_native {
+    ($name:ident, $alt:ident) => {
+        impl GetNative for $name {
+            type Native = $alt;
+            #[inline(always)]
+            fn get(&self) -> Self::Native {
+                self.to_native()
             }
-            impl From<$alt> for $name {
-                #[inline(always)]
-                fn from(val: $alt) -> Self {
-                    Self(val.into())
-                }
-            }
-            impl From<$name> for $alt {
-                #[inline(always)]
-                fn from(val: $name) -> Self {
-                    val.0.into()
-                }
-            }
-            impl Debug for $name {
-                #[inline(always)]
-                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                    Debug::fmt(&self.0, f)
-                }
-            }
-            impl Display for $name {
-                #[inline(always)]
-                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                    Display::fmt(&self.0, f)
-                }
-            }
-            // TODO hack some kind of opaque but not really ctype to allow for different repr in
-            // header
-            #[cfg(feature = "ffi")]
-            unsafe impl safer_ffi::layout::ReprC for $name {
-                type CLayout = <$alt as safer_ffi::layout::ReprC>::CLayout;
-                #[inline(always)]
-                fn is_valid(it: &Self::CLayout) -> bool {
-                    <$alt as safer_ffi::layout::ReprC>::is_valid(it)
-                }
-            }
-        }
-    }
-
-    make_wrapper!(f32_le, rend::f32_le, f32, to_native);
-    make_wrapper!(u16_le, rend::u16_le, u16, to_native);
-    make_wrapper!(u32_le, rend::u32_le, u32, to_native);
-    make_wrapper!(u64_le, rend::u64_le, u64, to_native);
-    make_wrapper!(i16_le, rend::i16_le, i16, to_native);
-    make_wrapper!(i32_le, rend::i32_le, i32, to_native);
-    make_wrapper!(f32_be, rend::f32_be, f32, to_native);
-    make_wrapper!(u16_be, rend::u16_be, u16, to_native);
-    make_wrapper!(u32_be, rend::u32_be, u32, to_native);
-    make_wrapper!(u64_be, rend::u64_be, u64, to_native);
-    make_wrapper!(i16_be, rend::i16_be, i16, to_native);
-    make_wrapper!(i32_be, rend::i32_be, i32, to_native);
-
-    make_wrapper_unaligned!(U16LE, zerocopy::U16<zerocopy::LE>, u16, get);
-    make_wrapper_unaligned!(U16BE, zerocopy::U16<zerocopy::BE>, u16, get);
-    make_wrapper_unaligned!(U32LE, zerocopy::U32<zerocopy::LE>, u32, get);
-    make_wrapper_unaligned!(U32BE, zerocopy::U32<zerocopy::BE>, u32, get);
-    make_wrapper_unaligned!(I32LE, zerocopy::I32<zerocopy::LE>, i32, get);
-    make_wrapper_unaligned!(I32BE, zerocopy::I32<zerocopy::BE>, i32, get);
-
-    pub type slice<'a, T> = safer_ffi::slice::slice_ref<'a, T>;
-    pub type str_ref<'a> = safer_ffi::string::str_ref<'a>;
-    pub type box_slice<T> = safer_ffi::boxed::slice_boxed<T>;
-    pub type option<T> = safer_ffi::option::TaggedOption<T>;
-
-    #[safer_ffi::derive_ReprC]
-    #[repr(opaque)]
-    #[repr(transparent)]
-    #[derive(Clone)]
-    pub struct MapImpl<K, V>(IndexMap<K,V>);
-
-    impl<K, V> From<IndexMap<K, V>> for MapImpl<K, V> {
-        fn from(val: IndexMap<K, V>) -> Self {
-            Self(val)
-        }
-    }
-
-    impl<K, V> std::ops::Deref for MapImpl<K, V> {
-        type Target = IndexMap<K, V>;
-        fn deref(&self) -> &Self::Target {
-            &self.0
-        }
-    }
-
-    impl<K, V> Default for MapImpl<K, V> {
-        fn default() -> Self {
-            Self(IndexMap::default())
-        }
-    }
-    
-    pub type Map<K,V> = safer_ffi::boxed::Box_<MapImpl<K, V>>;
-
-    impl<K: Hash + Eq, V> MapImpl<K,V> {
-        #[inline(always)]
-        pub fn get<Q: Hash + Equivalent<K>>(&self, key: &Q) -> Option<&V> {
-            self.0.get(key)
-        }
-        #[inline(always)]
-        pub fn insert(&mut self, key: K, val: V) -> Option<V> {
-            self.0.insert(key, val)
-        }
-        #[inline(always)]
-        pub fn with_capacity(size: usize) -> Self {
-            Self(IndexMap::with_capacity(size))
-        }
-        #[inline(always)]
-        pub fn len(&self) -> usize {
-            self.0.len()
-        }
-        #[inline(always)]
-        pub fn values(&self) -> Values<'_, K, V> {
-            self.0.values()
-        }
-        #[inline(always)]
-        pub fn keys(&self) -> Keys<'_, K, V> {
-            self.0.keys()
-        }
-        #[inline(always)]
-        pub fn iter(&self) -> Iter<'_, K, V> {
-            self.0.iter()
-        }
-        #[inline(always)]
-        pub fn last(&self) -> Option<(&K, &V)> {
-            self.0.last()
-        }
-        #[inline(always)]
-        pub fn get_index_of<Q: Hash + Equivalent<K>>(&self, key: &Q) -> Option<usize> {
-            self.0.get_index_of(key)
-        }
-        #[inline(always)]
-        pub fn get_index(&self, index: usize) -> Option<(&K, &V)> {
-            self.0.get_index(index)
-        }
-        #[inline(always)]
-        pub fn entry(&mut self, key: K) -> indexmap::map::Entry<'_, K, V> {
-            self.0.entry(key)
-        }
-    }
-    impl<K: Send, V: Send> MapImpl<K, V> {
-        #[inline(always)]
-        pub fn par_values_mut(&mut self) -> indexmap::map::rayon::ParValuesMut<'_, K, V> {
-            self.0.par_values_mut()
-        }
-    }
-    impl<K: Debug, V: Debug> Debug for MapImpl<K,V> {
-        #[inline(always)]
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            Debug::fmt(&self.0, f)
-        }
-    }
-    impl<K: Hash + Eq, V> FromIterator<(K, V)> for MapImpl<K, V> {
-        #[inline(always)]
-        fn from_iter<I: IntoIterator<Item=(K, V)>>(iter: I) -> Self {
-            Self(IndexMap::from_iter(iter))
-        }
-    }
-    impl<K, V> From<MapImpl<K, V>> for Map<K, V> {
-        fn from(val: MapImpl<K, V>) -> Self {
-            Self::new(val)
         }
     }
 }
-
-#[cfg(not(feature = "ffi"))]
-mod wrappers {
-    pub use rend::{
-        f32_le, u16_le, u32_le, u64_le, i16_le, i32_le,
-        f32_be, u16_be, u32_be, u64_be, i16_be, i32_be,
-    };
-
-    pub type U16LE = zerocopy::U16<zerocopy::LE>;
-    pub type U16BE = zerocopy::U16<zerocopy::BE>;
-    pub type U32LE = zerocopy::U32<zerocopy::LE>;
-    pub type U32BE = zerocopy::U32<zerocopy::BE>;
-    pub type I32LE = zerocopy::I32<zerocopy::LE>;
-    pub type I32BE = zerocopy::I32<zerocopy::BE>;
-
-    pub type slice<'a, T> = &'a [T];
-    pub type str_ref<'a> = &'a str;
-    pub type box_slice<T> = Box<[T]>;
-    pub type option<T> = Option<T>;
-
-    pub trait AsSlice<'a> {
-        type T;
-        fn as_slice(self) -> &'a [Self::T];
-    }
-    impl<'a, T> AsSlice<'a> for &'a [T] {
-        type T = T;
-        fn as_slice(self) -> &'a [Self::T] {
-            self
-        }
-    }
-
-    pub type MapImpl<K, V> = indexmap::IndexMap<K, V>;
-    pub type Map<K, V> = MapImpl<K, V>;
-    pub trait GetNative {
-        type Native;
-        fn get(&self) -> Self::Native;
-    }
-    impl GetNative for f32_le {
-        type Native = f32;
-        #[inline(always)]
-        fn get(&self) -> Self::Native {
-            self.to_native()
-        }
-    }
-    impl GetNative for f32_be {
-        type Native = f32;
-        #[inline(always)]
-        fn get(&self) -> Self::Native {
-            self.to_native()
-        }
-    }
-    impl GetNative for u16_le {
-        type Native = u16;
-        #[inline(always)]
-        fn get(&self) -> Self::Native {
-            self.to_native()
-        }
-    }
-    impl GetNative for u16_be {
-        type Native = u16;
-        #[inline(always)]
-        fn get(&self) -> Self::Native {
-            self.to_native()
-        }
-    }
-    impl GetNative for u32_le {
-        type Native = u32;
-        #[inline(always)]
-        fn get(&self) -> Self::Native {
-            self.to_native()
-        }
-    }
-    impl GetNative for u32_be {
-        type Native = u32;
-        #[inline(always)]
-        fn get(&self) -> Self::Native {
-            self.to_native()
-        }
-    }
-    impl GetNative for u64_le {
-        type Native = u64;
-        #[inline(always)]
-        fn get(&self) -> Self::Native {
-            self.to_native()
-        }
-    }
-    impl GetNative for u64_be {
-        type Native = u64;
-        #[inline(always)]
-        fn get(&self) -> Self::Native {
-            self.to_native()
-        }
-    }
-    impl GetNative for i16_le {
-        type Native = i16;
-        #[inline(always)]
-        fn get(&self) -> Self::Native {
-            self.to_native()
-        }
-    }
-    impl GetNative for i16_be {
-        type Native = i16;
-        #[inline(always)]
-        fn get(&self) -> Self::Native {
-            self.to_native()
-        }
-    }
-    impl GetNative for i32_le {
-        type Native = i32;
-        #[inline(always)]
-        fn get(&self) -> Self::Native {
-            self.to_native()
-        }
-    }
-    impl GetNative for i32_be {
-        type Native = i32;
-        #[inline(always)]
-        fn get(&self) -> Self::Native {
-            self.to_native()
-        }
-    }
-}
-pub use wrappers::*;
+impl_get_native!(f32_le, f32);
+impl_get_native!(f32_be, f32);
+impl_get_native!(u16_le, u16);
+impl_get_native!(u16_be, u16);
+impl_get_native!(u32_le, u32);
+impl_get_native!(u32_be, u32);
+impl_get_native!(u64_le, u64);
+impl_get_native!(u64_be, u64);
+impl_get_native!(i16_le, i16);
+impl_get_native!(i16_be, i16);
+impl_get_native!(i32_le, i32);
+impl_get_native!(i32_be, i32);
 
 pub trait OrderedData<T> {
     fn conv(&self) -> T;

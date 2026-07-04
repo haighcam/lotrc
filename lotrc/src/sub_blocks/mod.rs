@@ -1,23 +1,16 @@
-#[cfg(not(feature = "ffi"))]
 use crate::types::GetNative;
-use crate::types::{get_str, get_default_ref, hash_string, Crc, DumpData, DumpSlice, RefFromData, Vector3, Vector4, OrderedData, OrderedDataStrict, BufType, slice, box_slice, Map, MapImpl, align_offset};
+use crate::types::{get_default_ref, hash_string, Crc, DumpData, DumpSlice, RefFromData, OrderedData, OrderedDataStrict, FFISlice};
+use crate::level::pak::block2::PFields;
 #[make_platforms]
 use crate::{
-    level::pak::objs::PFieldInfoVER,
-    sub_blocks::gameobjs::{DumpGameObjsVER, GameObjsVER, GameObjsRefVER, BaseTypeVER},
-    types::{CrcVER, u16VER, u32VER, f32VER, Vector3VER, Vector4VER},
+    types::{CrcVER, u16VER, u32VER},
+    level::pak::block2::{PFieldsRefVER, PFieldsVER}
 };
-use anyhow::{anyhow, Context, Result};
-use gameobjs::{GameObjs, BaseType, TypeInfos};
-use indexmap::IndexMap;
-use log::warn;
+use anyhow::{Context, Result};
 use lotrc_proc::{make_platforms, OrderedData};
-use std::collections::{HashMap, HashSet};
-use std::ptr::NonNull;
+use enum_dispatch::enum_dispatch;
 
-pub mod gameobjs;
-
-#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+/*
 #[repr(u32)]
 #[derive(Copy, Clone, Debug)]
 pub enum SubBlockType {
@@ -38,6 +31,7 @@ pub enum SubBlockType {
     Level = hash_string("Level".as_bytes(), None),
 }
 
+
 pub mod keys {
     use super::hash_string;
     pub const KEY_POLISH: u32 = hash_string("Polish".as_bytes(), None);
@@ -56,8 +50,10 @@ pub mod keys {
     pub const KEY_PFIELDS: u32 = hash_string("PFields".as_bytes(), None);
     pub const KEY_LEVEL: u32 = hash_string("Level".as_bytes(), None);
 }
-
+*/
+/*
 #[make_platforms]
+#[repr(C, u8)]
 pub enum SubBlockRefVER<'a> {
     LangStrings(LangStringsRefVER<'a>),
     Data(DataRefVER<'a>),
@@ -68,15 +64,6 @@ pub enum SubBlockRefVER<'a> {
     AtlasUV(AtlasUVRefVER<'a>),
     Lua(LuaRefVER<'a>),
     SSA(SSARefVER<'a>),
-}
-
-#[cfg(feature = "ffi")]
-#[make_platforms]
-unsafe impl safer_ffi::layout::ReprC for SubBlockRefVER<'_> {
-    type CLayout = <safer_ffi::layout::Opaque<Self> as safer_ffi::layout::ReprC>::CLayout;
-    fn is_valid(_it: &'_ Self::CLayout) -> bool {
-        unreachable! {"opaque type"}
-    }
 }
 
 #[make_platforms]
@@ -91,10 +78,10 @@ impl<'a> SubBlockRefVER<'a> {
             KEY_SPRAY => Self::Spray(SprayRefVER::from_data(src)?),
             KEY_CROWD => Self::Crowd(CrowdRefVER::from_data(src)?),
             KEY_PFIELDS => Self::PFields(PFieldsRefVER::from_data(src)),
-            KEY_LEVEL => Self::Level(GameObjsRefVER::from_data(src, -1)?),
+            KEY_LEVEL => Self::Level(GameObjsRefVER::from_data(src)?),
             KEY_ATLAS1 | KEY_ATLAS2 => Self::AtlasUV(AtlasUVRefVER::from_data(src)?),
             _ => match get_str(&key) {
-                Some(x) if x.ends_with(".lua") => Self::Lua(LuaRefVER::from_data(src)),
+                Some(x) if x.ends_with(".lua") => Self::Lua(LuaRefVER::from_data(src)),l
                 Some(x) if x.ends_with(".ssa") => Self::SSA(SSARefVER::from_data(src)?),
                 Some(x) if x.ends_with(".csv") || x.ends_with(".txt") || x.ends_with(".dat") => {
                     Self::Data(DataRefVER::from_data(src))
@@ -105,113 +92,6 @@ impl<'a> SubBlockRefVER<'a> {
                 }
             },
         })
-    }
-}
-
-#[make_platforms]
-#[derive(Debug, Clone)]
-pub enum SubBlockVER {
-    LangStrings(LangStringsVER),
-    Data(DataVER),
-    Spray(SprayVER),
-    PFields(PFieldsVER),
-    Crowd(CrowdVER),
-    Level(GameObjsVER),
-    AtlasUV(AtlasUVVER),
-    Lua(LuaVER),
-    SSA(SSAVER),
-}
-
-
-#[make_platforms]
-unsafe impl Sync for SubBlockVER {}
-#[make_platforms]
-unsafe impl Send for SubBlockVER {}
-
-#[make_platforms]
-impl SubBlockVER {
-    pub fn from_bytes(src: &BufType, offset: usize, size: usize, key: u32) -> Result<Self> {
-        use keys::*;
-        Ok(match key {
-            KEY_POLISH | KEY_GERMAN | KEY_FRENCH | KEY_SPANISH | KEY_RUSSIAN | KEY_SWEDISH
-            | KEY_ENGLISH | KEY_ITALIAN | KEY_NORWEGIAN => {
-                Self::LangStrings(LangStringsVER::from_bytes(src, offset, size)?)
-            }
-            KEY_SPRAY => Self::Spray(SprayVER::from_bytes(src, offset, size)?),
-            KEY_CROWD => Self::Crowd(CrowdVER::from_bytes(src, offset, size)?),
-            KEY_PFIELDS => Self::PFields(PFieldsVER::from_bytes(src, offset, size)?),
-            KEY_LEVEL => Self::Level(GameObjsVER::from_bytes(&src, offset, size, -1)?),
-            KEY_ATLAS1 | KEY_ATLAS2 => Self::AtlasUV(AtlasUVVER::from_bytes(src, offset, size)?),
-            _ => match get_str(&key) {
-                Some(x) if x.ends_with(".lua") => Self::Lua(LuaVER::from_bytes(src, offset, size)?),
-                Some(x) if x.ends_with(".ssa") => Self::SSA(SSAVER::from_bytes(src, offset, size)?),
-                Some(x) if x.ends_with(".csv") || x.ends_with(".txt") || x.ends_with(".dat") => {
-                    Self::Data(DataVER::from_bytes(src, offset, size)?)
-                }
-                name => {
-                    warn!("Unknown block type {:?}, {:?}", key, name);
-                    Self::Data(DataVER::from_bytes(src, offset, size)?)
-                }
-            },
-        })
-    }
-}
-
-#[make_platforms]
-impl SubBlockVER {
-    pub fn langstrings(&self) -> Option<&LangStringsVER> {
-        match self {
-            Self::LangStrings(val) => Some(val),
-            _ => None,
-        }
-    }
-    pub fn data(&self) -> Option<&DataVER> {
-        match self {
-            Self::Data(val) => Some(val),
-            _ => None,
-        }
-    }
-    pub fn spray(&self) -> Option<&SprayVER> {
-        match self {
-            Self::Spray(val) => Some(val),
-            _ => None,
-        }
-    }
-    pub fn pfields(&self) -> Option<&PFieldsVER> {
-        match self {
-            Self::PFields(val) => Some(val),
-            _ => None,
-        }
-    }
-    pub fn crowd(&self) -> Option<&CrowdVER> {
-        match self {
-            Self::Crowd(val) => Some(val),
-            _ => None,
-        }
-    }
-    pub fn level(&self) -> Option<&GameObjsVER> {
-        match self {
-            Self::Level(val) => Some(val),
-            _ => None,
-        }
-    }
-    pub fn atlasuv(&self) -> Option<&AtlasUVVER> {
-        match self {
-            Self::AtlasUV(val) => Some(val),
-            _ => None,
-        }
-    }
-    pub fn lua(&self) -> Option<&LuaVER> {
-        match self {
-            Self::Lua(val) => Some(val),
-            _ => None,
-        }
-    }
-    pub fn ssa(&self) -> Option<&SSAVER> {
-        match self {
-            Self::SSA(val) => Some(val),
-            _ => None,
-        }
     }
 }
 
@@ -230,22 +110,44 @@ pub enum SubBlock {
 
 #[make_platforms]
 impl SubBlock {
-    fn from_ver(val: &SubBlockVER, pfield_infos: &[PFieldInfoVER]) -> Self {
-        match val {
-            SubBlockVER::LangStrings(val) => Self::LangStrings(val.into()),
-            SubBlockVER::Data(val) => Self::Data(val.into()),
-            SubBlockVER::Spray(val) => Self::Spray(val.into()),
-            SubBlockVER::Crowd(val) => Self::Crowd(val.into()),
-            SubBlockVER::PFields(val) => Self::PFields(PFields::from_ver(val, pfield_infos)),
-            SubBlockVER::Level(val) => Self::Level(val.into()),
-            SubBlockVER::AtlasUV(val) => Self::AtlasUV(val.into()),
-            SubBlockVER::Lua(val) => Self::Lua(val.into()),
-            SubBlockVER::SSA(val) => Self::SSA(val.into()),
-        }
+    fn from_ver(val: &SubBlockRefVER, pfield_infos: &[PFieldInfoVER]) -> Result<Self> {
+        Ok(match val {
+            SubBlockRefVER::LangStrings(val) => Self::LangStrings(val.try_into()?),
+            SubBlockRefVER::Data(val) => Self::Data(val.into()),
+            SubBlockRefVER::Spray(val) => Self::Spray(val.into()),
+            SubBlockRefVER::Crowd(val) => Self::Crowd(val.into()),
+            SubBlockRefVER::PFields(val) => Self::PFields(PFields::from_ver(val, pfield_infos)),
+            SubBlockRefVER::Level(val) => Self::Level(val.into()),
+            SubBlockRefVER::AtlasUV(val) => Self::AtlasUV(val.into()),
+            SubBlockRefVER::Lua(val) => Self::Lua(val.into()),
+            SubBlockRefVER::SSA(val) => Self::SSA(val.into()),
+        })
     }
 }
 
 #[make_platforms]
+pub enum SubBlockImplVER<'a> {
+    LangStrings(LangStringsVER<'a>),
+    Data(DataVER<'a>),
+    Spray(SprayVER<'a>),
+    PFields(PFieldsVER<'a>),
+    Crowd(CrowdVER<'a>),
+    Level(GameObjsVER<'a>),
+    AtlasUV(AtlasUVVER<'a>),
+    Lua(LuaVER<'a>),
+    SSA(SSAVER<'a>),
+
+}
+
+#[make_platforms]
+#[enum_dispatch(DumpSubBlockVER)]
+pub enum SubBlockVER<'a> {
+    Ref(SubBlockRefVER<'a>),
+    Owned(SubBlockImplVER<'a>)
+}
+
+#[make_platforms]
+#[enum_dispatch]
 pub trait DumpSubBlockVER {
     fn size(&self, type_infos: &mut Option<TypeInfos>) -> usize;
     fn dump_into(&self, dst: &mut DumpSlice, type_infos: &TypeInfos) -> Result<()>;
@@ -256,9 +158,9 @@ impl DumpSubBlockVER for SubBlockRefVER<'_> {
     fn size(&self, type_infos: &mut Option<TypeInfos>) -> usize {
         match self {
             Self::LangStrings(val) => DumpLangStringsVER::size(val),
-            Self::Data(val) => val.size(),
+            Self::Data(val) => DumpDataVER::size(val),
             Self::Spray(val) => DumpSprayVER::size(val),
-            Self::PFields(val) => val.size(),
+            Self::PFields(val) => DumpDataVER::size(val),
             Self::Crowd(val) => DumpCrowdVER::size(val),
             Self::Level(val) => {
                 let (size, infos) = DumpGameObjsVER::size(val);
@@ -266,7 +168,7 @@ impl DumpSubBlockVER for SubBlockRefVER<'_> {
                 size
             }
             Self::AtlasUV(val) => DumpAtlasUVVER::size(val),
-            Self::Lua(val) => val.size(),
+            Self::Lua(val) => DumpDataVER::size(val),
             Self::SSA(val) => DumpSSAVER::size(val),
         }
     }
@@ -274,13 +176,13 @@ impl DumpSubBlockVER for SubBlockRefVER<'_> {
     fn dump_into(&self, dst: &mut DumpSlice, type_infos: &TypeInfos) -> Result<()> {
         match self {
             Self::LangStrings(val) => DumpLangStringsVER::dump_into(val, dst),
-            Self::Data(val) => val.dump_into(dst),
+            Self::Data(val) => DumpDataVER::dump_into(val, dst),
             Self::Spray(val) => DumpSprayVER::dump_into(val, dst),
-            Self::PFields(val) => val.dump_into(dst),
+            Self::PFields(val) => DumpDataVER::dump_into(val, dst),
             Self::Crowd(val) => DumpCrowdVER::dump_into(val, dst),
             Self::Level(val) => DumpGameObjsVER::dump_into(val, dst, type_infos),
             Self::AtlasUV(val) => DumpAtlasUVVER::dump_into(val, dst),
-            Self::Lua(val) => val.dump_into(dst),
+            Self::Lua(val) => DumpDataVER::dump_into(val, dst),
             Self::SSA(val) => DumpSSAVER::dump_into(val, dst),
         }
     }
@@ -291,9 +193,9 @@ impl DumpSubBlockVER for SubBlock {
     fn size(&self, type_infos: &mut Option<TypeInfos>) -> usize {
         match self {
             Self::LangStrings(val) => DumpLangStringsVER::size(val),
-            Self::Data(val) => val.size(),
+            Self::Data(val) => DumpDataVER::size(val),
             Self::Spray(val) => DumpSprayVER::size(val),
-            Self::PFields(val) => val.size_ver(),
+            Self::PFields(val) => DumpDataVER::size(val),
             Self::Crowd(val) => DumpCrowdVER::size(val),
             Self::Level(val) => {
                 let (size, infos) = DumpGameObjsVER::size(val);
@@ -301,7 +203,7 @@ impl DumpSubBlockVER for SubBlock {
                 size
             }
             Self::AtlasUV(val) => DumpAtlasUVVER::size(val),
-            Self::Lua(val) => val.size(),
+            Self::Lua(val) => DumpDataVER::size(val),
             Self::SSA(val) => DumpSSAVER::size(val),
         }
     }
@@ -309,39 +211,60 @@ impl DumpSubBlockVER for SubBlock {
     fn dump_into(&self, dst: &mut DumpSlice, type_infos: &TypeInfos) -> Result<()> {
         match self {
             Self::LangStrings(val) => DumpLangStringsVER::dump_into(val, dst),
-            Self::Data(val) => val.dump_into(dst),
+            Self::Data(val) => DumpDataVER::dump_into(val, dst),
             Self::Spray(val) => DumpSprayVER::dump_into(val, dst),
-            Self::PFields(val) => val.dump_into_ver(dst),
+            Self::PFields(val) => DumpDataVER::dump_into(val, dst),
             Self::Crowd(val) => DumpCrowdVER::dump_into(val, dst),
             Self::Level(val) => DumpGameObjsVER::dump_into(val, dst, type_infos),
             Self::AtlasUV(val) => DumpAtlasUVVER::dump_into(val, dst),
-            Self::Lua(val) => val.dump_into(dst),
+            Self::Lua(val) => DumpDataVER::dump_into(val, dst),
             Self::SSA(val) => DumpSSAVER::dump_into(val, dst),
         }
     }
 }
 
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct SubBlocksHeader {
-    pub z0: u32,
-    pub block_num: u32,
-    pub z2: u32,
-    pub z3: u32,
-}
-
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct SubBlocksBlockHeader {
-    pub key: Crc,
-    pub offset: u32,
-    pub size: u32,
-}
-
 #[make_platforms]
-#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
+impl DumpSubBlockVER for SubBlockImplVER<'_> {
+    fn size(&self, type_infos: &mut Option<TypeInfos>) -> usize {
+        match self {
+            Self::LangStrings(val) => DumpLangStringsVER::size(val),
+            Self::Data(val) => DumpDataVER::size(val),
+            Self::Spray(val) => DumpSprayVER::size(val),
+            Self::PFields(val) => DumpDataVER::size(val),
+            Self::Crowd(val) => DumpCrowdVER::size(val),
+            Self::Level(val) => {
+                let (size, infos) = DumpGameObjsVER::size(val);
+                type_infos.replace(infos);
+                size
+            }
+            Self::AtlasUV(val) => DumpAtlasUVVER::size(val),
+            Self::Lua(val) => DumpDataVER::size(val),
+            Self::SSA(val) => DumpSSAVER::size(val),
+        }
+    }
+
+    fn dump_into(&self, dst: &mut DumpSlice, type_infos: &TypeInfos) -> Result<()> {
+        match self {
+            Self::LangStrings(val) => DumpLangStringsVER::dump_into(val, dst),
+            Self::Data(val) => DumpDataVER::dump_into(val, dst),
+            Self::Spray(val) => DumpSprayVER::dump_into(val, dst),
+            Self::PFields(val) => DumpDataVER::dump_into(val, dst),
+            Self::Crowd(val) => DumpCrowdVER::dump_into(val, dst),
+            Self::Level(val) => DumpGameObjsVER::dump_into(val, dst, type_infos),
+            Self::AtlasUV(val) => DumpAtlasUVVER::dump_into(val, dst),
+            Self::Lua(val) => DumpDataVER::dump_into(val, dst),
+            Self::SSA(val) => DumpSSAVER::dump_into(val, dst),
+        }
+    }
+}
+*/
+
+/*
+#[make_platforms]
 #[repr(C)]
 pub struct SubBlocksRefVER<'a> {
     pub header: &'a SubBlocksHeaderVER,
-    pub block_headers: slice<'a, SubBlocksBlockHeaderVER>,
+    pub block_headers: FFISlice<'a, SubBlocksBlockHeaderVER>,
     pub blocks: Map<u32, SubBlockRefVER<'a>>
 }
 
@@ -350,8 +273,8 @@ impl Default for SubBlocksRefVER<'_> {
     fn default() -> Self {
         Self {
             header: get_default_ref(),
-            block_headers: slice::default(),
-            blocks: MapImpl::default().into()
+            block_headers: FFISlice::default(),
+            blocks: IndexMap::default().into()
         }
     }
 }
@@ -367,7 +290,7 @@ impl<'a> SubBlocksRefVER<'a> {
             header.block_num.get() as usize,
         )
         .context("block_headers")?;
-        let mut blocks = MapImpl::<u32, SubBlockRefVER>::with_capacity(block_headers.len());
+        let mut blocks = IndexMap::<u32, SubBlockRefVER>::with_capacity(block_headers.len());
         for info in block_headers {
             blocks.insert(
                 info.key.get(), 
@@ -395,82 +318,6 @@ impl<'a> SubBlocksRefVER<'a> {
     }
 }
 
-#[make_platforms]
-#[derive(Debug, Clone)]
-pub struct SubBlocksVER {
-    _ptr: BufType,
-    header: NonNull<SubBlocksHeaderVER>,
-    block_headers: NonNull<[SubBlocksBlockHeaderVER]>,
-    blocks: IndexMap<u32, SubBlockVER>,
-}
-
-#[make_platforms]
-unsafe impl Sync for SubBlocksVER {}
-#[make_platforms]
-unsafe impl Send for SubBlocksVER {}
-
-#[make_platforms]
-impl SubBlocksVER {
-    pub fn from_bytes(src: &BufType, mut offset: usize) -> Result<Self> {
-        let start = offset;
-        let header = SubBlocksHeaderVER::from_data(&src[offset..]).context("header")?;
-        offset += header.size();
-        let block_headers = SubBlocksBlockHeaderVER::slice_from_data(
-            &src[offset..],
-            header.block_num.get() as usize,
-        )
-        .context("block_headers")?;
-        let blocks: IndexMap<u32, SubBlockVER> = block_headers
-            .into_iter()
-            .map(|info| {
-                Ok((
-                    info.key.get(),
-                    SubBlockVER::from_bytes(
-                        src,
-                        start + info.offset.get() as usize,
-                        info.size.get() as usize,
-                        info.key.get(),
-                    )
-                    .with_context(|| {
-                        format!(
-                            "sub_blocks {}",
-                            get_str(&info.key.get())
-                                .map(|x| x.to_string())
-                                .unwrap_or_else(|| format!("id: {}", info.key.get()))
-                        )
-                    })?,
-                ))
-            })
-            .collect::<Result<_>>()?;
-
-        Ok(Self {
-            _ptr: src.clone(),
-            header: header.into(),
-            block_headers: block_headers.into(),
-            blocks: blocks.into(),
-        })
-    }
-    pub fn get(&self, key: &u32) -> Option<&SubBlockVER> {
-        self.blocks.get(key)
-    }
-    pub fn get_full(&self, key: &u32) -> Option<(&SubBlocksBlockHeaderVER, &SubBlockVER)> {
-        self.blocks.get_full(key).map(|(i, _, val)| {
-            let info = &self.block_headers()[i];
-            (info, val)
-        })
-    }
-}
-
-#[make_platforms]
-impl SubBlocksVER {
-    pub fn header(&self) -> &SubBlocksHeaderVER {
-        unsafe { self.header.as_ref() }
-    }
-    pub fn block_headers(&self) -> &[SubBlocksBlockHeaderVER] {
-        unsafe { self.block_headers.as_ref() }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct SubBlocks {
     pub blocks: IndexMap<Crc, SubBlock>,
@@ -478,15 +325,27 @@ pub struct SubBlocks {
 
 impl SubBlocks {
     #[make_platforms]
-    pub fn from_ver(val: &SubBlocksVER, pfield_infos: &[PFieldInfoVER]) -> Self {
-        Self {
+    pub fn from_ver(val: &SubBlocksRefVER, pfield_infos: &[PFieldInfoVER]) -> Result<Self> {
+        Ok(Self {
             blocks: val
                 .blocks
                 .iter()
-                .map(|(k, block)| ((*k).into(), SubBlock::from_ver(block, pfield_infos)))
-                .collect(),
-        }
+                .map(|(k, block)| Ok(((*k).into(), SubBlock::from_ver(block, pfield_infos)?)))
+                .collect::<Result<_>>()?,
+        })
     }
+}
+
+#[make_platforms]
+pub struct SubBlocksImplVER<'a> {
+    pub blocks: IndexMap<Crc, SubBlockVER<'a>>
+}
+
+#[make_platforms]
+#[enum_dispatch(DumpSubBlocksVER)]
+pub enum SubBlocksVER<'a> {
+    Ref(SubBlocksRefVER<'a>),
+    Owned(SubBlocksImplVER<'a>)
 }
 
 #[make_platforms]
@@ -549,14 +408,16 @@ impl DumpSubBlocksVER for SubBlocksRefVER<'_> {
                 SubBlockRefVER::Level(val) => Ok(val),
                 _ => Err(anyhow!("level block wrong format"))
             })?;
-        let field = level.objs.values()
+        let name = level.objs.values()
             .find(|v| v.header.key.get() == hash_string(b"templateLevel", None))
             .ok_or(anyhow!("templateLevel not found"))?
             .fields.get(&hash_string(b"name", None))
-            .ok_or(anyhow!("templateLevel missing name field"))?;
-        let name = field
-            .crc()
-            .ok_or(anyhow!("templateObject name field is not a crc"))?.get();
+            .ok_or(anyhow!("templateLevel missing name field"))
+            .and_then(|field| if let BaseTypeRefVER::Crc(val) = field {
+                Ok(val.get())
+            } else {
+                Err(anyhow!("templateObject name field is not a crc"))
+            })?;
         Ok(name)
 
     }
@@ -583,1263 +444,81 @@ impl DumpSubBlocksVER for SubBlocks {
                 SubBlock::Level(val) => Ok(val),
                 _ => Err(anyhow!("level block wrong format"))
             })?;
-        let field = level.objs.values()
-            .find(|v| v.key.get() == hash_string(b"templateLevel", None))
-            .ok_or(anyhow!("templateLevel not found"))?
+        let name = level.objs.iter()
+            .find(|(k, _)| k.get() == hash_string(b"templateLevel", None))
+            .ok_or(anyhow!("templateLevel not found"))?.1
             .fields.get(&Crc::new(hash_string(b"name", None)))
-            .ok_or(anyhow!("templateLevel missing name field"))?;
-        if let BaseType::Crc(name) = field {
-            Ok(name.get())
-        } else {
-            Err(anyhow!("templateObject name field is not a crc"))
-        }
-    }
-}
-
-#[make_platforms]
-#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
-#[repr(C)]
-pub struct LangStringsRefVER<'a> {
-    pub strings: box_slice<slice<'a, u16VER>>
-}
-
-#[make_platforms]
-impl<'a> LangStringsRefVER<'a> {
-    pub fn from_data(src: &'a [u8]) -> Result<Self> {
-        let mut strings = vec![];
-        let mut offset = 0;
-        while offset < src.len() {
-            let start = offset;
-            while src[offset] != 0 || src[offset + 1] != 0 {
-                offset += 2;
-            }
-            let s = u16VER::slice_from_data(&src[start..offset], (offset - start) / 2)
-                .with_context(|| format!("string {}", strings.len()))?;
-            strings.push(s.into());
-            offset += 2;
-        }
-        Ok(Self {
-            strings: strings.into_boxed_slice().into(),
-        })
-    }
-}
-
-#[make_platforms]
-#[derive(Debug, Clone)]
-pub struct LangStringsVER {
-    _ptr: BufType,
-    strings: Box<[NonNull<[u16VER]>]>,
-}
-
-#[make_platforms]
-unsafe impl Sync for LangStringsVER {}
-#[make_platforms]
-unsafe impl Send for LangStringsVER {}
-
-#[make_platforms]
-impl LangStringsVER {
-    pub fn from_bytes(src: &BufType, mut offset: usize, size: usize) -> Result<Self> {
-        let mut strings = vec![];
-        while offset < size {
-            let start = offset;
-            while src[offset] != 0 || src[offset + 1] != 0 {
-                offset += 2;
-            }
-            let s = u16VER::slice_from_data(&src[start..offset], (offset - start) / 2)
-                .with_context(|| format!("string {}", strings.len()))?;
-            strings.push(NonNull::from(s));
-            offset += 2;
-        }
-        Ok(Self {
-            _ptr: src.clone(),
-            strings: strings.into(),
-        })
-    }
-}
-
-#[make_platforms]
-impl LangStringsVER {
-    pub fn strings(&self) -> Vec<&[u16VER]> {
-        self.strings.iter().map(|x| unsafe { x.as_ref() }).collect()
-    }
-}
-
-#[repr(transparent)]
-#[derive(Debug, Clone)]
-pub struct LangStrings {
-    pub strings: Vec<String>,
-}
-
-#[make_platforms]
-impl From<&LangStringsVER> for LangStrings {
-    fn from(val: &LangStringsVER) -> Self {
-        Self {
-            strings: val
-                .strings
-                .iter()
-                .map(|x| {
-                    String::from_utf16(
-                        unsafe { x.as_ref() }
-                            .iter()
-                            .map(|y| y.conv())
-                            .collect::<Vec<_>>()
-                            .as_ref(),
-                    )
-                    .unwrap()
-                })
-                .collect(),
-        }
-    }
-}
-
-#[make_platforms]
-pub trait DumpStringVER {
-    fn string_size(&self) -> usize;
-    fn dump_string(&self, dst: &mut DumpSlice) -> Result<()>;
-}
-
-#[make_platforms]
-impl DumpStringVER for &[u16VER] {
-    fn string_size(&self) -> usize {
-        self.size()
-    }
-    fn dump_string(&self, dst: &mut DumpSlice) -> Result<()> {
-        self.dump_into(dst)
-    }
-}
-
-#[make_platforms]
-impl DumpStringVER for &String {
-    fn string_size(&self) -> usize {
-        self.encode_utf16().count() * u16VER::size_of()
-    }
-    fn dump_string(&self, dst: &mut DumpSlice) -> Result<()> {
-        let val = self.encode_utf16().collect::<Vec<_>>();
-        let string = u16VER::mut_slice_from_data(dst, val.len()).context("string")?;
-        for (src, dst) in val.into_iter().zip(string) {
-            *dst = src.into();
-        }
-        Ok(())
-    }
-}
-
-#[make_platforms]
-pub trait DumpLangStringsVER {
-    fn strings(&self) -> impl Iterator<Item = impl DumpStringVER>;
-    fn size(&self) -> usize {
-        self.strings()
-            .map(|x| x.string_size() + u16VER::size_of())
-            .sum::<usize>()
-    }
-    fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
-        for (i, string) in self.strings().enumerate() {
-            string
-                .dump_string(dst)
-                .with_context(|| format!("string {}", i))?;
-            u16VER::from(0u16)
-                .dump_into(dst)
-                .with_context(|| format!("string pad {}", i))?;
-        }
-        Ok(())
-    }
-}
-#[make_platforms]
-impl DumpLangStringsVER for LangStringsRefVER<'_> {
-    fn strings(&self) -> impl Iterator<Item = impl DumpStringVER> {
-        self.strings.iter().map(|x| &x[..])
-    }
-}
-
-#[make_platforms]
-impl DumpLangStringsVER for LangStringsVER {
-    fn strings(&self) -> impl Iterator<Item = impl DumpStringVER> {
-        self.strings.iter().map(|x| unsafe { x.as_ref() })
-    }
-}
-
-#[make_platforms]
-impl DumpLangStringsVER for LangStrings {
-    fn strings(&self) -> impl Iterator<Item = impl DumpStringVER> {
-        self.strings.iter()
-    }
-}
-
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct SSAVal {
-    pub t_start: f32,
-    pub t_end: f32,
-    pub unk_2: u32,
-    pub unk_3: u32,
-    pub off: u32,
-}
-
-#[make_platforms]
-#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
-#[repr(C)]
-pub struct SSARefVER<'a> {
-    pub vals: slice<'a, SSAValVER>,
-    pub strings: box_slice<slice<'a, u16VER>>,
-}
-
-#[make_platforms]
-impl<'a> SSARefVER<'a> {
-    pub fn from_data(src: &'a [u8]) -> Result<Self> {
-        let mut offset = 0;
-        let n = u32VER::from_data(&src[offset..]).context("n")?;
-        let vals =
-            SSAValVER::slice_from_data(&src[offset + 4..], n.get() as usize).context("vals")?;
-        let strings = (0..n.get() as usize)
-            .map(|i| {
-                let start = vals[i].off.get() as usize + offset;
-                let end = if i == n.get() as usize - 1 {
-                    src.len()
-                } else {
-                    vals[i + 1].off.get() as usize
-                } + offset;
-                Ok(
-                    u16VER::slice_from_data(&src[start..], (end - start) / 2)
-                        .with_context(|| format!("string {}", i))?
-                        .into(),
-                )
-            })
-            .collect::<Result<Vec<_>>>()?.into_boxed_slice();
-
-        Ok(Self {
-            vals: vals.into(),
-            strings: strings.into(),
-        })
-        
-    }
-}
-
-#[make_platforms]
-#[derive(Debug, Clone)]
-pub struct SSAVER {
-    _ptr: BufType,
-    vals: NonNull<[SSAValVER]>,
-    strings: Box<[NonNull<[u16VER]>]>,
-}
-
-#[make_platforms]
-unsafe impl Sync for SSAVER {}
-#[make_platforms]
-unsafe impl Send for SSAVER {}
-
-#[make_platforms]
-impl SSAVER {
-    pub fn from_bytes(src: &BufType, offset: usize, size: usize) -> Result<Self> {
-        let n = u32VER::from_data(&src[offset..]).context("n")?;
-        let vals =
-            SSAValVER::slice_from_data(&src[offset + 4..], n.get() as usize).context("vals")?;
-        let strings = (0..n.get() as usize)
-            .map(|i| {
-                let start = vals[i].off.get() as usize + offset;
-                let end = if i == n.get() as usize - 1 {
-                    size
-                } else {
-                    vals[i + 1].off.get() as usize
-                } + offset;
-                Ok(NonNull::from_ref(
-                    u16VER::slice_from_data(&src[start..], (end - start) / 2)
-                        .with_context(|| format!("string {}", i))?,
-                ))
-            })
-            .collect::<Result<Vec<_>>>()?;
-
-        Ok(Self {
-            _ptr: src.clone(),
-            vals: vals.into(),
-            strings: strings.into(),
-        })
-    }
-}
-
-#[make_platforms]
-impl SSAVER {
-    pub fn vals(&self) -> &[SSAValVER] {
-        unsafe { self.vals.as_ref() }
-    }
-    pub fn strings(&self) -> Vec<&[u16VER]> {
-        self.strings.iter().map(|x| unsafe { x.as_ref() }).collect()
-    }
-    pub fn strings_raw(&self) -> &[NonNull<[u16VER]>] {
-        &self.strings[..]
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct SSA {
-    pub vals: Vec<SSAVal>,
-    pub strings: Vec<String>,
-}
-
-#[make_platforms]
-impl From<&SSAVER> for SSA {
-    fn from(val: &SSAVER) -> Self {
-        Self {
-            vals: val.vals().iter().map(|x| x.conv()).collect(),
-            strings: val
-                .strings
-                .iter()
-                .map(|x| {
-                    String::from_utf16(
-                        unsafe { x.as_ref() }
-                            .iter()
-                            .map(|y| y.conv())
-                            .collect::<Vec<_>>()
-                            .as_ref(),
-                    )
-                    .unwrap()
-                })
-                .collect(),
-        }
-    }
-}
-
-#[make_platforms]
-pub trait DumpSSAVER {
-    fn vals_len(&self) -> usize;
-    fn strings(&self) -> impl Iterator<Item = impl DumpStringVER>;
-    fn write_vals(&self, vals: &mut [SSAValVER]) -> Result<()>;
-
-    fn size(&self) -> usize {
-        u32VER::size_of()
-            + SSAValVER::size_of() * self.vals_len()
-            + self.strings().map(|x| x.string_size()).sum::<usize>()
-    }
-    fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
-        let start = dst.offset;
-        let n = u32VER::mut_from_data(dst).context("n")?;
-        let vals = SSAValVER::mut_slice_from_data(dst, self.vals_len()).context("vals")?;
-        *n = vals.len().conv();
-        self.write_vals(vals).context("write vals")?;
-
-        for (i, (string, val)) in self.strings().zip(vals).enumerate() {
-            val.off = (dst.offset - start).conv();
-            string
-                .dump_string(dst)
-                .with_context(|| format!("string {}", i))?;
-        }
-        Ok(())
-    }
-}
-
-#[make_platforms]
-impl DumpSSAVER for SSARefVER<'_> {
-    fn vals_len(&self) -> usize {
-        self.vals.len()
-    }
-    fn strings(&self) -> impl Iterator<Item = impl DumpStringVER> {
-        self.strings.iter().map(|x| &x[..])
-    }
-    fn write_vals(&self, vals: &mut [SSAValVER]) -> Result<()> {
-        vals.write_from(&self.vals[..])
-    }
-}
-
-#[make_platforms]
-impl DumpSSAVER for SSAVER {
-    fn vals_len(&self) -> usize {
-        self.vals.len()
-    }
-    fn strings(&self) -> impl Iterator<Item = impl DumpStringVER> {
-        self.strings.iter().map(|x| unsafe { x.as_ref() })
-    }
-    fn write_vals(&self, vals: &mut [SSAValVER]) -> Result<()> {
-        vals.write_from(self.vals())
-    }
-}
-
-#[make_platforms]
-impl DumpSSAVER for SSA {
-    fn vals_len(&self) -> usize {
-        self.vals.len()
-    }
-    fn strings(&self) -> impl Iterator<Item = impl DumpStringVER> {
-        self.strings.iter()
-    }
-    fn write_vals(&self, vals: &mut [SSAValVER]) -> Result<()> {
-        for (src, dst) in self.vals.iter().zip(vals) {
-            *dst = src.conv()
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct SprayInstance {
-    pub key: Crc,
-    pub tex1: Crc,
-    pub tex2: Crc,
-    pub unk_3: u32,
-    pub width: u32,
-    pub height: u32,
-    pub unk_6: f32,
-    pub unk_7: f32,
-    pub size_w: u32,
-    pub size_h: u32,
-    pub scale_w: f32,
-    pub scale_h: f32,
-    pub delay: u32,
-    pub stride_x: f32,
-    pub stride_y: f32,
-    pub unk_15: u32,
-    pub unk_16: u32,
-}
-
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct SprayVal {
-    pub position: Vector3,
-    pub scale: f32,
-    pub instance: u16,
-    pub rotation: u16,
-}
-
-#[make_platforms]
-#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
-#[repr(C)]
-pub struct SprayRefVER<'a> {
-    pub instances: slice<'a, SprayInstanceVER>,
-    pub vals: slice<'a, SprayValVER>,
-}
-
-#[make_platforms]
-impl<'a> SprayRefVER<'a> {
-    pub fn from_data(src: &'a [u8]) -> Result<Self> {
-        let mut offset = 0;
-        let n = u32VER::from_data(&src[offset..]).context("n1")?;
-        offset += n.size();
-        let instances = SprayInstanceVER::slice_from_data(&src[offset..], n.get() as usize)
-            .context("instances")?;
-        offset += instances.size();
-        let n = u32VER::from_data(&src[offset..]).context("n2")?;
-        offset += n.size();
-        let vals =
-            SprayValVER::slice_from_data(&src[offset..], n.get() as usize).context("vals")?;
-
-        Ok(Self {
-            instances: instances.into(),
-            vals: vals.into(),
-        })
-    }
-}
-
-#[make_platforms]
-#[derive(Debug, Clone)]
-pub struct SprayVER {
-    _ptr: BufType,
-    instances: NonNull<[SprayInstanceVER]>,
-    vals: NonNull<[SprayValVER]>,
-}
-
-#[make_platforms]
-unsafe impl Sync for SprayVER {}
-#[make_platforms]
-unsafe impl Send for SprayVER {}
-
-#[make_platforms]
-impl SprayVER {
-    pub fn from_bytes(src: &BufType, mut offset: usize, _size: usize) -> Result<Self> {
-        let n = u32VER::from_data(&src[offset..]).context("n1")?;
-        offset += n.size();
-        let instances = SprayInstanceVER::slice_from_data(&src[offset..], n.get() as usize)
-            .context("instances")?;
-        offset += instances.size();
-        let n = u32VER::from_data(&src[offset..]).context("n2")?;
-        offset += n.size();
-        let vals =
-            SprayValVER::slice_from_data(&src[offset..], n.get() as usize).context("vals")?;
-
-        Ok(Self {
-            _ptr: src.clone(),
-            instances: instances.into(),
-            vals: vals.into(),
-        })
-    }
-}
-
-#[make_platforms]
-impl SprayVER {
-    pub fn instances(&self) -> &[SprayInstanceVER] {
-        unsafe { self.instances.as_ref() }
-    }
-    pub fn vals(&self) -> &[SprayValVER] {
-        unsafe { self.vals.as_ref() }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Spray {
-    pub instances: Vec<SprayInstance>,
-    pub vals: Vec<SprayVal>,
-}
-
-#[make_platforms]
-impl From<&SprayVER> for Spray {
-    fn from(val: &SprayVER) -> Self {
-        Self {
-            instances: val.instances().iter().map(|x| x.conv()).collect(),
-            vals: val.vals().iter().map(|x| x.conv()).collect(),
-        }
-    }
-}
-
-#[make_platforms]
-pub trait DumpSprayVER {
-    fn instances_len(&self) -> usize;
-    fn vals_len(&self) -> usize;
-    fn write_instances(&self, instances: &mut [SprayInstanceVER]) -> Result<()>;
-    fn write_vals(&self, vals: &mut [SprayValVER]) -> Result<()>;
-
-    fn size(&self) -> usize {
-        u32VER::size_of() * 2
-            + SprayInstanceVER::size_of() * self.instances_len()
-            + SprayValVER::size_of() * self.vals_len()
-    }
-
-    fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
-        let n = u32VER::mut_from_data(dst).context("n1")?;
-        let instances = SprayInstanceVER::mut_slice_from_data(dst, self.instances_len())
-            .context("instances")?;
-        *n = instances.len().conv();
-        self.write_instances(instances).context("write instances")?;
-        let n = u32VER::mut_from_data(dst).context("n1")?;
-        let vals = SprayValVER::mut_slice_from_data(dst, self.vals_len()).context("vals")?;
-        *n = vals.len().conv();
-        self.write_vals(vals).context("write vals")?;
-        Ok(())
-    }
-}
-
-#[make_platforms]
-impl DumpSprayVER for SprayRefVER<'_> {
-    fn instances_len(&self) -> usize {
-        self.instances.len()
-    }
-    fn vals_len(&self) -> usize {
-        self.vals.len()
-    }
-    fn write_instances(&self, instances: &mut [SprayInstanceVER]) -> Result<()> {
-        instances.write_from(&self.instances[..])
-    }
-    fn write_vals(&self, vals: &mut [SprayValVER]) -> Result<()> {
-        vals.write_from(&self.vals[..])
-    }
-}
-
-#[make_platforms]
-impl DumpSprayVER for SprayVER {
-    fn instances_len(&self) -> usize {
-        self.instances().len()
-    }
-    fn vals_len(&self) -> usize {
-        self.vals().len()
-    }
-    fn write_instances(&self, instances: &mut [SprayInstanceVER]) -> Result<()> {
-        instances.write_from(self.instances())
-    }
-    fn write_vals(&self, vals: &mut [SprayValVER]) -> Result<()> {
-        vals.write_from(self.vals())
-    }
-}
-
-#[make_platforms]
-impl DumpSprayVER for Spray {
-    fn instances_len(&self) -> usize {
-        self.instances.len()
-    }
-    fn vals_len(&self) -> usize {
-        self.vals.len()
-    }
-    fn write_instances(&self, instances: &mut [SprayInstanceVER]) -> Result<()> {
-        for (src, dst) in self.instances.iter().zip(instances) {
-            *dst = src.conv()
-        }
-        Ok(())
-    }
-    fn write_vals(&self, vals: &mut [SprayValVER]) -> Result<()> {
-        for (src, dst) in self.vals.iter().zip(vals) {
-            *dst = src.conv()
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct CrowdItemHeader {
-    pub key: Crc,
-    pub key_main: Crc,
-    pub key_right: Crc,
-    pub key_left: Crc,
-    pub unk_4: f32,
-    pub animation_num: u32,
-    pub instance_num: u32,
-}
-
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct CrowdVal {
-    pub position: Vector3,
-    pub rotation: f32,
-    pub lod: f32,
-}
-
-#[make_platforms]
-#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
-#[repr(C)]
-pub struct CrowdItemRefVER<'a> {
-    pub header: &'a CrowdItemHeaderVER,
-    pub animations: slice<'a, CrcVER>,
-    pub instances: slice<'a, CrowdValVER>
-}
-
-#[make_platforms]
-impl<'a> CrowdItemRefVER<'a> {
-    pub fn from_data(src: &'a [u8]) -> Result<Self> {
-        let mut offset = 0;
-        let header = CrowdItemHeaderVER::from_data(&src[offset..]).context("header")?;
-        offset += header.size();
-        let animations =
-            CrcVER::slice_from_data(&src[offset..], header.animation_num.get() as usize)
-                .context("animations")?;
-        offset += animations.size();
-        let instances =
-            CrowdValVER::slice_from_data(&src[offset..], header.instance_num.get() as usize)
-                .context("instances")?;
-        Ok(Self {
-            header: header,
-            animations: animations.into(),
-            instances: instances.into(),
-        })
-    }
-}
-
-#[make_platforms]
-#[derive(Debug, Clone)]
-pub struct CrowdItemVER {
-    _ptr: BufType,
-    header: NonNull<CrowdItemHeaderVER>,
-    animations: NonNull<[CrcVER]>,
-    instances: NonNull<[CrowdValVER]>,
-}
-
-#[make_platforms]
-unsafe impl Sync for CrowdItemVER {}
-#[make_platforms]
-unsafe impl Send for CrowdItemVER {}
-
-#[make_platforms]
-impl CrowdItemVER {
-    pub fn from_bytes(src: &BufType, mut offset: usize) -> Result<Self> {
-        let header = CrowdItemHeaderVER::from_data(&src[offset..]).context("header")?;
-        offset += header.size();
-        let animations =
-            CrcVER::slice_from_data(&src[offset..], header.animation_num.get() as usize)
-                .context("animations")?;
-        offset += animations.size();
-        let instances =
-            CrowdValVER::slice_from_data(&src[offset..], header.instance_num.get() as usize)
-                .context("instances")?;
-        Ok(Self {
-            _ptr: src.clone(),
-            header: header.into(),
-            animations: animations.into(),
-            instances: instances.into(),
-        })
-    }
-}
-
-#[make_platforms]
-impl CrowdItemVER {
-    pub fn header(&self) -> &CrowdItemHeaderVER {
-        unsafe { self.header.as_ref() }
-    }
-    pub fn animations(&self) -> &[CrcVER] {
-        unsafe { self.animations.as_ref() }
-    }
-    pub fn instances(&self) -> &[CrowdValVER] {
-        unsafe { self.instances.as_ref() }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct CrowdItem {
-    pub header: CrowdItemHeader,
-    pub animations: Vec<Crc>,
-    pub instances: Vec<CrowdVal>,
-}
-
-#[make_platforms]
-impl From<&CrowdItemVER> for CrowdItem {
-    fn from(val: &CrowdItemVER) -> Self {
-        Self {
-            header: val.header().conv(),
-            animations: val.animations().iter().map(|x| x.conv()).collect(),
-            instances: val.instances().iter().map(|x| x.conv()).collect(),
-        }
-    }
-}
-
-#[make_platforms]
-pub trait DumpCrowdItemVER {
-    fn animations_len(&self) -> usize;
-    fn instances_len(&self) -> usize;
-    fn write_header(&self, header: &mut CrowdItemHeaderVER) -> Result<()>;
-    fn write_animations(&self, animations: &mut [CrcVER]) -> Result<()>;
-    fn write_instances(&self, instances: &mut [CrowdValVER]) -> Result<()>;
-
-    fn size(&self) -> usize {
-        CrowdItemHeaderVER::size_of()
-            + CrcVER::size_of() * self.animations_len()
-            + CrowdValVER::size_of() * self.instances_len()
-    }
-
-    fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
-        let header = CrowdItemHeaderVER::mut_from_data(dst).context("header")?;
-        self.write_header(header).context("write header")?;
-        header.animation_num = self.animations_len().conv();
-        header.instance_num = self.instances_len().conv();
-        let animations =
-            CrcVER::mut_slice_from_data(dst, self.animations_len()).context("animations")?;
-        self.write_animations(animations)
-            .context("write animations")?;
-        let instances =
-            CrowdValVER::mut_slice_from_data(dst, self.instances_len()).context("instances")?;
-        self.write_instances(instances).context("write instances")?;
-        Ok(())
-    }
-}
-
-#[make_platforms]
-impl DumpCrowdItemVER for CrowdItemRefVER<'_> {
-    fn animations_len(&self) -> usize {
-        self.animations.len()
-    }
-    fn instances_len(&self) -> usize {
-        self.instances.len()
-    }
-    fn write_header(&self, header: &mut CrowdItemHeaderVER) -> Result<()> {
-        header.write_from(self.header)
-    }
-    fn write_instances(&self, instances: &mut [CrowdValVER]) -> Result<()> {
-        instances.write_from(&self.instances[..])
-    }
-    fn write_animations(&self, animations: &mut [CrcVER]) -> Result<()> {
-        animations.write_from(&self.animations[..])
-    }
-}
-
-#[make_platforms]
-impl DumpCrowdItemVER for CrowdItemVER {
-    fn animations_len(&self) -> usize {
-        self.animations.len()
-    }
-    fn instances_len(&self) -> usize {
-        self.instances.len()
-    }
-    fn write_header(&self, header: &mut CrowdItemHeaderVER) -> Result<()> {
-        header.write_from(self.header())
-    }
-    fn write_instances(&self, instances: &mut [CrowdValVER]) -> Result<()> {
-        instances.write_from(self.instances())
-    }
-    fn write_animations(&self, animations: &mut [CrcVER]) -> Result<()> {
-        animations.write_from(self.animations())
-    }
-}
-
-#[make_platforms]
-impl DumpCrowdItemVER for CrowdItem {
-    fn animations_len(&self) -> usize {
-        self.animations.len()
-    }
-    fn instances_len(&self) -> usize {
-        self.instances.len()
-    }
-    fn write_header(&self, header: &mut CrowdItemHeaderVER) -> Result<()> {
-        *header = (&self.header).conv();
-        Ok(())
-    }
-    fn write_instances(&self, instances: &mut [CrowdValVER]) -> Result<()> {
-        for (src, dst) in self.instances.iter().zip(instances) {
-            *dst = src.conv();
-        }
-        Ok(())
-    }
-    fn write_animations(&self, animations: &mut [CrcVER]) -> Result<()> {
-        for (src, dst) in self.animations.iter().zip(animations) {
-            *dst = src.conv();
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct CrowdHeader {
-    pub const0x65: u32,
-    pub n: u32,
-}
-
-#[make_platforms]
-#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
-#[repr(C)]
-pub struct CrowdRefVER<'a>{
-    pub header: &'a CrowdHeaderVER,
-    pub offs: slice<'a, u32VER>,
-    pub vals: box_slice<CrowdItemRefVER<'a>>
-}
-
-#[make_platforms]
-impl<'a> CrowdRefVER<'a> {
-    pub fn from_data(src: &'a [u8]) -> Result<Self> {
-        let header = CrowdHeaderVER::from_data(src).context("header")?;
-        if header.const0x65.get() != 0x65 {
-            return Err(anyhow!("Invalid Block Data for Crowd Block"));
-        }
-        let offs = u32VER::slice_from_data(&src[header.size()..], header.n.get() as usize)
-            .context("offs")?;
-        let vals = offs
-            .into_iter()
-            .enumerate()
-            .map(|(i, off)| {
-                CrowdItemRefVER::from_data(&src[off.get() as usize..])
-                    .with_context(|| format!("item {}", i))
-            })
-            .collect::<Result<Vec<_>>>()?.into_boxed_slice();
-
-        Ok(Self {
-            header,
-            offs: offs.into(),
-            vals: vals.into(),
-        })
-    }
-}
-
-#[make_platforms]
-#[derive(Debug, Clone)]
-pub struct CrowdVER {
-    _ptr: BufType,
-    header: NonNull<CrowdHeaderVER>,
-    offs: NonNull<[u32VER]>,
-    vals: Box<[CrowdItemVER]>,
-}
-
-#[make_platforms]
-unsafe impl Sync for CrowdVER {}
-#[make_platforms]
-unsafe impl Send for CrowdVER {}
-
-#[make_platforms]
-impl CrowdVER {
-    pub fn from_bytes(src: &BufType, offset: usize, _size: usize) -> Result<Self> {
-        let header = CrowdHeaderVER::from_data(&src[offset..]).context("header")?;
-        if header.const0x65.get() != 0x65 {
-            return Err(anyhow!("Invalid Block Data for Crowd Block"));
-        }
-        let offs = u32VER::slice_from_data(&src[offset + header.size()..], header.n.get() as usize)
-            .context("offs")?;
-        let vals = offs
-            .into_iter()
-            .enumerate()
-            .map(|(i, off)| {
-                CrowdItemVER::from_bytes(src, off.get() as usize + offset)
-                    .with_context(|| format!("item {}", i))
-            })
-            .collect::<Result<Vec<_>>>()?;
-
-        Ok(Self {
-            _ptr: src.clone(),
-            header: header.into(),
-            offs: offs.into(),
-            vals: vals.into(),
-        })
-    }
-}
-
-#[make_platforms]
-impl CrowdVER {
-    pub fn header(&self) -> &CrowdHeaderVER {
-        unsafe { self.header.as_ref() }
-    }
-    pub fn offs(&self) -> &[u32VER] {
-        unsafe { self.offs.as_ref() }
-    }
-    pub fn vals(&self) -> &[CrowdItemVER] {
-        &self.vals
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Crowd {
-    pub vals: Vec<CrowdItem>,
-}
-
-#[make_platforms]
-impl From<&CrowdVER> for Crowd {
-    fn from(val: &CrowdVER) -> Self {
-        Self {
-            vals: val.vals().iter().map(|x| x.into()).collect(),
-        }
-    }
-}
-
-#[make_platforms]
-pub trait DumpCrowdVER {
-    fn vals_len(&self) -> usize;
-    fn vals(&self) -> impl Iterator<Item = &impl DumpCrowdItemVER>;
-
-    fn size(&self) -> usize {
-        CrowdHeaderVER::size_of()
-            + u32VER::size_of() * self.vals_len()
-            + self.vals().map(|x| x.size()).sum::<usize>()
-    }
-
-    fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
-        let start = dst.offset;
-        let header = CrowdHeaderVER::mut_from_data(dst).context("header")?;
-        let offs = u32VER::mut_slice_from_data(dst, self.vals_len()).context("offs")?;
-        header.n = offs.len().conv();
-        header.const0x65 = 0x65u32.into();
-
-        for (i, (val, off)) in self.vals().zip(offs).enumerate() {
-            *off = (dst.offset - start).conv();
-            val.dump_into(dst).with_context(|| format!("val {}", i))?;
-        }
-
-        Ok(())
-    }
-}
-
-#[make_platforms]
-impl DumpCrowdVER for CrowdRefVER<'_> {
-    fn vals_len(&self) -> usize {
-        self.vals.len()
-    }
-    fn vals(&self) -> impl Iterator<Item = &impl DumpCrowdItemVER> {
-        self.vals.iter()
-    }
-}
-
-#[make_platforms]
-impl DumpCrowdVER for CrowdVER {
-    fn vals_len(&self) -> usize {
-        self.vals.len()
-    }
-    fn vals(&self) -> impl Iterator<Item = &impl DumpCrowdItemVER> {
-        self.vals.iter()
-    }
-}
-
-#[make_platforms]
-impl DumpCrowdVER for Crowd {
-    fn vals_len(&self) -> usize {
-        self.vals.len()
-    }
-    fn vals(&self) -> impl Iterator<Item = &impl DumpCrowdItemVER> {
-        self.vals.iter()
-    }
-}
-
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct AtlasUVVal {
-    pub key: Crc,
-    pub vals: Vector4,
-}
-
-#[make_platforms]
-#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
-#[repr(C)]
-pub struct AtlasUVRefVER<'a> {
-    pub vals: slice<'a, AtlasUVValVER>
-}
-#[make_platforms]
-impl<'a> AtlasUVRefVER<'a> {
-    pub fn from_data(src: &'a [u8]) -> Result<Self> {
-        if src.len() % std::mem::size_of::<AtlasUVValVER>() != 0 {
-            return Err(anyhow!("Invalid UV Atlas size {}", src.len()));
-        }
-        let num = src.len() / std::mem::size_of::<AtlasUVValVER>();
-        let vals = AtlasUVValVER::slice_from_data(&src, num).context("vals")?.into();
-        Ok(Self { vals })
-    }
-}
-
-#[make_platforms]
-#[derive(Debug, Clone)]
-pub struct AtlasUVVER {
-    _ptr: BufType,
-    vals: NonNull<[AtlasUVValVER]>,
-}
-
-#[make_platforms]
-unsafe impl Sync for AtlasUVVER {}
-#[make_platforms]
-unsafe impl Send for AtlasUVVER {}
-
-#[make_platforms]
-impl AtlasUVVER {
-    pub fn from_bytes(src: &BufType, offset: usize, size: usize) -> Result<Self> {
-        if size % std::mem::size_of::<AtlasUVValVER>() != 0 {
-            return Err(anyhow!("Invalid UV Atlas size {}", size));
-        }
-        let num = size / std::mem::size_of::<AtlasUVValVER>();
-        let vals = AtlasUVValVER::slice_from_data(&src[offset..], num).context("vals")?;
-        Ok(Self {
-            _ptr: src.clone(),
-            vals: vals.into(),
-        })
-    }
-}
-
-#[make_platforms]
-impl AtlasUVVER {
-    pub fn vals(&self) -> &[AtlasUVValVER] {
-        unsafe { self.vals.as_ref() }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct AtlasUV {
-    pub vals: Vec<AtlasUVVal>,
-}
-
-#[make_platforms]
-impl From<&AtlasUVVER> for AtlasUV {
-    fn from(val: &AtlasUVVER) -> Self {
-        Self {
-            vals: val.vals().iter().map(|x| x.conv()).collect(),
-        }
-    }
-}
-
-#[make_platforms]
-pub trait DumpAtlasUVVER {
-    fn vals_len(&self) -> usize;
-    fn write_vals(&self, vals: &mut [AtlasUVValVER]) -> Result<()>;
-
-    fn size(&self) -> usize {
-        self.vals_len() * AtlasUVValVER::size_of()
-    }
-
-    fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
-        let vals = AtlasUVValVER::mut_slice_from_data(dst, self.vals_len()).context("vals")?;
-        self.write_vals(vals).context("write vals")?;
-        Ok(())
-    }
-}
-
-#[make_platforms]
-impl DumpAtlasUVVER for AtlasUVRefVER<'_> {
-    fn vals_len(&self) -> usize {
-        self.vals.len()
-    }
-    fn write_vals(&self, vals: &mut [AtlasUVValVER]) -> Result<()> {
-        vals.write_from(&self.vals[..])
-    }
-}
-
-#[make_platforms]
-impl DumpAtlasUVVER for AtlasUVVER {
-    fn vals_len(&self) -> usize {
-        self.vals.len()
-    }
-    fn write_vals(&self, vals: &mut [AtlasUVValVER]) -> Result<()> {
-        vals.write_from(self.vals())
-    }
-}
-
-#[make_platforms]
-impl DumpAtlasUVVER for AtlasUV {
-    fn vals_len(&self) -> usize {
-        self.vals.len()
-    }
-    fn write_vals(&self, vals: &mut [AtlasUVValVER]) -> Result<()> {
-        for (src, dst) in self.vals.iter().zip(vals) {
-            *dst = src.conv();
-        }
-        Ok(())
-    }
-}
-
-#[make_platforms]
-#[derive(Debug, Clone)]
-pub struct DataVER {
-    _ptr: BufType,
-    data: NonNull<[u8]>,
-}
-
-#[make_platforms]
-unsafe impl Sync for DataVER {}
-#[make_platforms]
-unsafe impl Send for DataVER {}
-
-#[make_platforms]
-impl DataVER {
-    pub fn from_bytes(src: &BufType, offset: usize, size: usize) -> Result<Self> {
-        Ok(Self {
-            _ptr: src.clone(),
-            data: NonNull::from_ref(&src[offset..offset + size]),
-        })
-    }
-    pub fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
-        self.data().dump_into(dst)
-    }
-    pub fn size(&self) -> usize {
-        self.data.len()
-    }
-}
-
-#[make_platforms]
-impl DataVER {
-    pub fn data(&self) -> &[u8] {
-        unsafe { self.data.as_ref() }
-    }
-}
-
-#[make_platforms]
-type LuaVER = DataVER;
-#[make_platforms]
-type PFieldsVER = DataVER;
-
-#[make_platforms]
-#[cfg_attr(feature = "ffi", safer_ffi::derive_ReprC)]
-#[repr(C)]
-pub struct DataRefVER<'a> {
-    data: slice<'a, u8>
-}
-
-#[make_platforms]
-impl<'a> DataRefVER<'a> {
-    pub fn from_data(src: &'a [u8]) -> Self {
-        Self { data: src.into() }
-    }
-    pub fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
-        self.data.dump_into(dst)
-    }
-    pub fn size(&self) -> usize {
-        self.data.len()
-    }
-}
-
-#[make_platforms]
-pub type LuaRefVER<'a> = DataRefVER<'a>;
-#[make_platforms]
-pub type PFieldsRefVER<'a> = DataRefVER<'a>;
-
-#[derive(Debug, Clone)]
-pub struct Data {
-    pub data: Vec<u8>,
-}
-
-impl Data {
-    pub fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
-        self.data.as_slice().dump_into(dst)
-    }
-    pub fn size(&self) -> usize {
-        self.data.len()
-    }
-}
-
-#[make_platforms]
-impl From<&DataVER> for Data {
-    fn from(val: &DataVER) -> Self {
-        Self {
-            data: val.data().to_vec(),
-        }
-    }
-}
-
-type Lua = Data;
-
-#[derive(Debug, Default, Clone)]
-pub struct PField {
-    pub link_guid: u32,
-    pub vals: Vec<(HashSet<u32>, Vec<u8>)>,
-    pub width: u32,
-    pub height: u32,
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct PFields {
-    pub vals: IndexMap<u32, PField>,
-}
-
-impl PFields {
-    #[make_platforms]
-    pub fn from_ver(val: &PFieldsVER, infos: &[PFieldInfoVER]) -> Self {
-        let mut offset_maps: HashMap<u32, HashMap<u32, usize>> = HashMap::new();
-        let mut pfields = IndexMap::new();
-        let data = val.data();
-        for info in infos {
-            let link_guid = info.link_guid.get();
-            let offset = info.offset.get();
-            let gamemode_guid = info.gamemode_guid.get();
-            let width = info.width.get();
-            let height = info.height.get();
-            if !pfields.contains_key(&link_guid) {
-                pfields.insert(
-                    link_guid,
-                    PField {
-                        link_guid,
-                        width,
-                        height,
-                        ..Default::default()
-                    },
-                );
-                offset_maps.insert(link_guid, HashMap::new());
-            }
-            let val = pfields.get_mut(&link_guid).unwrap();
-            let offset_map = offset_maps.get_mut(&link_guid).unwrap();
-            if let Some(&index) = offset_map.get(&offset) {
-                val.vals[index].0.insert(gamemode_guid);
+            .ok_or(anyhow!("templateLevel missing name field"))
+            .and_then(|field| if let BaseType::Crc(val) = field {
+                Ok(val.get())
             } else {
-                offset_map.insert(offset, val.vals.len());
-                let mut gamemodes = HashSet::new();
-                gamemodes.insert(gamemode_guid);
-                let offset = offset as usize;
-                let size = (width * height) as usize;
-                let vals = data[offset..offset + size].to_vec();
-                val.vals.push((gamemodes, vals));
-            }
-        }
-        Self { vals: pfields }
-    }
-
-    #[make_platforms]
-    pub fn infos_ver(&self) -> Vec<PFieldInfoVER> {
-        let mut infos = vec![];
-        let mut offset = 0u32;
-        for pfield in self.vals.values() {
-            for (gamemodes, _) in &pfield.vals {
-                for &gamemode_guid in gamemodes {
-                    infos.push(PFieldInfoVER {
-                        link_guid: pfield.link_guid.into(),
-                        width: pfield.width.into(),
-                        height: pfield.height.into(),
-                        gamemode_guid: gamemode_guid.into(),
-                        offset: offset.into(),
-                    });
-                }
-                offset += pfield.width * pfield.height;
-            }
-        }
-        infos
-    }
-    #[make_platforms]
-    pub fn size_ver(&self) -> usize {
-        self.vals
-            .values()
-            .flat_map(|x| x.vals.iter())
-            .map(|(_, vals)| vals.size())
-            .sum::<usize>()
-    }
-    #[make_platforms]
-    pub fn dump_into_ver(&self, dst: &mut DumpSlice) -> Result<()> {
-        for (i, pfield) in self.vals.values().enumerate() {
-            for (j, (_, vals)) in pfield.vals.iter().enumerate() {
-                vals.dump_into(dst)
-                    .with_context(|| format!("pfield {} val {}", i, j))?;
-            }
-        }
-        Ok(())
+                Err(anyhow!("templateObject name field is not a crc"))
+            })?;
+        Ok(name)
     }
 }
+
+#[make_platforms]
+impl DumpSubBlocksVER for SubBlocksImplVER<'_> {
+    fn blocks_num(&self) -> usize {
+        self.blocks.len()
+    }
+    fn blocks(&self) -> impl Iterator<Item = &impl DumpSubBlockVER> {
+        self.blocks.values()
+    }
+    fn write_names<'a>(&self, names: impl Iterator<Item = &'a mut CrcVER>) {
+        for (src, dst) in self.blocks.keys().zip(names) {
+            *dst = src.conv();
+        }
+    }
+    fn level_name(&self) -> Result<u32> {
+        match self.blocks
+            .get(&Crc::new(hash_string(b"level", None)))
+            .ok_or(anyhow!("level block missing"))? 
+        {
+            SubBlockVER::Ref(SubBlockRefVER::Level(level)) => level.objs
+                .values()
+                .find(|v| v.header.key.get() == hash_string(b"templateLevel", None))
+                .ok_or(anyhow!("templateLevel not found"))?
+                .fields.get(&hash_string(b"name", None))
+                .ok_or(anyhow!("templateLevel missing name field"))
+                .and_then(|field| if let BaseTypeRefVER::Crc(val) = field {
+                    Ok(val.get())
+                } else {
+                    Err(anyhow!("templateObject name field is not a crc"))
+                }),
+            SubBlockVER::Owned(SubBlockImplVER::Level(GameObjsVER::Ref(level))) => level.objs
+                .values()
+                .find(|v| v.header.key.get() == hash_string(b"templateLevel", None))
+                .ok_or(anyhow!("templateLevel not found"))?
+                .fields.get(&hash_string(b"name", None))
+                .ok_or(anyhow!("templateLevel missing name field"))
+                .and_then(|field| if let BaseTypeRefVER::Crc(val) = field {
+                    Ok(val.get())
+                } else {
+                    Err(anyhow!("templateObject name field is not a crc"))
+                }),
+            SubBlockVER::Owned(SubBlockImplVER::Level(GameObjsVER::Owned(level))) => match level.objs
+                .iter()
+                .find(|(k, _)| **k == Crc::new(hash_string(b"templateLevel", None)))
+                .ok_or(anyhow!("templateLevel not found"))?.1 {
+                    ObjVER::Ref(obj) => obj.fields.get(&hash_string(b"name", None))
+                        .ok_or(anyhow!("templateLevel missing name field"))
+                        .and_then(|field| if let BaseTypeRefVER::Crc(val) = field {
+                            Ok(val.get())
+                        } else {
+                            Err(anyhow!("templateObject name field is not a crc"))
+                        }),
+                    ObjVER::Owned(obj) => match obj.fields.get(&Crc::new(hash_string(b"name", None))) {
+                            Some(BaseTypeVER::Ref(BaseTypeRefVER::Crc(val))) => Ok(val.get()),
+                            Some(BaseTypeVER::Owned(BaseType::Crc(val))) => Ok(val.get()),
+                            None => Err(anyhow!("templateLevel missing name field")),
+                            _ => Err(anyhow!("templateObject name field is not a crc"))
+                        }
+                }
+            _ => Err(anyhow!("level block wrong format"))
+        }
+    }
+}
+*/
+
