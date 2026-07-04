@@ -21,13 +21,21 @@
 
 #define LodInfo_LOD3 256
 
-enum Version {
+enum Version
+#if __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   Version_Pc = 0,
   Version_Xbox,
   Version_Ps3,
   Version_Err,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum Version Version;
+#else
 typedef uint8_t Version;
+#endif // __STDC_VERSION__ >= 202311L
 
 /**
  * Owned
@@ -734,7 +742,6 @@ typedef struct RadiosityRefPc {
 } RadiosityRefPc;
 
 typedef struct ObjsRefPc {
-  struct InfosRefPc infos;
   struct IndexMap_u32__TextureRefPc textures;
   struct IndexMap_u32__ModelRefPc models;
   struct IndexMap_u32__EffectRefPc effects;
@@ -892,6 +899,7 @@ typedef struct StringKeysRefPc {
 } StringKeysRefPc;
 
 typedef struct Block1RefPc {
+  struct InfosRefPc infos;
   struct ObjsRefPc objs;
   struct SubBlocks1RefPc sub_blocks;
   struct StringKeysRefPc string_keys;
@@ -1484,7 +1492,6 @@ typedef struct RadiosityRefXbox {
 } RadiosityRefXbox;
 
 typedef struct ObjsRefXbox {
-  struct InfosRefXbox infos;
   struct IndexMap_u32__TextureRefXbox textures;
   struct IndexMap_u32__ModelRefXbox models;
   struct IndexMap_u32__EffectRefXbox effects;
@@ -1642,6 +1649,7 @@ typedef struct StringKeysRefXbox {
 } StringKeysRefXbox;
 
 typedef struct Block1RefXbox {
+  struct InfosRefXbox infos;
   struct ObjsRefXbox objs;
   struct SubBlocks1RefXbox sub_blocks;
   struct StringKeysRefXbox string_keys;
@@ -2214,7 +2222,6 @@ typedef struct RadiosityRefPs3 {
 } RadiosityRefPs3;
 
 typedef struct ObjsRefPs3 {
-  struct InfosRefPs3 infos;
   struct IndexMap_u32__TextureRefPs3 textures;
   struct IndexMap_u32__ModelRefPs3 models;
   struct IndexMap_u32__EffectRefPs3 effects;
@@ -2370,6 +2377,7 @@ typedef struct StringKeysRefPs3 {
 } StringKeysRefPs3;
 
 typedef struct Block1RefPs3 {
+  struct InfosRefPs3 infos;
   struct ObjsRefPs3 objs;
   struct SubBlocks1RefPs3 sub_blocks;
   struct StringKeysRefPs3 string_keys;
@@ -3796,7 +3804,11 @@ typedef struct IndexMap_VertexUsage__VertexDataIndex {
   uint8_t pad[64];
 } IndexMap_VertexUsage__VertexDataIndex;
 
-enum VertexUsage_Tag {
+enum VertexUsage_Tag
+#if __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   VertexUsage_Position,
   VertexUsage_Normal,
   VertexUsage_Tangent,
@@ -3807,7 +3819,11 @@ enum VertexUsage_Tag {
   VertexUsage_PSize,
   VertexUsage_Pad,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum VertexUsage_Tag VertexUsage_Tag;
+#else
 typedef uint8_t VertexUsage_Tag;
+#endif // __STDC_VERSION__ >= 202311L
 
 typedef struct VertexUsage {
   VertexUsage_Tag tag;
@@ -3885,11 +3901,19 @@ typedef struct ref_slice_u16Pc {
   uint8_t pad[8];
 } ref_slice_u16Pc;
 
-enum IndexBufferValsRefPc_Tag {
+enum IndexBufferValsRefPc_Tag
+#if __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   IndexBufferValsRefPc_U16,
   IndexBufferValsRefPc_U32,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum IndexBufferValsRefPc_Tag IndexBufferValsRefPc_Tag;
+#else
 typedef uint8_t IndexBufferValsRefPc_Tag;
+#endif // __STDC_VERSION__ >= 202311L
 
 typedef struct IndexBufferValsRefPc {
   IndexBufferValsRefPc_Tag tag;
@@ -4280,13 +4304,21 @@ typedef struct Mat4RefPc {
   const struct MatExtraPc *extra;
 } Mat4RefPc;
 
-enum MatRefPc_Tag {
+enum MatRefPc_Tag
+#if __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   MatRefPc_Mat1,
   MatRefPc_Mat2,
   MatRefPc_Mat3,
   MatRefPc_Mat4,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum MatRefPc_Tag MatRefPc_Tag;
+#else
 typedef uint8_t MatRefPc_Tag;
+#endif // __STDC_VERSION__ >= 202311L
 
 typedef struct MatRefPc {
   MatRefPc_Tag tag;
@@ -4850,7 +4882,11 @@ typedef struct ref_slice_WeightPc {
   uint8_t pad[8];
 } ref_slice_WeightPc;
 
-enum BaseTypeRefPc_Tag {
+enum BaseTypeRefPc_Tag
+#if __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   BaseTypeRefPc_Crc,
   BaseTypeRefPc_GUID,
   BaseTypeRefPc_Color,
@@ -4870,7 +4906,11 @@ enum BaseTypeRefPc_Tag {
   BaseTypeRefPc_WeightList,
   BaseTypeRefPc_MatrixList,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum BaseTypeRefPc_Tag BaseTypeRefPc_Tag;
+#else
 typedef uint8_t BaseTypeRefPc_Tag;
+#endif // __STDC_VERSION__ >= 202311L
 
 typedef struct BaseTypeRefPc {
   BaseTypeRefPc_Tag tag;
@@ -5189,7 +5229,11 @@ typedef struct HkShapeInfoPc {
   u32Pc unk_19;
 } HkShapeInfoPc;
 
-enum HkShapeRefPc_Tag {
+enum HkShapeRefPc_Tag
+#if __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   HkShapeRefPc_Box,
   HkShapeRefPc_Sphere,
   HkShapeRefPc_Capsule,
@@ -5198,7 +5242,11 @@ enum HkShapeRefPc_Tag {
   HkShapeRefPc_BVTreeMesh,
   HkShapeRefPc_Unknown,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum HkShapeRefPc_Tag HkShapeRefPc_Tag;
+#else
 typedef uint8_t HkShapeRefPc_Tag;
+#endif // __STDC_VERSION__ >= 202311L
 
 typedef struct HkShapeRefPc {
   HkShapeRefPc_Tag tag;
@@ -5360,13 +5408,21 @@ typedef struct ref_slice_f32Pc {
   uint8_t pad[8];
 } ref_slice_f32Pc;
 
-enum AnimVals1RefPc_Tag {
+enum AnimVals1RefPc_Tag
+#if __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   AnimVals1RefPc_Type1,
   AnimVals1RefPc_Type2,
   AnimVals1RefPc_Type3,
   AnimVals1RefPc_Type4,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum AnimVals1RefPc_Tag AnimVals1RefPc_Tag;
+#else
 typedef uint8_t AnimVals1RefPc_Tag;
+#endif // __STDC_VERSION__ >= 202311L
 
 typedef struct AnimVals1RefPc {
   AnimVals1RefPc_Tag tag;
@@ -5450,7 +5506,11 @@ typedef struct ref_slice_RotationUncompressedPc {
   uint8_t pad[8];
 } ref_slice_RotationUncompressedPc;
 
-enum RotationQuantizationRefPc_Tag {
+enum RotationQuantizationRefPc_Tag
+#if __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   RotationQuantizationRefPc_Polar32,
   RotationQuantizationRefPc_ThreeComp40,
   RotationQuantizationRefPc_ThreeComp48,
@@ -5458,7 +5518,11 @@ enum RotationQuantizationRefPc_Tag {
   RotationQuantizationRefPc_Straight16,
   RotationQuantizationRefPc_Uncompressed,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum RotationQuantizationRefPc_Tag RotationQuantizationRefPc_Tag;
+#else
 typedef uint8_t RotationQuantizationRefPc_Tag;
+#endif // __STDC_VERSION__ >= 202311L
 
 typedef struct RotationQuantizationRefPc {
   RotationQuantizationRefPc_Tag tag;
@@ -6120,11 +6184,19 @@ typedef struct ref_slice_u16Xbox {
   uint8_t pad[8];
 } ref_slice_u16Xbox;
 
-enum IndexBufferValsRefXbox_Tag {
+enum IndexBufferValsRefXbox_Tag
+#if __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   IndexBufferValsRefXbox_U16,
   IndexBufferValsRefXbox_U32,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum IndexBufferValsRefXbox_Tag IndexBufferValsRefXbox_Tag;
+#else
 typedef uint8_t IndexBufferValsRefXbox_Tag;
+#endif // __STDC_VERSION__ >= 202311L
 
 typedef struct IndexBufferValsRefXbox {
   IndexBufferValsRefXbox_Tag tag;
@@ -6521,13 +6593,21 @@ typedef struct Mat4RefXbox {
   const struct MatExtraXbox *extra;
 } Mat4RefXbox;
 
-enum MatRefXbox_Tag {
+enum MatRefXbox_Tag
+#if __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   MatRefXbox_Mat1,
   MatRefXbox_Mat2,
   MatRefXbox_Mat3,
   MatRefXbox_Mat4,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum MatRefXbox_Tag MatRefXbox_Tag;
+#else
 typedef uint8_t MatRefXbox_Tag;
+#endif // __STDC_VERSION__ >= 202311L
 
 typedef struct MatRefXbox {
   MatRefXbox_Tag tag;
@@ -7091,7 +7171,11 @@ typedef struct ref_slice_WeightXbox {
   uint8_t pad[8];
 } ref_slice_WeightXbox;
 
-enum BaseTypeRefXbox_Tag {
+enum BaseTypeRefXbox_Tag
+#if __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   BaseTypeRefXbox_Crc,
   BaseTypeRefXbox_GUID,
   BaseTypeRefXbox_Color,
@@ -7111,7 +7195,11 @@ enum BaseTypeRefXbox_Tag {
   BaseTypeRefXbox_WeightList,
   BaseTypeRefXbox_MatrixList,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum BaseTypeRefXbox_Tag BaseTypeRefXbox_Tag;
+#else
 typedef uint8_t BaseTypeRefXbox_Tag;
+#endif // __STDC_VERSION__ >= 202311L
 
 typedef struct BaseTypeRefXbox {
   BaseTypeRefXbox_Tag tag;
@@ -7430,7 +7518,11 @@ typedef struct HkShapeInfoXbox {
   u32Xbox unk_19;
 } HkShapeInfoXbox;
 
-enum HkShapeRefXbox_Tag {
+enum HkShapeRefXbox_Tag
+#if __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   HkShapeRefXbox_Box,
   HkShapeRefXbox_Sphere,
   HkShapeRefXbox_Capsule,
@@ -7439,7 +7531,11 @@ enum HkShapeRefXbox_Tag {
   HkShapeRefXbox_BVTreeMesh,
   HkShapeRefXbox_Unknown,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum HkShapeRefXbox_Tag HkShapeRefXbox_Tag;
+#else
 typedef uint8_t HkShapeRefXbox_Tag;
+#endif // __STDC_VERSION__ >= 202311L
 
 typedef struct HkShapeRefXbox {
   HkShapeRefXbox_Tag tag;
@@ -7601,13 +7697,21 @@ typedef struct ref_slice_f32Xbox {
   uint8_t pad[8];
 } ref_slice_f32Xbox;
 
-enum AnimVals1RefXbox_Tag {
+enum AnimVals1RefXbox_Tag
+#if __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   AnimVals1RefXbox_Type1,
   AnimVals1RefXbox_Type2,
   AnimVals1RefXbox_Type3,
   AnimVals1RefXbox_Type4,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum AnimVals1RefXbox_Tag AnimVals1RefXbox_Tag;
+#else
 typedef uint8_t AnimVals1RefXbox_Tag;
+#endif // __STDC_VERSION__ >= 202311L
 
 typedef struct AnimVals1RefXbox {
   AnimVals1RefXbox_Tag tag;
@@ -7691,7 +7795,11 @@ typedef struct ref_slice_RotationUncompressedXbox {
   uint8_t pad[8];
 } ref_slice_RotationUncompressedXbox;
 
-enum RotationQuantizationRefXbox_Tag {
+enum RotationQuantizationRefXbox_Tag
+#if __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   RotationQuantizationRefXbox_Polar32,
   RotationQuantizationRefXbox_ThreeComp40,
   RotationQuantizationRefXbox_ThreeComp48,
@@ -7699,7 +7807,11 @@ enum RotationQuantizationRefXbox_Tag {
   RotationQuantizationRefXbox_Straight16,
   RotationQuantizationRefXbox_Uncompressed,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum RotationQuantizationRefXbox_Tag RotationQuantizationRefXbox_Tag;
+#else
 typedef uint8_t RotationQuantizationRefXbox_Tag;
+#endif // __STDC_VERSION__ >= 202311L
 
 typedef struct RotationQuantizationRefXbox {
   RotationQuantizationRefXbox_Tag tag;
@@ -8355,11 +8467,19 @@ typedef struct ref_slice_u16Ps3 {
   uint8_t pad[8];
 } ref_slice_u16Ps3;
 
-enum IndexBufferValsRefPs3_Tag {
+enum IndexBufferValsRefPs3_Tag
+#if __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   IndexBufferValsRefPs3_U16,
   IndexBufferValsRefPs3_U32,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum IndexBufferValsRefPs3_Tag IndexBufferValsRefPs3_Tag;
+#else
 typedef uint8_t IndexBufferValsRefPs3_Tag;
+#endif // __STDC_VERSION__ >= 202311L
 
 typedef struct IndexBufferValsRefPs3 {
   IndexBufferValsRefPs3_Tag tag;
@@ -8748,13 +8868,21 @@ typedef struct Mat4RefPs3 {
   const struct MatExtraPs3 *extra;
 } Mat4RefPs3;
 
-enum MatRefPs3_Tag {
+enum MatRefPs3_Tag
+#if __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   MatRefPs3_Mat1,
   MatRefPs3_Mat2,
   MatRefPs3_Mat3,
   MatRefPs3_Mat4,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum MatRefPs3_Tag MatRefPs3_Tag;
+#else
 typedef uint8_t MatRefPs3_Tag;
+#endif // __STDC_VERSION__ >= 202311L
 
 typedef struct MatRefPs3 {
   MatRefPs3_Tag tag;
@@ -9316,7 +9444,11 @@ typedef struct ref_slice_WeightPs3 {
   uint8_t pad[8];
 } ref_slice_WeightPs3;
 
-enum BaseTypeRefPs3_Tag {
+enum BaseTypeRefPs3_Tag
+#if __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   BaseTypeRefPs3_Crc,
   BaseTypeRefPs3_GUID,
   BaseTypeRefPs3_Color,
@@ -9336,7 +9468,11 @@ enum BaseTypeRefPs3_Tag {
   BaseTypeRefPs3_WeightList,
   BaseTypeRefPs3_MatrixList,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum BaseTypeRefPs3_Tag BaseTypeRefPs3_Tag;
+#else
 typedef uint8_t BaseTypeRefPs3_Tag;
+#endif // __STDC_VERSION__ >= 202311L
 
 typedef struct BaseTypeRefPs3 {
   BaseTypeRefPs3_Tag tag;
@@ -9655,7 +9791,11 @@ typedef struct HkShapeInfoPs3 {
   u32Ps3 unk_19;
 } HkShapeInfoPs3;
 
-enum HkShapeRefPs3_Tag {
+enum HkShapeRefPs3_Tag
+#if __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   HkShapeRefPs3_Box,
   HkShapeRefPs3_Sphere,
   HkShapeRefPs3_Capsule,
@@ -9664,7 +9804,11 @@ enum HkShapeRefPs3_Tag {
   HkShapeRefPs3_BVTreeMesh,
   HkShapeRefPs3_Unknown,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum HkShapeRefPs3_Tag HkShapeRefPs3_Tag;
+#else
 typedef uint8_t HkShapeRefPs3_Tag;
+#endif // __STDC_VERSION__ >= 202311L
 
 typedef struct HkShapeRefPs3 {
   HkShapeRefPs3_Tag tag;
@@ -9826,13 +9970,21 @@ typedef struct ref_slice_f32Ps3 {
   uint8_t pad[8];
 } ref_slice_f32Ps3;
 
-enum AnimVals1RefPs3_Tag {
+enum AnimVals1RefPs3_Tag
+#if __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   AnimVals1RefPs3_Type1,
   AnimVals1RefPs3_Type2,
   AnimVals1RefPs3_Type3,
   AnimVals1RefPs3_Type4,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum AnimVals1RefPs3_Tag AnimVals1RefPs3_Tag;
+#else
 typedef uint8_t AnimVals1RefPs3_Tag;
+#endif // __STDC_VERSION__ >= 202311L
 
 typedef struct AnimVals1RefPs3 {
   AnimVals1RefPs3_Tag tag;
@@ -9916,7 +10068,11 @@ typedef struct ref_slice_RotationUncompressedPs3 {
   uint8_t pad[8];
 } ref_slice_RotationUncompressedPs3;
 
-enum RotationQuantizationRefPs3_Tag {
+enum RotationQuantizationRefPs3_Tag
+#if __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   RotationQuantizationRefPs3_Polar32,
   RotationQuantizationRefPs3_ThreeComp40,
   RotationQuantizationRefPs3_ThreeComp48,
@@ -9924,7 +10080,11 @@ enum RotationQuantizationRefPs3_Tag {
   RotationQuantizationRefPs3_Straight16,
   RotationQuantizationRefPs3_Uncompressed,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum RotationQuantizationRefPs3_Tag RotationQuantizationRefPs3_Tag;
+#else
 typedef uint8_t RotationQuantizationRefPs3_Tag;
+#endif // __STDC_VERSION__ >= 202311L
 
 typedef struct RotationQuantizationRefPs3 {
   RotationQuantizationRefPs3_Tag tag;

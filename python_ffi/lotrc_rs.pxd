@@ -687,7 +687,6 @@ cdef extern from "lotrc.h":
     uint32_t usage;
 
   cdef struct ObjsRefPc:
-    InfosRefPc infos;
     IndexMap_u32__TextureRefPc textures;
     IndexMap_u32__ModelRefPc models;
     IndexMap_u32__EffectRefPc effects;
@@ -804,6 +803,7 @@ cdef extern from "lotrc.h":
     ref_slice_u32Pc pad;
 
   cdef struct Block1RefPc:
+    InfosRefPc infos;
     ObjsRefPc objs;
     SubBlocks1RefPc sub_blocks;
     StringKeysRefPc string_keys;
@@ -1270,7 +1270,6 @@ cdef extern from "lotrc.h":
     uint32_t usage;
 
   cdef struct ObjsRefXbox:
-    InfosRefXbox infos;
     IndexMap_u32__TextureRefXbox textures;
     IndexMap_u32__ModelRefXbox models;
     IndexMap_u32__EffectRefXbox effects;
@@ -1387,6 +1386,7 @@ cdef extern from "lotrc.h":
     ref_slice_u32Xbox pad;
 
   cdef struct Block1RefXbox:
+    InfosRefXbox infos;
     ObjsRefXbox objs;
     SubBlocks1RefXbox sub_blocks;
     StringKeysRefXbox string_keys;
@@ -1839,7 +1839,6 @@ cdef extern from "lotrc.h":
     uint32_t usage;
 
   cdef struct ObjsRefPs3:
-    InfosRefPs3 infos;
     IndexMap_u32__TextureRefPs3 textures;
     IndexMap_u32__ModelRefPs3 models;
     IndexMap_u32__EffectRefPs3 effects;
@@ -1954,6 +1953,7 @@ cdef extern from "lotrc.h":
     ref_slice_u32Ps3 pad;
 
   cdef struct Block1RefPs3:
+    InfosRefPs3 infos;
     ObjsRefPs3 objs;
     SubBlocks1RefPs3 sub_blocks;
     StringKeysRefPs3 string_keys;

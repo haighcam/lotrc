@@ -10,7 +10,7 @@
 *.ipynb
 **/*.lua
 **/.ipynb_checkpoints
-Cargo.lock
+*.lock
 **/*.exe
 *.pyc
 *.so

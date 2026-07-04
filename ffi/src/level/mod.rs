@@ -47,7 +47,7 @@ mod ref_ver {
 #[export(mod_name=InfoCounts)]
 mod info_counts {
     use super::*;
-    use lotrc::level::pak::block1::objs::{InfoCounts};
+    use lotrc::level::pak::block1::infos::{InfoCounts};
     crate::make_owned_opaque!(OwnedInfoCounts, InfoCounts);
     fn new() -> NonNull<OwnedInfoCounts> {
         OwnedInfoCounts::leak(InfoCounts::default())
@@ -62,7 +62,7 @@ mod info_counts {
 #[export(mod_name=DumpInfosVER)]
 mod dump_infos_ver {
     use super::*;
-    use lotrc::level::pak::block1::objs::{DumpInfosVER, InfoCounts};
+    use lotrc::level::pak::block1::infos::{DumpInfosVER, InfoCounts};
     use lotrc::types::{DumpSlice, u32VER, mut_slice};
     crate::make_owned_opaque!(OwnedDumpInfosVER, DumpInfosVER<'a, 'a>, 'a);
     fn from_data<'a>(dst: Option<&'a mut DumpSlice<'a>>, counts: Option<&InfoCounts>, offsets: Option<&'a mut mut_slice<'a, u32VER>>) -> Option<NonNull<OwnedDumpInfosVER<'a>>> {
@@ -76,7 +76,7 @@ crate::make_owned_opaque!(OwnedVecCompressedData, Vec<&'a CompressedDataRef<'a>>
 mod animations_ref_ver {
     use super::*;
     use lotrc::level::pak::animation::{DumpAnimationsVER, AnimationsRefVER, AnimationBlockInfoVER, AnimationInfoVER};
-    use lotrc::level::pak::block1::objs::DumpInfosVER;
+    use lotrc::level::pak::block1::infos::DumpInfosVER;
     fn dump<'a>(anims: Option<&'a AnimationsRefVER<'a>>, infos: Option<&mut DumpInfosVER>) -> Option<NonNull<OwnedVecCompressedData<'a>>> {
         anims?.dump(infos?).ok().map(|x| OwnedVecCompressedData::leak(x.into_iter().filter_map(|x| match x {
             CompressedData::Ref(x) => Some(x),

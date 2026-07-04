@@ -80,15 +80,24 @@ def parse_struct_typedef(lines, i, aliases, structs):
 
 def parse_enum(lines, i, enums):
     # for now parse enum as alias
-    _,name, _ = lines[i].split()
+    _,name, *_ = lines[i].split()
     i += 1
+    alt = lines[i].startswith("#if")
+    if alt:
+        i += 2
     vals = []
     while not lines[i].endswith('};'):
+        print(lines[i])
         vals.append(lines[i].strip()[:-1])
         i += 1
     i += 1
+    if alt:
+        i += 3
+    print(lines[i])
     _, ty, _ = lines[i].split()
     enums[name] = (ty, vals)
+    if alt:
+        i += 1
     return i + 1
 
 def skip_comment(lines, i):

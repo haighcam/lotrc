@@ -672,7 +672,7 @@ mod wrapper_ver {
 
     make_vec_wrapper!(
         Vec_DumpInfoDataVER,
-        lotrc::level::pak::block1::objs::DumpInfoDataVER,
-        lotrc::level::pak::block1::objs::DumpInfoDataVER<'a>
+        lotrc::level::pak::block1::infos::DumpInfoDataVER,
+        lotrc::level::pak::block1::infos::DumpInfoDataVER<'a>
     );
 }

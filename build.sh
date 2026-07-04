@@ -14,6 +14,7 @@ RUSTC_BOOTSTRAP=1 cbindgen -c ffi/cbindgen.toml -o python_ffi/lotrc_rs.pxd --lan
 
 #cargo build --release -p ffi_alt
 #cargo run --bin gen_ffi --features headers
+mkdir -p out
 cp target/release/liblotrc_ffi.so out/
 #cp ffi/lotrc_rs.py out/
 #cargo build --release -p lotrc_rs

@@ -1187,11 +1187,6 @@ cdef class RadiosityRefPc:
 cdef class ObjsRefPc:
 	cdef lotrc_rs.ObjsRefPc* ptr
 	@property
-	def infos(self):
-		val = InfosRefPc()
-		val.ptr = &self.ptr.infos
-		return val
-	@property
 	def textures(self):
 		val = IndexMap_u32__TextureRefPc()
 		val.ptr = &self.ptr.textures
@@ -1461,6 +1456,11 @@ cdef class StringKeysRefPc:
 
 cdef class Block1RefPc:
 	cdef lotrc_rs.Block1RefPc* ptr
+	@property
+	def infos(self):
+		val = InfosRefPc()
+		val.ptr = &self.ptr.infos
+		return val
 	@property
 	def objs(self):
 		val = ObjsRefPc()
@@ -2599,11 +2599,6 @@ cdef class RadiosityRefXbox:
 cdef class ObjsRefXbox:
 	cdef lotrc_rs.ObjsRefXbox* ptr
 	@property
-	def infos(self):
-		val = InfosRefXbox()
-		val.ptr = &self.ptr.infos
-		return val
-	@property
 	def textures(self):
 		val = IndexMap_u32__TextureRefXbox()
 		val.ptr = &self.ptr.textures
@@ -2873,6 +2868,11 @@ cdef class StringKeysRefXbox:
 
 cdef class Block1RefXbox:
 	cdef lotrc_rs.Block1RefXbox* ptr
+	@property
+	def infos(self):
+		val = InfosRefXbox()
+		val.ptr = &self.ptr.infos
+		return val
 	@property
 	def objs(self):
 		val = ObjsRefXbox()
@@ -3989,11 +3989,6 @@ cdef class RadiosityRefPs3:
 cdef class ObjsRefPs3:
 	cdef lotrc_rs.ObjsRefPs3* ptr
 	@property
-	def infos(self):
-		val = InfosRefPs3()
-		val.ptr = &self.ptr.infos
-		return val
-	@property
 	def textures(self):
 		val = IndexMap_u32__TextureRefPs3()
 		val.ptr = &self.ptr.textures
@@ -4263,6 +4258,11 @@ cdef class StringKeysRefPs3:
 
 cdef class Block1RefPs3:
 	cdef lotrc_rs.Block1RefPs3* ptr
+	@property
+	def infos(self):
+		val = InfosRefPs3()
+		val.ptr = &self.ptr.infos
+		return val
 	@property
 	def objs(self):
 		val = ObjsRefPs3()
