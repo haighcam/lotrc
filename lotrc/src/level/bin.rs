@@ -1,15 +1,17 @@
 use anyhow::{Context, Result};
-use lotrc_proc::{make_platforms, OrderedData};
+use lotrc_proc::{make_endian, derive_ordered_data};
 use rayon::prelude::*;
 use indexmap::IndexMap;
 use log::debug;
 
-use crate::types::GetNative;
-use crate::types::{update_crc, Crc, RefFromData, OrderedDataStrict, OrderedData, AlignedBuf, CompressedDataRef, get_default_ref, DumpCompressedData, align_offset, DumpData, DumpSlice, ref_slice};
-#[make_platforms]
 use crate::{
-    types::{u32VER, CrcVER, StringsRefVER, DumpStringsVER},
-    level::pak::block1::infos::DumpInfoDataVER
+    level::Version,
+    types::{update_crc, Crc, RefFromData, OrderedData, AlignedBuf, CompressedDataRef, get_default_ref, DumpCompressedData, align_offset, DumpData, DumpSlice, ref_slice}
+};
+#[make_endian]
+use crate::{
+    types::{u32_XE_, Crc_XE_, StringsRef_XE_, DumpStrings_XE_},
+    level::pak::block1::infos::DumpInfoData_XE_
 };
 
 #[cfg_attr(feature = "ffi", repr(C))]
@@ -19,60 +21,62 @@ pub struct BinData<'a> {
     pub texture_data: IndexMap<u32, CompressedDataRef<'a>>
 }
 
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct BinHeader {
-    pub constx06: u32,
-    pub version: u32,
-    pub strings_offset: u32,
-    pub strings_size: u32,
-    pub strings_num: u32,
-    pub asset_handle_num: u32,
-    pub asset_handle_offset: u32,
-    pub unk_7: u32,
-    pub vdata_num: u32,
-    pub vdata_num_alt: u32,
-    pub texdata_num: u32,
-    pub unk_11: u32,
-    pub unk_12: u32,
-    pub unk_13: u32,
-    pub unk_14: u32,
-    pub unk_15: u32,
-    pub unk_16: u32,
-    pub unk_17: u32,
-    pub unk_18: u32,
-    pub unk_19: u32,
-    pub unk_20: u32,
-    pub unk_21: u32,
-    pub unk_22: u32,
-    pub unk_23: u32,
-    pub unk_24: u32,
-    pub unk_25: u32,
-    pub unk_26: u32,
-    pub unk_27: u32,
-    pub unk_28: u32,
-    pub unk_29: u32,
-    pub unk_30: u32,
-    pub unk_31: u32,
-    pub unk_32: u32,
-    pub unk_33: u32,
-    pub unk_34: u32,
-    pub unk_35: u32,
-    pub unk_36: u32,
-    pub unk_37: u32,
-    pub unk_38: u32,
-    pub unk_39: u32,
-    pub unk_40: u32,
-    pub unk_41: u32,
-    pub unk_42: u32,
+#[derive_ordered_data]
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct BinHeader_XE_ {
+    pub constx06: u32_XE_,
+    pub version: u32_XE_,
+    pub strings_offset: u32_XE_,
+    pub strings_size: u32_XE_,
+    pub strings_num: u32_XE_,
+    pub asset_handle_num: u32_XE_,
+    pub asset_handle_offset: u32_XE_,
+    pub unk_7: u32_XE_,
+    pub vdata_num: u32_XE_,
+    pub vdata_num_alt: u32_XE_,
+    pub texdata_num: u32_XE_,
+    pub unk_11: u32_XE_,
+    pub unk_12: u32_XE_,
+    pub unk_13: u32_XE_,
+    pub unk_14: u32_XE_,
+    pub unk_15: u32_XE_,
+    pub unk_16: u32_XE_,
+    pub unk_17: u32_XE_,
+    pub unk_18: u32_XE_,
+    pub unk_19: u32_XE_,
+    pub unk_20: u32_XE_,
+    pub unk_21: u32_XE_,
+    pub unk_22: u32_XE_,
+    pub unk_23: u32_XE_,
+    pub unk_24: u32_XE_,
+    pub unk_25: u32_XE_,
+    pub unk_26: u32_XE_,
+    pub unk_27: u32_XE_,
+    pub unk_28: u32_XE_,
+    pub unk_29: u32_XE_,
+    pub unk_30: u32_XE_,
+    pub unk_31: u32_XE_,
+    pub unk_32: u32_XE_,
+    pub unk_33: u32_XE_,
+    pub unk_34: u32_XE_,
+    pub unk_35: u32_XE_,
+    pub unk_36: u32_XE_,
+    pub unk_37: u32_XE_,
+    pub unk_38: u32_XE_,
+    pub unk_39: u32_XE_,
+    pub unk_40: u32_XE_,
+    pub unk_41: u32_XE_,
+    pub unk_42: u32_XE_,
 }
 
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct AssetHandle {
-    pub key: Crc,
-    pub offset: u32,
-    pub size: u32,
-    pub size_comp: u32,
-    pub kind: u32,
+#[derive_ordered_data]
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct AssetHandle_XE_ {
+    pub key: Crc_XE_,
+    pub offset: u32_XE_,
+    pub size: u32_XE_,
+    pub size_comp: u32_XE_,
+    pub kind: u32_XE_,
 }
 
 #[cfg_attr(feature = "ffi", repr(C))]
@@ -90,22 +94,22 @@ impl Default for BinCompressedData<'_> {
     }
 }
 
-#[make_platforms]
+#[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
-pub struct BinRefVER<'a> {
-    pub header: &'a BinHeaderVER,
-    pub strings: StringsRefVER<'a>,
-    pub asset_handles: ref_slice<'a, AssetHandleVER>,
+pub struct BinRef_XE_<'a> {
+    pub header: &'a BinHeader_XE_,
+    pub strings: StringsRef_XE_<'a>,
+    pub asset_handles: ref_slice<'a, AssetHandle_XE_>,
     pub model_data: IndexMap<u32, &'a CompressedDataRef<'a>>,
     pub texture_data: IndexMap<u32, &'a CompressedDataRef<'a>>,
 }
 
-#[make_platforms]
-impl Default for BinRefVER<'_> {
+#[make_endian]
+impl Default for BinRef_XE_<'_> {
     fn default() -> Self {
         Self {
             header: get_default_ref(),
-            strings: StringsRefVER::default(),
+            strings: StringsRef_XE_::default(),
             asset_handles: ref_slice::default(),
             model_data: IndexMap::default().into(),
             texture_data: IndexMap::default().into(),
@@ -113,33 +117,33 @@ impl Default for BinRefVER<'_> {
     }
 }
 
-#[make_platforms]
-impl<'a> BinRefVER<'a> {
+#[make_endian]
+impl<'a> BinRef_XE_<'a> {
     pub fn from_data<'b: 'a, 'c: 'b>(src: &'c [u8], data: &'a mut BinCompressedData<'b>) -> Result<Self> {
         let t = std::time::Instant::now();
-        let header = BinHeaderVER::from_data(src).context("header")?;
-        let strings = StringsRefVER::from_data(
-            &src[header.strings_offset.get() as usize..],
-            header.strings_num.get() as usize,
+        let header = BinHeader_XE_::from_data(src).context("header")?;
+        let strings = StringsRef_XE_::from_data(
+            &src[header.strings_offset.conv()..],
+            header.strings_num.conv(),
         )
         .context("strings")?;
         update_crc(strings.strings());
-        let asset_handles = AssetHandleVER::slice_from_data(
-            &src[header.asset_handle_offset.get() as usize..],
-            header.asset_handle_num.get() as usize,
+        let asset_handles = AssetHandle_XE_::slice_from_data(
+            &src[header.asset_handle_offset.conv()..],
+            header.asset_handle_num.conv(),
         )
         .context("asset_handles")?;
         debug!("Bin headers in {}", t.elapsed().as_secs_f32());
         
         let t = std::time::Instant::now();
-        let split = header.vdata_num.get() as usize;
+        let split = header.vdata_num.conv();
         data.model_data = asset_handles.iter().take(split).map(|info| (
-            info.key.get(),
-            CompressedDataRef::from_data(&src[info.offset.get() as usize..], info.size_comp.get() as usize, info.size.get() as usize)
+            info.key.conv(),
+            CompressedDataRef::from_data(&src[info.offset.conv()..], info.size_comp.conv(), info.size.conv())
         )).collect::<IndexMap<_, _>>().into();
         data.texture_data = asset_handles.iter().skip(split).map(|info| (
-            info.key.get(),
-            CompressedDataRef::from_data(&src[info.offset.get() as usize..], info.size_comp.get() as usize, info.size.get() as usize)
+            info.key.conv(),
+            CompressedDataRef::from_data(&src[info.offset.conv()..], info.size_comp.conv(), info.size.conv())
         )).collect::<IndexMap<_, _>>().into();
 
         data.model_data.par_values_mut()
@@ -158,29 +162,29 @@ impl<'a> BinRefVER<'a> {
 }
 
 impl<'a> BinData<'a> {
-    #[make_platforms]
-    pub fn parse_ver(&'a mut self) -> Result<BinRefVER<'a>> {
+    #[make_endian]
+    pub fn parse_xe_(&'a mut self) -> Result<BinRef_XE_<'a>> {
         let t = std::time::Instant::now();
-        let header = BinHeaderVER::from_data(&self.data[..]).context("header")?;
-        let strings = StringsRefVER::from_data(
-            &self.data[header.strings_offset.get() as usize..],
-            header.strings_num.get() as usize,
+        let header = BinHeader_XE_::from_data(&self.data[..]).context("header")?;
+        let strings = StringsRef_XE_::from_data(
+            &self.data[header.strings_offset.conv()..],
+            header.strings_num.conv(),
         )
         .context("strings")?;
         update_crc(strings.strings());
-        let asset_handles = AssetHandleVER::slice_from_data(
-            &self.data[header.asset_handle_offset.get() as usize..],
-            header.asset_handle_num.get() as usize,
+        let asset_handles = AssetHandle_XE_::slice_from_data(
+            &self.data[header.asset_handle_offset.conv()..],
+            header.asset_handle_num.conv(),
         )
         .context("asset_handles")?;
         debug!("Bin headers in {}", t.elapsed().as_secs_f32());
         
         let t = std::time::Instant::now();
         let mut raw_data = asset_handles.iter().map(|info| (
-            info.key.get(),
-            CompressedDataRef::from_data(&self.data[info.offset.get() as usize..], info.size.get() as usize, info.size_comp.get() as usize)
+            info.key.conv(),
+            CompressedDataRef::from_data(&self.data[info.offset.conv()..], info.size.conv(), info.size_comp.conv())
         ));
-        let split = header.vdata_num.get() as usize;
+        let split = header.vdata_num.conv();
         let mut model_data = IndexMap::with_capacity(split);
         let mut texture_data = IndexMap::with_capacity(asset_handles.len() - split);
         for _ in 0..split {
@@ -195,7 +199,7 @@ impl<'a> BinData<'a> {
         self.texture_data = texture_data.into();
         debug!("Bin raw data in {}", t.elapsed().as_secs_f32());
 
-        Ok(BinRefVER {
+        Ok(BinRef_XE_ {
             header,
             asset_handles: asset_handles.into(),
             strings,
@@ -208,32 +212,30 @@ impl<'a> BinData<'a> {
     }
 }
 
-#[make_platforms]
-impl<'a> BinRefVER<'a> {
-    pub fn model_handles(&self) -> &[AssetHandleVER] {
-        &self.asset_handles[..self.header.vdata_num.get() as usize]
+#[make_endian]
+impl<'a> BinRef_XE_<'a> {
+    pub fn model_handles(&self) -> &[AssetHandle_XE_] {
+        &self.asset_handles[..self.header.vdata_num.conv()]
     }
-    pub fn texture_handles(&self) -> &[AssetHandleVER] {
-        &self.asset_handles[self.header.vdata_num.get() as usize..]
+    pub fn texture_handles(&self) -> &[AssetHandle_XE_] {
+        &self.asset_handles[self.header.vdata_num.conv()..]
     }
 }
 
-#[make_platforms]
-pub trait DumpBinVER {
-    fn strings(&self) -> &impl DumpStringsVER;
-    fn dump(&self, dst: &mut DumpSlice, model_data: &[DumpInfoDataVER], texture_data: &[DumpInfoDataVER], rad_data: Option<&DumpInfoDataVER>) -> Result<()> {
-        let header = BinHeaderVER::mut_from_data(dst).context("header")?;
+#[make_endian]
+pub trait DumpBin_XE_ {
+    fn strings(&self) -> &impl DumpStrings_XE_;
+    fn dump(&self, dst: &mut DumpSlice, model_data: &[DumpInfoData_XE_], texture_data: &[DumpInfoData_XE_], rad_data: Option<&DumpInfoData_XE_>, version: Version) -> Result<()> {
+        let header = BinHeader_XE_::mut_from_data(dst).context("header")?;
         dst.align(2048)?;
         header.constx06 = 0x6u32.conv();
-        if IS_PC {
-            header.version = 1u32.conv();
-        }
-        if IS_XBOX {
-            header.version = 2u32.conv();
-        }
-        if IS_PS3 {
-            header.version = 3u32.conv();
-        }
+
+        header.version = match version {
+            Version::Pc => 1u32,
+            Version::Xbox => 2,
+            Version::Ps3 => 3,
+            _ => 0
+        }.conv();
 
         let mut model_handles = Vec::with_capacity(model_data.len() + 1);
         for val in model_data {
@@ -243,7 +245,7 @@ pub trait DumpBinVER {
             let offset = dst.offset.conv();
             val.data.dump_into(dst).with_context(|| format!("dump model asset {}", val.key))?;
             dst.align(2048)?;
-            model_handles.push(AssetHandleVER {
+            model_handles.push(AssetHandle_XE_ {
                 key: val.key.clone(),
                 offset,
                 size: size.conv(),
@@ -265,7 +267,7 @@ pub trait DumpBinVER {
             } else {
                 (0u32.conv(), 0u32.conv())
             };
-            texture_handles.push(AssetHandleVER {
+            texture_handles.push(AssetHandle_XE_ {
                 key: val.key.clone(),
                 offset,
                 size,
@@ -282,7 +284,7 @@ pub trait DumpBinVER {
             } else {
                 (val.data.size().conv(), val.data.size_comp().conv())
             };
-            model_handles.push(AssetHandleVER {
+            model_handles.push(AssetHandle_XE_ {
                 key: val.key.clone(),
                 offset,
                 size,
@@ -295,10 +297,10 @@ pub trait DumpBinVER {
         header.vdata_num_alt = header.vdata_num;
         header.texdata_num = texture_data.len().conv();
         header.asset_handle_offset = dst.offset.conv();
-        let asset_handles = AssetHandleVER::mut_slice_from_data(dst, model_handles.len() + texture_handles.len()).context("asset_handles")?;
+        let asset_handles = AssetHandle_XE_::mut_slice_from_data(dst, model_handles.len() + texture_handles.len()).context("asset_handles")?;
         header.asset_handle_num = asset_handles.len().conv();
-        model_handles.sort_by_key(|x| x.key.get());
-        texture_handles.sort_by_key(|x| x.key.get());
+        model_handles.sort_by_key(|x| x.key.to_native());
+        texture_handles.sort_by_key(|x| x.key.to_native());
         (&mut asset_handles[..model_handles.len()]).write_from(&model_handles).context("model asset handles")?;
         (&mut asset_handles[model_handles.len()..]).write_from(&texture_handles).context("texture asset handles")?;
 
@@ -313,8 +315,8 @@ pub trait DumpBinVER {
 
         Ok(())
     }
-    fn size(&self, model_data: &[DumpInfoDataVER], texture_data: &[DumpInfoDataVER], rad_data: Option<&DumpInfoDataVER>) -> usize {
-        let mut size = align_offset(std::mem::size_of::<BinHeaderVER>(), 2048);
+    fn size(&self, model_data: &[DumpInfoData_XE_], texture_data: &[DumpInfoData_XE_], rad_data: Option<&DumpInfoData_XE_>) -> usize {
+        let mut size = align_offset(std::mem::size_of::<BinHeader_XE_>(), 2048);
         for val in model_data {
             if val.data.is_some() {
                 size = align_offset(size + val.data.size_comp(), 2048);
@@ -329,15 +331,15 @@ pub trait DumpBinVER {
             size = align_offset(size + val.data.size_comp(), 2048);
         }
 
-        size += std::mem::size_of::<AssetHandleVER>() * (model_data.len() + texture_data.len() + if rad_data.is_some() { 1 } else { 0 });
+        size += std::mem::size_of::<AssetHandle_XE_>() * (model_data.len() + texture_data.len() + if rad_data.is_some() { 1 } else { 0 });
 
         align_offset(size + self.strings().size(), 2048)
     }
 }
 
-#[make_platforms]
-impl DumpBinVER for BinRefVER<'_> {
-    fn strings(&self) -> &impl DumpStringsVER {
+#[make_endian]
+impl DumpBin_XE_ for BinRef_XE_<'_> {
+    fn strings(&self) -> &impl DumpStrings_XE_ {
         &self.strings
     }
 }

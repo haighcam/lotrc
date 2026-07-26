@@ -1,251 +1,230 @@
 use anyhow::{anyhow, Context, Result};
 use indexmap::IndexMap;
 
-use crate::types::GetNative;
-use crate::types::{CompressedData, Color, RefFromData, Vector2, Vector3, Vector4, OrderedData, OrderedDataStrict, DumpSlice, CompressedDataRef, DumpData, ref_slice, u8Pc, u8Xbox};
+use crate::types::{CompressedData, Color, RefFromData, Vector2, Vector3, Vector4, OrderedData, DumpSlice, CompressedDataRef, DumpData, ref_slice};
 use crate::level::pak::block1::gameobjs::keys::{INT_KEY, COLOR_KEY, VECTOR2_KEY, VECTOR3_KEY, VECTOR4_KEY};
 use crate::level::pak::block1::infos::InfoCounts;
 
-use lotrc_proc::{make_platforms, OrderedData};
-#[make_platforms]
+use lotrc_proc::{make_endian, derive_ordered_data};
+#[make_endian]
 use crate::{
     level::{
-        pak::block1::infos::DumpInfosVER,
-        model::{ModelInfoVER}
+        pak::block1::infos::DumpInfos_XE_,
+        model::{ModelInfo_XE_}
     },
-    types::{ColorVER, Vector2VER, Vector3VER, Vector4VER, u16VER, u32VER},
+    types::{Color_XE_, Vector2_XE_, Vector3_XE_, Vector4_XE_, u16_XE_, u32_XE_},
 };
 
+#[make_endian]
+#[derive(Debug, Default, Clone)]
+pub struct BufferInfoPs3_XE_ {
+    pub vbuff_info_offset: u32_XE_,   // pointer to objf
+    pub vbuff_info_offset_2: u32_XE_, // optional pointer to objf
+    pub vbuff_info_offset_3: u32_XE_, // optional pointer to objf
+    pub unk_3: u32_XE_,
+    pub unk_4: u32_XE_,
+    pub unk_5: u32_XE_,
+    pub unk_6: u32_XE_,
+    pub unk_7: u32_XE_,
+    pub unk_8: u32_XE_,
+    pub unk_9: u32_XE_,
+    pub unk_10: u32_XE_,
+    pub unk_11: u32_XE_,
+    pub unk_12: u32_XE_,
+    pub unk_13: u32_XE_,
+    pub unk_14: u32_XE_,
+    pub unk_15: u32_XE_,
+    pub unk_16: u32_XE_,
+    pub ibuff_info_offset: u32_XE_, // not the correct place, but needed to get code running
+    pub v_size: u32_XE_, // not the correct place, but needed to get code running
+    pub vbuff_size: u32_XE_, // not the correct place, but needed to get code running
+}
 
-///gen_ffi:export
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct BufferInfo {
-    pub vbuff_info_offset: u32,   // pointer to objf
-    pub vbuff_info_offset_2: u32, // optional pointer to objf
-    pub vbuff_info_offset_3: u32, // optional pointer to objf
-    pub unk_3: u32,
-    pub unk_4: u32,
-    pub unk_5: u32,
-    pub unk_6: u32,
-    pub unk_7: u32,
-    pub unk_8: u32,
-    pub unk_9: u32,
-    pub unk_10: u32,
-    pub unk_11: u32,
-    pub unk_12: u32,
-    pub unk_13: u32,
-    pub unk_14: u32,
-    pub unk_15: u32,
-    pub unk_16: u32,
-    #[ordered_data(name_ps3=ibuff_info_offset)] // not the correct place, but needed to get code running
-    pub unk_17: u32,
-    #[ordered_data(name_ps3=v_size)] // not the correct place, but needed to get code running
-    pub unk_18: u32,
-    #[ordered_data(name_ps3=vbuff_size)] // not the correct place, but needed to get code running
-    pub unk_19: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_20: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_21: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_22: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_23: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_24: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_25: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_26: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_27: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_28: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_29: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_30: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_31: u32,
-    #[ordered_data(skip_ps3)]
-    pub v_size: u32,
-    #[ordered_data(skip_ps3)]
-    pub v_size_2: u32,
-    #[ordered_data(skip_ps3)]
-    pub v_size_3: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_35: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_36: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_37: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_38: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_39: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_40: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_41: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_42: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_43: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_44: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_45: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_46: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_47: u32,
-    #[ordered_data(skip_ps3)]
-    pub vbuff_size: u32,
-    #[ordered_data(skip_ps3)]
-    pub vbuff_size_2: u32,
-    #[ordered_data(skip_ps3)]
-    pub vbuff_size_3: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_51: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_52: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_53: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_54: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_55: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_56: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_57: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_58: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_59: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_60: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_61: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_62: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_63: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_64: u32,
-    #[ordered_data(skip_ps3)]
-    pub ibuff_info_offset: u32, // poiner to objg
-    #[ordered_data(skip_ps3)]
-    pub i_num: u32, // number of indeices in ibuffer
-    #[ordered_data(skip_ps3)]
-    pub unk_67: u32,
-    #[ordered_data(skip_ps3)]
-    pub skin_offset: u32,
-    #[ordered_data(skip_ps3)]
-    pub skin_size: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_70: u32,
-    #[ordered_data(skip_ps3)]
-    pub tri_num: u32, // number of objects(triangles) in ibuffer
-    #[ordered_data(skip_ps3)]
-    pub unk_72: u32, // possibly index to bone_transform used for mesh
-    #[ordered_data(skip_ps3)]
-    pub unk_73: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_74: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_75: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_76: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_77: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_78: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_79: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_80: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_81: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_82: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_83: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_84: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_85: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_86: u32,
-    #[ordered_data(skip_ps3)]
-    pub unk_87: u32,
-    #[ordered_data(skip_ps3)]
+#[derive_ordered_data]
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct BufferInfo_XE_ {
+    pub vbuff_info_offset: u32_XE_,   // pointer to objf
+    pub vbuff_info_offset_2: u32_XE_, // optional pointer to objf
+    pub vbuff_info_offset_3: u32_XE_, // optional pointer to objf
+    pub unk_3: u32_XE_,
+    pub unk_4: u32_XE_,
+    pub unk_5: u32_XE_,
+    pub unk_6: u32_XE_,
+    pub unk_7: u32_XE_,
+    pub unk_8: u32_XE_,
+    pub unk_9: u32_XE_,
+    pub unk_10: u32_XE_,
+    pub unk_11: u32_XE_,
+    pub unk_12: u32_XE_,
+    pub unk_13: u32_XE_,
+    pub unk_14: u32_XE_,
+    pub unk_15: u32_XE_,
+    pub unk_16: u32_XE_,
+    pub unk_17: u32_XE_,
+    pub unk_18: u32_XE_,
+    pub unk_19: u32_XE_,
+    pub unk_20: u32_XE_,
+    pub unk_21: u32_XE_,
+    pub unk_22: u32_XE_,
+    pub unk_23: u32_XE_,
+    pub unk_24: u32_XE_,
+    pub unk_25: u32_XE_,
+    pub unk_26: u32_XE_,
+    pub unk_27: u32_XE_,
+    pub unk_28: u32_XE_,
+    pub unk_29: u32_XE_,
+    pub unk_30: u32_XE_,
+    pub unk_31: u32_XE_,
+    pub v_size: u32_XE_,
+    pub v_size_2: u32_XE_,
+    pub v_size_3: u32_XE_,
+    pub unk_35: u32_XE_,
+    pub unk_36: u32_XE_,
+    pub unk_37: u32_XE_,
+    pub unk_38: u32_XE_,
+    pub unk_39: u32_XE_,
+    pub unk_40: u32_XE_,
+    pub unk_41: u32_XE_,
+    pub unk_42: u32_XE_,
+    pub unk_43: u32_XE_,
+    pub unk_44: u32_XE_,
+    pub unk_45: u32_XE_,
+    pub unk_46: u32_XE_,
+    pub unk_47: u32_XE_,
+    pub vbuff_size: u32_XE_,
+    pub vbuff_size_2: u32_XE_,
+    pub vbuff_size_3: u32_XE_,
+    pub unk_51: u32_XE_,
+    pub unk_52: u32_XE_,
+    pub unk_53: u32_XE_,
+    pub unk_54: u32_XE_,
+    pub unk_55: u32_XE_,
+    pub unk_56: u32_XE_,
+    pub unk_57: u32_XE_,
+    pub unk_58: u32_XE_,
+    pub unk_59: u32_XE_,
+    pub unk_60: u32_XE_,
+    pub unk_61: u32_XE_,
+    pub unk_62: u32_XE_,
+    pub unk_63: u32_XE_,
+    pub unk_64: u32_XE_,
+    pub ibuff_info_offset: u32_XE_, // poiner to objg
+    pub i_num: u32_XE_, // number of indeices in ibuffer
+    pub unk_67: u32_XE_,
+    pub skin_offset: u32_XE_,
+    pub skin_size: u32_XE_,
+    pub unk_70: u32_XE_,
+    pub tri_num: u32_XE_, // number of objects(triangles) in ibuffer
+    pub unk_72: u32_XE_, // possibly index to bone_transform used for mesh
+    pub unk_73: u32_XE_,
+    pub unk_74: u32_XE_,
+    pub unk_75: u32_XE_,
+    pub unk_76: u32_XE_,
+    pub unk_77: u32_XE_,
+    pub unk_78: u32_XE_,
+    pub unk_79: u32_XE_,
+    pub unk_80: u32_XE_,
+    pub unk_81: u32_XE_,
+    pub unk_82: u32_XE_,
+    pub unk_83: u32_XE_,
+    pub unk_84: u32_XE_,
+    pub unk_85: u32_XE_,
+    pub unk_86: u32_XE_,
+    pub unk_87: u32_XE_,
     pub variation_id: u8,
-    #[ordered_data(skip_ps3)]
     pub variation: u8,
-    #[ordered_data(skip_ps3)]
     pub unk_88c: u8,
-    #[ordered_data(skip_ps3)]
     pub unk_88d: u8,
 }
 
-///gen_ffi:export
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct VBuffInfo {
-    pub unk_0: u32,
-    #[ordered_data(name_ps3=unk_7)]
-    pub size: u32,
-    pub unk_3: u32,
-    #[ordered_data(name_ps3=unk_8)]
-    pub offset: u32,
-    #[ordered_data(name_xbox=fmt2, name_ps3=unk_9)]
-    pub fmt1: u32,
-    #[ordered_data(name_xbox=fmt1, name_ps3=size)]
-    pub fmt2: u32,
-    pub unk_6: u32,
-    #[ordered_data(name_ps3=offset)]
-    pub unk_7: u32,
-    #[ordered_data(skip_pc, name_ps3=fmt2)]
-    pub unk_8: u32,
-    #[ordered_data(skip_pc, name_ps3=fmt1)]
-    pub unk_9: u32,
-    #[ordered_data(skip_pc, skip_ps3)]
-    pub unk_10: u32,
-    #[ordered_data(skip_pc, skip_ps3)]
-    pub unk_11: u32,
-    #[ordered_data(skip_pc, skip_ps3)]
-    pub unk_12: u32,
-    #[ordered_data(skip_pc, skip_ps3)]
-    pub unk_13: u32,
+#[make_endian]
+#[derive(Debug, Default, Clone)]
+pub struct VBuffInfoXbox_XE_ {
+    pub unk_0: u32_XE_,
+    pub size: u32_XE_,
+    pub unk_3: u32_XE_,
+    pub offset: u32_XE_,
+    pub fmt2: u32_XE_,
+    pub fmt1: u32_XE_,
+    pub unk_6: u32_XE_,
+    pub unk_7: u32_XE_,
+    pub unk_8: u32_XE_,
+    pub unk_9: u32_XE_,
+    pub unk_10: u32_XE_,
+    pub unk_11: u32_XE_,
+    pub unk_12: u32_XE_,
+    pub unk_13: u32_XE_,
 }
 
-///gen_ffi:export
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct IBuffInfo {
-    pub unk_0: u32,
-    #[ordered_data(name_ps3=unk_5)]
-    pub size: u32,
-    #[ordered_data(name_ps3=unk_6)]
-    pub format: u32,
-    pub vbuff_alt_fmt: u32, // 1 if vbuff.fmt1 & 0x40000 != 0 else 0; 0 for Xbox
-    #[ordered_data(name_ps3=unk_8)]
-    pub offset: u32,
-    #[ordered_data(name_ps3=size)]
-    pub unk_5: u32,
-    #[ordered_data(skip_pc, name_ps3=format)]
-    pub unk_6: u32,
-    #[ordered_data(skip_pc)]
-    pub unk_7: u32,
-    #[ordered_data(skip_pc, name_ps3=offset)]
-    pub unk_8: u32,
-    #[ordered_data(skip_pc, skip_ps3)]
-    pub unk_9: u32,
-    #[ordered_data(skip_pc, skip_ps3)]
-    pub unk_10: u32,
-    #[ordered_data(skip_pc, skip_ps3)]
-    pub unk_11: u32,
-    #[ordered_data(skip_pc, skip_ps3)]
-    pub unk_12: u32,
+#[make_endian]
+#[derive(Debug, Default, Clone)]
+pub struct VBuffInfoPS3_XE_ {
+    pub unk_0: u32_XE_,
+    pub unk_7: u32_XE_,
+    pub unk_3: u32_XE_,
+    pub unk_8: u32_XE_,
+    pub unk_9: u32_XE_,
+    pub size: u32_XE_,
+    pub unk_6: u32_XE_,
+    pub offset: u32_XE_,
+    pub fmt2: u32_XE_,
+    pub fmt1: u32_XE_,
+}
+
+#[derive_ordered_data]
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct VBuffInfo_XE_ {
+    pub unk_0: u32_XE_,
+    pub size: u32_XE_,
+    pub unk_3: u32_XE_,
+    pub offset: u32_XE_,
+    pub fmt1: u32_XE_,
+    pub fmt2: u32_XE_,
+    pub unk_6: u32_XE_,
+    pub unk_7: u32_XE_,
+}
+
+#[make_endian]
+#[derive(Debug, Default, Clone)]
+pub struct IBuffInfoXbox_XE_ {
+    pub unk_0: u32_XE_,
+    pub size: u32_XE_,
+    pub format: u32_XE_,
+    pub vbuff_alt_fmt: u32_XE_, // 1 if vbuff.fmt1 & 0x40000 != 0 else 0; 0 for Xbox
+    pub offset: u32_XE_,
+    pub unk_5: u32_XE_,
+    pub unk_6: u32_XE_,
+    pub unk_7: u32_XE_,
+    pub unk_8: u32_XE_,
+    pub unk_9: u32_XE_,
+    pub unk_10: u32_XE_,
+    pub unk_11: u32_XE_,
+    pub unk_12: u32_XE_,
+}
+
+#[make_endian]
+#[derive(Debug, Default, Clone)]
+pub struct IBuffInfoPs3_XE_ {
+    pub unk_0: u32_XE_,
+    pub unk_5: u32_XE_,
+    pub unk_6: u32_XE_,
+    pub vbuff_alt_fmt: u32_XE_, // 1 if vbuff.fmt1 & 0x40000 != 0 else 0; 0 for Xbox
+    pub unk_8: u32_XE_,
+    pub size: u32_XE_,
+    pub format: u32_XE_,
+    pub unk_7: u32_XE_,
+    pub offset: u32_XE_,
+}
+
+#[derive_ordered_data]
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct IBuffInfo_XE_ {
+    pub unk_0: u32_XE_,
+    pub size: u32_XE_,
+    pub format: u32_XE_,
+    pub vbuff_alt_fmt: u32_XE_, // 1 if vbuff.fmt1 & 0x40000 != 0 else 0; 0 for Xbox
+    pub offset: u32_XE_,
+    pub unk_5: u32_XE_,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Hash)]
@@ -350,18 +329,18 @@ impl VertexUsage {
 }
 
 
-#[make_platforms]
-pub enum VertexValVER {
-    Int(u32VER),
-    Color(ColorVER),
-    Vector2(Vector2VER),
-    Vector3(Vector3VER),
-    Vector4(Vector4VER),
+#[make_endian]
+pub enum VertexVal_XE_ {
+    Int(u32_XE_),
+    Color(Color_XE_),
+    Vector2(Vector2_XE_),
+    Vector3(Vector3_XE_),
+    Vector4(Vector4_XE_),
 }
 
 /*
-#[make_platforms]
-impl VertexValVER {
+#[make_endian]
+impl VertexVal_XE_ {
     pub fn as_bytes(&self) -> &[u8] {
         match self {
             Self::Int(val) => RefFromDataArgs::as_bytes(val),
@@ -384,14 +363,14 @@ pub enum VertexData {
 }
 
 impl VertexData {
-    #[make_platforms]
-    pub fn get_ver(&self, i: usize) -> VertexValVER {
+    #[make_endian]
+    pub fn get_xe_(&self, i: usize) -> VertexVal_XE_ {
         match self {
-            Self::Int(vals) => VertexValVER::Int(vals[i].clone().into()),
-            Self::Color(vals) => VertexValVER::Color(vals[i].clone().into()),
-            Self::Vector2(vals) => VertexValVER::Vector2(vals[i].clone().into()),
-            Self::Vector3(vals) => VertexValVER::Vector3(vals[i].clone().into()),
-            Self::Vector4(vals) => VertexValVER::Vector4(vals[i].clone().into()),
+            Self::Int(vals) => VertexVal_XE_::Int(vals[i].clone().into()),
+            Self::Color(vals) => VertexVal_XE_::Color(vals[i].clone().into()),
+            Self::Vector2(vals) => VertexVal_XE_::Vector2(vals[i].conv()),
+            Self::Vector3(vals) => VertexVal_XE_::Vector3(vals[i].conv()),
+            Self::Vector4(vals) => VertexVal_XE_::Vector4(vals[i].conv()),
         }
     }
 
@@ -635,25 +614,25 @@ fn parse_fmt(fmt1: u32, fmt2: u32) -> (usize, IndexMap<VertexUsage, VertexDataIn
     (s, vals)
 }
 
-#[make_platforms]
+#[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
-pub struct VertexBufferRefVER<'a> {
-    pub info: &'a VBuffInfoVER,
+pub struct VertexBufferRef_XE_<'a> {
+    pub info: &'a VBuffInfo_XE_,
     pub offsets: IndexMap<VertexUsage, VertexDataIndex>,
     pub size: usize,
     data: ref_slice<'a, u8>
 }
 
-#[make_platforms]
-impl<'a> VertexBufferRefVER<'a> {
-    pub fn from_data(src: &'a [u8], info: &'a VBuffInfoVER) -> Result<Self> {
-        let (size, offsets) = parse_fmt(info.fmt1.get(), info.fmt2.get());
+#[make_endian]
+impl<'a> VertexBufferRef_XE_<'a> {
+    pub fn from_data(src: &'a [u8], info: &'a VBuffInfo_XE_) -> Result<Self> {
+        let (size, offsets) = parse_fmt(info.fmt1.conv(), info.fmt2.conv());
         Ok(Self {
             info: info.into(),
             size,
             offsets: offsets.into(),
-            data: (&src[info.offset.get() as usize..(info.offset.get() + info.size.get()) as usize]).into(),
+            data: (&src[info.offset.conv()..(info.offset.to_native() + info.size.to_native()) as usize]).into(),
         })
     }
     pub fn iter(&self) -> VertexDataIter<'_> {
@@ -681,14 +660,14 @@ impl VertexBuffer {
     }
 
     /*
-    #[make_platforms]
-    pub fn dump_ver(&self) -> Vec<u8> {
+    #[make_endian]
+    pub fn dump_xe_(&self) -> Vec<u8> {
         let i = self.vals.iter().map(|(_, x)| x.len()).min().unwrap();
         let sorted_vals: Vec<Vec<_>> = self
             .vals
             .iter()
             .sorted_by_key(|(x, _)| x.order())
-            .map(|(_, x)| (0..x.len()).map(|i| x.get_ver(i)).collect())
+            .map(|(_, x)| (0..x.len()).map(|i| x.get_xe_(i)).collect())
             .collect();
         (0..i)
             .flat_map(|i| sorted_vals.iter().flat_map(move |x| x[i].as_bytes()))
@@ -698,9 +677,9 @@ impl VertexBuffer {
     */
 }
 
-#[make_platforms]
-impl From<&VertexBufferRefVER<'_>> for VertexBuffer {
-    fn from(val: &VertexBufferRefVER) -> Self {
+#[make_endian]
+impl From<&VertexBufferRef_XE_<'_>> for VertexBuffer {
+    fn from(val: &VertexBufferRef_XE_) -> Self {
         let mut vals = IndexMap::with_capacity(val.offsets.len());
         let val_iter = val.iter();
         let size = val_iter.len();
@@ -717,11 +696,11 @@ impl From<&VertexBufferRefVER<'_>> for VertexBuffer {
         for data in val_iter {
             for (off, val) in val.offsets.values().zip(vals.values_mut()) {
                 match val {
-                    VertexData::Int(val) => val.push(data.get_int_ver(off).unwrap().conv()),
-                    VertexData::Color(val) => val.push(data.get_color_ver(off).unwrap().conv()),
-                    VertexData::Vector2(val) => val.push(data.get_vec2_ver(off).unwrap().conv()),
-                    VertexData::Vector3(val) => val.push(data.get_vec3_ver(off).unwrap().conv()),
-                    VertexData::Vector4(val) => val.push(data.get_vec4_ver(off).unwrap().conv()),
+                    VertexData::Int(val) => val.push(data.get_int_xe_(off).unwrap().conv()),
+                    VertexData::Color(val) => val.push(data.get_color_xe_(off).unwrap().conv()),
+                    VertexData::Vector2(val) => val.push(data.get_vec2_xe_(off).unwrap().conv()),
+                    VertexData::Vector3(val) => val.push(data.get_vec3_xe_(off).unwrap().conv()),
+                    VertexData::Vector4(val) => val.push(data.get_vec4_xe_(off).unwrap().conv()),
                 }
             }
         }
@@ -732,30 +711,30 @@ impl From<&VertexBufferRefVER<'_>> for VertexBuffer {
     }
 }
 
-#[make_platforms]
+#[make_endian]
 #[cfg_attr(feature = "ffi", repr(C, u8))]
 #[derive(PartialEq)]
-pub enum IndexBufferValsRefVER<'a> {
-    U16(ref_slice<'a, u16VER>),
-    U32(ref_slice<'a, u32VER>),
+pub enum IndexBufferValsRef_XE_<'a> {
+    U16(ref_slice<'a, u16_XE_>),
+    U32(ref_slice<'a, u32_XE_>),
 }
 
-#[make_platforms]
+#[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
-pub struct IndexBufferRefVER<'a> {
-    pub info: &'a IBuffInfoVER,
-    pub vals: IndexBufferValsRefVER<'a>
+pub struct IndexBufferRef_XE_<'a> {
+    pub info: &'a IBuffInfo_XE_,
+    pub vals: IndexBufferValsRef_XE_<'a>
 }
 
-#[make_platforms]
-impl<'a> IndexBufferRefVER<'a> {
-    pub fn from_data(src: &'a [u8], info: &'a IBuffInfoVER) -> Result<Self> {
+#[make_endian]
+impl<'a> IndexBufferRef_XE_<'a> {
+    pub fn from_data(src: &'a [u8], info: &'a IBuffInfo_XE_) -> Result<Self> {
         Ok(Self {
             info,
-            vals: match info.format.get() {
-                0x10 => IndexBufferValsRefVER::U16(u16VER::slice_from_data(&src[info.offset.get() as usize..], info.size.get() as usize/2).context("vals u16")?.into()),
-                _ => IndexBufferValsRefVER::U32(u32VER::slice_from_data(&src[info.offset.get() as usize..], info.size.get() as usize/4).context("vals u32")?.into()),
+            vals: match info.format.conv() {
+                0x10u32 => IndexBufferValsRef_XE_::U16(u16_XE_::slice_from_data(&src[info.offset.conv()..], info.size.to_native() as usize/2).context("vals u16")?.into()),
+                _ => IndexBufferValsRef_XE_::U32(u32_XE_::slice_from_data(&src[info.offset.conv()..], info.size.to_native() as usize/4).context("vals u32")?.into()),
             }
         })
     }
@@ -767,26 +746,26 @@ pub enum IndexBuffer {
     U32(Vec<u32>),
 }
 
-#[make_platforms]
-impl From<&IndexBufferRefVER<'_>> for IndexBuffer {
-    fn from(val: &IndexBufferRefVER) -> Self {
+#[make_endian]
+impl From<&IndexBufferRef_XE_<'_>> for IndexBuffer {
+    fn from(val: &IndexBufferRef_XE_) -> Self {
         match &val.vals {
-            IndexBufferValsRefVER::U16(vals) => Self::U16(vals.iter().map(|x| x.conv()).collect()),
-            IndexBufferValsRefVER::U32(vals) => Self::U32(vals.iter().map(|x| x.conv()).collect()),
+            IndexBufferValsRef_XE_::U16(vals) => Self::U16(vals.iter().map(|x| x.conv()).collect()),
+            IndexBufferValsRef_XE_::U32(vals) => Self::U32(vals.iter().map(|x| x.conv()).collect()),
         }
     }
 }
 /*
 impl IndexBuffer {
-    #[make_platforms]
-    pub fn dump_ver(&self) -> Vec<u8> {
+    #[make_endian]
+    pub fn dump_xe_(&self) -> Vec<u8> {
         match self {
             Self::U16 { vals } => {
-                let vals: Vec<_> = vals.iter().map(|x| u16VER::new(*x)).collect();
+                let vals: Vec<_> = vals.iter().map(|x| u16_XE_::new(*x)).collect();
                 RefFromDataArgs::as_bytes(&vals[..]).to_vec()
             }
             Self::U32 { vals } => {
-                let vals: Vec<_> = vals.iter().map(|x| u32VER::new(*x)).collect();
+                let vals: Vec<_> = vals.iter().map(|x| u32_XE_::new(*x)).collect();
                 RefFromDataArgs::as_bytes(&vals[..]).to_vec()
             }
         }
@@ -845,13 +824,13 @@ impl ExactSizeIterator for VertexDataIter<'_> {
     }
 }
 
-#[make_platforms]
-enum VertexDataIterVER<'a> {
-    Int(&'a [u32VER]),
-    Color(&'a [ColorVER]),
-    Vector2(&'a [Vector2VER]),
-    Vector3(&'a [Vector3VER]),
-    Vector4(&'a [Vector4VER]),
+#[make_endian]
+enum VertexDataIter_XE_<'a> {
+    Int(&'a [u32_XE_]),
+    Color(&'a [Color_XE_]),
+    Vector2(&'a [Vector2_XE_]),
+    Vector3(&'a [Vector3_XE_]),
+    Vector4(&'a [Vector4_XE_]),
 }
 
 // gotten from vertex data
@@ -868,42 +847,42 @@ pub struct VertexValRef<'a> {
 }
 
 impl<'a> VertexValRef<'a> {
-    #[make_platforms]
-    pub fn get_int_ver(&'a self, ind: &VertexDataIndex) -> Result<&'a u32VER> {
-        u32VER::from_data(&self.data[ind.offset..])
+    #[make_endian]
+    pub fn get_int_xe_(&'a self, ind: &VertexDataIndex) -> Result<&'a u32_XE_> {
+        u32_XE_::from_data(&self.data[ind.offset..])
     }
-    #[make_platforms]
-    pub fn get_color_ver(&'a self, ind: &VertexDataIndex) -> Result<&'a ColorVER> {
-        ColorVER::from_data(&self.data[ind.offset..])
+    #[make_endian]
+    pub fn get_color_xe_(&'a self, ind: &VertexDataIndex) -> Result<&'a Color_XE_> {
+        Color_XE_::from_data(&self.data[ind.offset..])
     }
-    #[make_platforms]
-    pub fn get_vec2_ver(&'a self, ind: &VertexDataIndex) -> Result<&'a Vector2VER> {
-        Vector2VER::from_data(&self.data[ind.offset..])
+    #[make_endian]
+    pub fn get_vec2_xe_(&'a self, ind: &VertexDataIndex) -> Result<&'a Vector2_XE_> {
+        Vector2_XE_::from_data(&self.data[ind.offset..])
     }
-    #[make_platforms]
-    pub fn get_vec3_ver(&'a self, ind: &VertexDataIndex) -> Result<&'a Vector3VER> {
-        Vector3VER::from_data(&self.data[ind.offset..])
+    #[make_endian]
+    pub fn get_vec3_xe_(&'a self, ind: &VertexDataIndex) -> Result<&'a Vector3_XE_> {
+        Vector3_XE_::from_data(&self.data[ind.offset..])
     }
-    #[make_platforms]
-    pub fn get_vec4_ver(&'a self, ind: &VertexDataIndex) -> Result<&'a Vector4VER> {
-        Vector4VER::from_data(&self.data[ind.offset..])
+    #[make_endian]
+    pub fn get_vec4_xe_(&'a self, ind: &VertexDataIndex) -> Result<&'a Vector4_XE_> {
+        Vector4_XE_::from_data(&self.data[ind.offset..])
     }
 }
 
-#[make_platforms]
+#[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
-pub struct ModelDataRefVER<'a> {
-    pub infos: ref_slice<'a, BufferInfoVER>,
-    pub vbuff_order: ref_slice<'a, u32VER>,
-    pub ibuff_order: ref_slice<'a, u32VER>,
-    pub vertex: IndexMap<u32, VertexBufferRefVER<'a>>,
-    pub index: IndexMap<u32, IndexBufferRefVER<'a>>,
+pub struct ModelDataRef_XE_<'a> {
+    pub infos: ref_slice<'a, BufferInfo_XE_>,
+    pub vbuff_order: ref_slice<'a, u32_XE_>,
+    pub ibuff_order: ref_slice<'a, u32_XE_>,
+    pub vertex: IndexMap<u32, VertexBufferRef_XE_<'a>>,
+    pub index: IndexMap<u32, IndexBufferRef_XE_<'a>>,
     pub data: Option<&'a CompressedDataRef<'a>>
 }
 
-#[make_platforms]
-impl Default for ModelDataRefVER<'_> {
+#[make_endian]
+impl Default for ModelDataRef_XE_<'_> {
     fn default() -> Self {
         Self {
             infos: ref_slice::default(),
@@ -916,18 +895,18 @@ impl Default for ModelDataRefVER<'_> {
     }
 }
 
-#[make_platforms]
-impl<'a> ModelDataRefVER<'a> {
-    pub fn from_data(src: &'a [u8], info: &'a ModelInfoVER, model_data: &IndexMap<u32, &'a CompressedDataRef<'a>>) -> Result<Self> {
-        if let Some(model_data) = model_data.get(&info.asset_key.get()) {
+#[make_endian]
+impl<'a> ModelDataRef_XE_<'a> {
+    pub fn from_data(src: &'a [u8], info: &'a ModelInfo_XE_, model_data: &IndexMap<u32, &'a CompressedDataRef<'a>>) -> Result<Self> {
+        if let Some(model_data) = model_data.get(&info.asset_key.to_native()) {
             let data = model_data.get();
-            let infos = BufferInfoVER::slice_from_data(&src[info.buffer_info_offset.get() as usize..], info.mat_num.get() as usize).context("buffer infos")?;
-            let vbuff_order = u32VER::slice_from_data(&src[info.vbuff_offset.get() as usize..], info.vbuff_num.get() as usize).context("vbuff order")?;
-            let ibuff_order = u32VER::slice_from_data(&src[info.ibuff_offset.get() as usize..], info.ibuff_num.get() as usize).context("vbuff order")?;
-            let vbuffs = vbuff_order.iter().map(|x| Ok((x.get(), VBuffInfoVER::from_data(&src[x.get() as usize..]).with_context(|| format!("vbuff info {}", x.get()))?))).collect::<Result<IndexMap<_, _>>>()?;
-            let ibuffs = ibuff_order.iter().map(|x| Ok((x.get(), IBuffInfoVER::from_data(&src[x.get() as usize..]).with_context(|| format!("ibuff info {}", x.get()))?))).collect::<Result<IndexMap<_, _>>>()?;
-            let vertex = vbuffs.iter().map(|(k,info)| Ok((*k, VertexBufferRefVER::from_data(data, info).with_context(|| format!("vertex data {}", k))?))).collect::<Result<IndexMap<_,_>>>()?.into();
-            let index = ibuffs.iter().map(|(k,info)| Ok((*k, IndexBufferRefVER::from_data(data, info).with_context(|| format!("index data {}", k))?))).collect::<Result<IndexMap<_,_>>>()?.into();
+            let infos = BufferInfo_XE_::slice_from_data(&src[info.buffer_info_offset.conv()..], info.mat_num.conv()).context("buffer infos")?;
+            let vbuff_order = u32_XE_::slice_from_data(&src[info.vbuff_offset.conv()..], info.vbuff_num.conv()).context("vbuff order")?;
+            let ibuff_order = u32_XE_::slice_from_data(&src[info.ibuff_offset.conv()..], info.ibuff_num.conv()).context("vbuff order")?;
+            let vbuffs = vbuff_order.iter().map(|x| Ok((x.conv(), VBuffInfo_XE_::from_data(&src[x.conv()..]).with_context(|| format!("vbuff info {}", x.to_native()))?))).collect::<Result<IndexMap<_, _>>>()?;
+            let ibuffs = ibuff_order.iter().map(|x| Ok((x.conv(), IBuffInfo_XE_::from_data(&src[x.conv()..]).with_context(|| format!("ibuff info {}", x.to_native()))?))).collect::<Result<IndexMap<_, _>>>()?;
+            let vertex = vbuffs.iter().map(|(k,info)| Ok((*k, VertexBufferRef_XE_::from_data(data, info).with_context(|| format!("vertex data {}", k))?))).collect::<Result<IndexMap<_,_>>>()?.into();
+            let index = ibuffs.iter().map(|(k,info)| Ok((*k, IndexBufferRef_XE_::from_data(data, info).with_context(|| format!("index data {}", k))?))).collect::<Result<IndexMap<_,_>>>()?.into();
             Ok(Self {
                 infos: infos.into(),
                 vbuff_order: vbuff_order.into(),
@@ -936,10 +915,10 @@ impl<'a> ModelDataRefVER<'a> {
                 index,
                 data: Some(model_data) 
             })
-        } else if info.mat_num.get() == 0 && info.vbuff_num.get() == 0 && info.ibuff_num.get() == 0 {
+        } else if info.mat_num == 0 && info.vbuff_num == 0 && info.ibuff_num == 0 {
             Ok(Self::default())
         } else {
-            Err(anyhow!("missing mesh data {}", info.asset_key.get()))
+            Err(anyhow!("missing mesh data {}", info.asset_key.to_native()))
         }
     }
 }
@@ -951,9 +930,9 @@ pub struct ModelData {
     pub index: Vec<IndexBuffer>,
 }
 
-#[make_platforms]
-impl From<&ModelDataRefVER<'_>> for ModelData {
-    fn from(val: &ModelDataRefVER) -> Self {
+#[make_endian]
+impl From<&ModelDataRef_XE_<'_>> for ModelData {
+    fn from(val: &ModelDataRef_XE_) -> Self {
         Self {
             infos: val.infos.iter().map(|x| x.conv()).collect(),
             vertex: val
@@ -970,28 +949,28 @@ impl From<&ModelDataRefVER<'_>> for ModelData {
     }
 }
 
-#[make_platforms]
-pub trait DumpVertexBufferVER {
-    fn write_info(&self, info: &mut VBuffInfoVER) -> Result<()>;
+#[make_endian]
+pub trait DumpVertexBuffer_XE_ {
+    fn write_info(&self, info: &mut VBuffInfo_XE_) -> Result<()>;
 }
 
-#[make_platforms]
-pub trait DumpIndexBufferVER {
-    fn write_info(&self, info: &mut IBuffInfoVER) -> Result<()>;
+#[make_endian]
+pub trait DumpIndexBuffer_XE_ {
+    fn write_info(&self, info: &mut IBuffInfo_XE_) -> Result<()>;
 }
 
-#[make_platforms]
-pub trait DumpBufferVER {
-    fn write_info(&self, info: &mut BufferInfoVER) -> Result<()>;
+#[make_endian]
+pub trait DumpBuffer_XE_ {
+    fn write_info(&self, info: &mut BufferInfo_XE_) -> Result<()>;
     fn has_vbuff_2(&self) -> bool;
     fn has_vbuff_3(&self) -> bool;
 }
 
-#[make_platforms]
-pub trait DumpModelDataVER {
-    fn vbuffs(&self) -> &IndexMap<u32, impl DumpVertexBufferVER>;
-    fn ibuffs(&self) -> &IndexMap<u32, impl DumpIndexBufferVER>;
-    fn buffers(&self) -> impl Iterator<Item=&impl DumpBufferVER>;
+#[make_endian]
+pub trait DumpModelData_XE_ {
+    fn vbuffs(&self) -> &IndexMap<u32, impl DumpVertexBuffer_XE_>;
+    fn ibuffs(&self) -> &IndexMap<u32, impl DumpIndexBuffer_XE_>;
+    fn buffers(&self) -> impl Iterator<Item=&impl DumpBuffer_XE_>;
     fn num_buffers(&self) -> usize;
     fn data(&self) -> CompressedData<'_>;
     fn add_size(&self, mut offset: usize, counts: &mut InfoCounts) -> (usize, usize) {
@@ -1016,7 +995,7 @@ pub trait DumpModelDataVER {
         (offset + (ibuff_num * 4), offset)
     }
 
-    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfosVER, info: &mut ModelInfoVER) -> Result<CompressedData<'_>> {
+    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfos_XE_, info: &mut ModelInfo_XE_) -> Result<CompressedData<'_>> {
         let mut buffer_offset = infos.buffers.offset;
         let buffers = infos.buffers.next_slice(self.num_buffers());
         let vbuffs = self.vbuffs();
@@ -1026,8 +1005,8 @@ pub trait DumpModelDataVER {
         let ibuff_offset = infos.ibuffs.offset;
         let ibuff_infos = infos.ibuffs.next_slice(ibuffs.len());
 
-        let vbuff_map = vbuffs.keys().enumerate().map(|(i, x)| (x, (vbuff_offset + (i * std::mem::size_of::<VBuffInfoVER>())) as u32)).collect::<IndexMap<_,_>>();
-        let ibuff_map = ibuffs.keys().enumerate().map(|(i, x)| (x, (ibuff_offset + (i * std::mem::size_of::<IBuffInfoVER>())) as u32)).collect::<IndexMap<_,_>>();
+        let vbuff_map = vbuffs.keys().enumerate().map(|(i, x)| (x, (vbuff_offset + (i * std::mem::size_of::<VBuffInfo_XE_>())) as u32)).collect::<IndexMap<_,_>>();
+        let ibuff_map = ibuffs.keys().enumerate().map(|(i, x)| (x, (ibuff_offset + (i * std::mem::size_of::<IBuffInfo_XE_>())) as u32)).collect::<IndexMap<_,_>>();
 
         for (info, vbuff) in vbuff_infos.iter_mut().zip(vbuffs.values()) {
             vbuff.write_info(info).context("write vbuff info")?;
@@ -1042,25 +1021,25 @@ pub trait DumpModelDataVER {
         for (info, buffer) in buffers.iter_mut().zip(self.buffers()) {
             buffer.write_info(info).context("write buffer")?;
             // also need to set v_size, buff size, tri num, etc.
-            info.vbuff_info_offset = vbuff_map.get(&info.vbuff_info_offset.get()).copied().unwrap_or(0).conv();
-            info.vbuff_info_offset_2 = vbuff_map.get(&info.vbuff_info_offset_2.get()).copied().unwrap_or(0).conv();
-            info.vbuff_info_offset_3 = vbuff_map.get(&info.vbuff_info_offset_3.get()).copied().unwrap_or(0).conv();
-            info.ibuff_info_offset = ibuff_map.get(&info.ibuff_info_offset.get()).copied().unwrap_or(0).conv();
-            *infos.offsets.next().context("offsets")? = (buffer_offset + std::mem::offset_of!(BufferInfoVER, vbuff_info_offset)).conv();
-            if info.vbuff_info_offset_2.get() != 0 {
-                *infos.offsets.next().context("offsets")? = (buffer_offset + std::mem::offset_of!(BufferInfoVER, vbuff_info_offset_2)).conv();
+            info.vbuff_info_offset = vbuff_map.get(&info.vbuff_info_offset.to_native()).copied().unwrap_or(0).conv();
+            info.vbuff_info_offset_2 = vbuff_map.get(&info.vbuff_info_offset_2.to_native()).copied().unwrap_or(0).conv();
+            info.vbuff_info_offset_3 = vbuff_map.get(&info.vbuff_info_offset_3.to_native()).copied().unwrap_or(0).conv();
+            info.ibuff_info_offset = ibuff_map.get(&info.ibuff_info_offset.to_native()).copied().unwrap_or(0).conv();
+            *infos.offsets.next().context("offsets")? = (buffer_offset + std::mem::offset_of!(BufferInfo_XE_, vbuff_info_offset)).conv();
+            if info.vbuff_info_offset_2 != 0 {
+                *infos.offsets.next().context("offsets")? = (buffer_offset + std::mem::offset_of!(BufferInfo_XE_, vbuff_info_offset_2)).conv();
             }
-            if info.vbuff_info_offset_3.get() != 0 {
-                *infos.offsets.next().context("offsets")? = (buffer_offset + std::mem::offset_of!(BufferInfoVER, vbuff_info_offset_3)).conv();
+            if info.vbuff_info_offset_3 != 0 {
+                *infos.offsets.next().context("offsets")? = (buffer_offset + std::mem::offset_of!(BufferInfo_XE_, vbuff_info_offset_3)).conv();
             }
-            *infos.offsets.next().context("offsets")? = (buffer_offset + std::mem::offset_of!(BufferInfoVER, ibuff_info_offset)).conv();
-            buffer_offset += std::mem::size_of::<BufferInfoVER>();
+            *infos.offsets.next().context("offsets")? = (buffer_offset + std::mem::offset_of!(BufferInfo_XE_, ibuff_info_offset)).conv();
+            buffer_offset += std::mem::size_of::<BufferInfo_XE_>();
         }
 
         info.vbuff_offset = dst.offset.conv();
         info.vbuff_num = vbuff_map.len().conv();
         let mut off = dst.offset;
-        let vbuff_order = u32VER::mut_slice_from_data(dst, vbuffs.len()).context("vbuff_order")?;
+        let vbuff_order = u32_XE_::mut_slice_from_data(dst, vbuffs.len()).context("vbuff_order")?;
         for (dst, src) in vbuff_order.iter_mut().zip(vbuff_map.values()) {
             *dst = src.conv();
             *infos.offsets.next().context("offsets")? = off.conv();
@@ -1070,7 +1049,7 @@ pub trait DumpModelDataVER {
         info.ibuff_offset = dst.offset.conv();
         info.ibuff_num = ibuff_map.len().conv();
         let mut off = dst.offset;
-        let ibuff_order = u32VER::mut_slice_from_data(dst, ibuffs.len()).context("ibuff_order")?;
+        let ibuff_order = u32_XE_::mut_slice_from_data(dst, ibuffs.len()).context("ibuff_order")?;
         for (dst, src) in ibuff_order.iter_mut().zip(ibuff_map.values()) {
             *dst = src.conv();
             *infos.offsets.next().context("offsets")? = off.conv();
@@ -1081,42 +1060,42 @@ pub trait DumpModelDataVER {
     }
 }
 
-#[make_platforms]
-impl DumpVertexBufferVER for VertexBufferRefVER<'_> {
-    fn write_info(&self, info: &mut VBuffInfoVER) -> Result<()> {
+#[make_endian]
+impl DumpVertexBuffer_XE_ for VertexBufferRef_XE_<'_> {
+    fn write_info(&self, info: &mut VBuffInfo_XE_) -> Result<()> {
         info.write_from(self.info)
     }
 }
 
-#[make_platforms]
-impl DumpIndexBufferVER for IndexBufferRefVER<'_> {
-    fn write_info(&self, info: &mut IBuffInfoVER) -> Result<()> {
+#[make_endian]
+impl DumpIndexBuffer_XE_ for IndexBufferRef_XE_<'_> {
+    fn write_info(&self, info: &mut IBuffInfo_XE_) -> Result<()> {
         info.write_from(self.info)
     }
 }
 
-#[make_platforms]
-impl DumpBufferVER for BufferInfoVER {
-    fn write_info(&self, info: &mut BufferInfoVER) -> Result<()> {
+#[make_endian]
+impl DumpBuffer_XE_ for BufferInfo_XE_ {
+    fn write_info(&self, info: &mut BufferInfo_XE_) -> Result<()> {
         info.write_from(self)
     }
     fn has_vbuff_2(&self) -> bool {
-        self.vbuff_info_offset_2.get() != 0
+        self.vbuff_info_offset_2 != 0
     }
     fn has_vbuff_3(&self) -> bool {
-        self.vbuff_info_offset_3.get() != 0
+        self.vbuff_info_offset_3 != 0
     }
 }
 
-#[make_platforms]
-impl<'a> DumpModelDataVER for ModelDataRefVER<'a> {
-    fn vbuffs(&self) -> &IndexMap<u32, impl DumpVertexBufferVER> {
+#[make_endian]
+impl<'a> DumpModelData_XE_ for ModelDataRef_XE_<'a> {
+    fn vbuffs(&self) -> &IndexMap<u32, impl DumpVertexBuffer_XE_> {
         &self.vertex
     }
-    fn ibuffs(&self) -> &IndexMap<u32, impl DumpIndexBufferVER> {
+    fn ibuffs(&self) -> &IndexMap<u32, impl DumpIndexBuffer_XE_> {
         &self.index
     }
-    fn buffers(&self) -> impl Iterator<Item=&impl DumpBufferVER> {
+    fn buffers(&self) -> impl Iterator<Item=&impl DumpBuffer_XE_> {
         self.infos.iter()
     }
     fn num_buffers(&self) -> usize {

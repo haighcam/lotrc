@@ -3,86 +3,85 @@ use log::warn;
 use zerocopy::transmute_ref;
 use enum_dispatch::enum_dispatch;
 
-use crate::types::GetNative;
 use crate::{
-    types::{Crc, DumpData, RefFromData, Vector3, Vector4, DumpSlice, align_offset, hash_string, OrderedData, OrderedDataStrict, get_default_ref, ref_slice, string, slice},
+    types::{Crc, DumpData, RefFromData, Vector3, Vector4, DumpSlice, align_offset, hash_string, OrderedData, get_default_ref, ref_slice, string, slice},
     level::{
         pak::block1::infos::InfoCounts,
         model::Key2
     }
 };
-#[make_platforms]
+#[make_endian]
 use crate::{
-    types::{Vector3VER, Vector4VER, f32VER, i16VER, u16VER, u32VER, CrcVER, u8VER},
+    types::{Vector3_XE_, Vector4_XE_, f32_XE_, i16_XE_, u16_XE_, u32_XE_, Crc_XE_},
     level::{
-        model::Key2VER,
-        pak::block1::infos::DumpInfosVER
+        model::Key2_XE_,
+        pak::block1::infos::DumpInfos_XE_
     }
 };
-use lotrc_proc::{make_platforms, OrderedData};
+use lotrc_proc::{make_endian, derive_ordered_data};
 
-///gen_ffi:export
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct ShapeInfo {
-    pub offset: u32, // sometimes a pointer to something, otherwise the number of strings from the obj1 pointing to this
-    pub kind: u32,   // 0, 1, 2, 3, 4, 5
-    pub unk_2: u32,
-    pub unk_3: f32,
-    pub unk_4: f32,
-    pub unk_5: f32,
-    pub translation: Vector3,
-    pub rotation: Vector4,
-    pub unk_13: f32,
-    pub unk_14: f32,
-    pub unk_15: f32,
-    pub unk_16: f32,
-    pub unk_17: f32,
-    pub unk_18: f32,
-    pub unk_19: f32,
-    pub unk_20: f32,
-    pub unk_21: f32,
-    pub unk_22: f32,
-    pub unk_23: f32,
-    pub unk_24: f32,
-    pub unk_25: f32,
-    pub unk_26: f32,
-    pub hk_shape_num: u32,
-    pub hk_shape_offset: u32, // pointer to objd
+#[derive_ordered_data]
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct ShapeInfo_XE_ {
+    pub offset: u32_XE_, // sometimes a pointer to something, otherwise the number of strings from the obj1 pointing to this
+    pub kind: u32_XE_,   // 0, 1, 2, 3, 4, 5
+    pub unk_2: u32_XE_,
+    pub unk_3: f32_XE_,
+    pub unk_4: f32_XE_,
+    pub unk_5: f32_XE_,
+    pub translation: Vector3_XE_,
+    pub rotation: Vector4_XE_,
+    pub unk_13: f32_XE_,
+    pub unk_14: f32_XE_,
+    pub unk_15: f32_XE_,
+    pub unk_16: f32_XE_,
+    pub unk_17: f32_XE_,
+    pub unk_18: f32_XE_,
+    pub unk_19: f32_XE_,
+    pub unk_20: f32_XE_,
+    pub unk_21: f32_XE_,
+    pub unk_22: f32_XE_,
+    pub unk_23: f32_XE_,
+    pub unk_24: f32_XE_,
+    pub unk_25: f32_XE_,
+    pub unk_26: f32_XE_,
+    pub hk_shape_num: u32_XE_,
+    pub hk_shape_offset: u32_XE_, // pointer to objd
     pub unk_29a: u8,
     pub unk_29b: u8,
     pub unk_29c: u8,
     pub unk_29d: u8,
-    pub unk_30: f32,
+    pub unk_30: f32_XE_,
 }
 
-///gen_ffi:export
-#[derive(Default, Debug, Clone, OrderedData)]
-pub struct ShapeExtraInfo {
-    pub size: u32,
-    pub scale: f32,
-    pub a: f32,
-    pub b: f32,
+#[derive_ordered_data]
+#[derive(Default, Debug, Clone, PartialEq)]
+pub struct ShapeExtraInfo_XE_ {
+    pub size: u32_XE_,
+    pub scale: f32_XE_,
+    pub a: f32_XE_,
+    pub b: f32_XE_,
 }
 
-#[make_platforms]
+#[make_endian]
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "ffi", repr(C))]
-pub struct ShapeExtraRefVER<'a> {
-    info: &'a ShapeExtraInfoVER,
-    offs: ref_slice<'a, u32VER>,
+pub struct ShapeExtraRef_XE_<'a> {
+    info: &'a ShapeExtraInfo_XE_,
+    offs: ref_slice<'a, u32_XE_>,
     data: ref_slice<'a, u8>,
 }
 
-#[make_platforms]
-impl<'a> ShapeExtraRefVER<'a> {
-    pub fn from_data(src: &'a [u8], info: &'a ShapeInfoVER) -> Result<Self> {
-        let mut offset = info.offset.get() as usize;
-        let info = ShapeExtraInfoVER::from_data(&src[offset..]).context("info")?;
+#[make_endian]
+impl<'a> ShapeExtraRef_XE_<'a> {
+    pub fn from_data(src: &'a [u8], info: &'a ShapeInfo_XE_) -> Result<Self> {
+        let mut offset = info.offset.conv();
+        let info = ShapeExtraInfo_XE_::from_data(&src[offset..]).context("info")?;
         offset += info.size();
-        let offs = u32VER::slice_from_data(&src[offset..], info.size.get() as usize)
+        let offs = u32_XE_::slice_from_data(&src[offset..], info.size.conv())
             .context("vals")?;
         offset += offs.size();
-        let mut off = offset + offs.last().unwrap().get() as usize;
+        let mut off = offset + offs.last().unwrap().to_native() as usize;
         // sketchy stuff to account for missing data
         while (src[off] != 0) || (src[off + 1] != 0) {
             off += 1;
@@ -96,25 +95,25 @@ impl<'a> ShapeExtraRefVER<'a> {
     }
 }
 
-#[make_platforms]
+#[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
-pub struct ShapeRefVER<'a> {
-    info: &'a ShapeInfoVER,
-    extra: Option<ShapeExtraRefVER<'a>>,
-    hk_shapes: slice<HkShapeRefVER<'a>>
+pub struct ShapeRef_XE_<'a> {
+    info: &'a ShapeInfo_XE_,
+    extra: Option<ShapeExtraRef_XE_<'a>>,
+    hk_shapes: slice<HkShapeRef_XE_<'a>>
 }
 
-#[make_platforms]
-impl<'a> ShapeRefVER<'a> {
-    pub fn from_data(src: &'a [u8], info: &'a ShapeInfoVER) -> Result<Self> {
-        let extra = if info.kind.get() == 0 {
-            Some(ShapeExtraRefVER::from_data(src, info).context("extra")?)
+#[make_endian]
+impl<'a> ShapeRef_XE_<'a> {
+    pub fn from_data(src: &'a [u8], info: &'a ShapeInfo_XE_) -> Result<Self> {
+        let extra = if info.kind == 0 {
+            Some(ShapeExtraRef_XE_::from_data(src, info).context("extra")?)
         } else {
             None
         };
-        let infos = HkShapeInfoVER::slice_from_data(&src[info.hk_shape_offset.get() as usize..], info.hk_shape_num.get() as usize).context("hk_shape infos")?;
-        let hk_shapes = infos.into_iter().enumerate().map(|(i, info)| HkShapeRefVER::from_data(src, info).with_context(|| format!("hk_shape {}", i))).collect::<Result<Vec<_>>>()?.into_boxed_slice();
+        let infos = HkShapeInfo_XE_::slice_from_data(&src[info.hk_shape_offset.conv()..], info.hk_shape_num.conv()).context("hk_shape infos")?;
+        let hk_shapes = infos.into_iter().enumerate().map(|(i, info)| HkShapeRef_XE_::from_data(src, info).with_context(|| format!("hk_shape {}", i))).collect::<Result<Vec<_>>>()?.into_boxed_slice();
         Ok(Self {
             info,
             extra: extra.into(),
@@ -130,9 +129,9 @@ pub struct ShapeExtra {
     data: Vec<u8>,
 }
 
-#[make_platforms]
-impl From<&ShapeExtraRefVER<'_>> for ShapeExtra {
-    fn from(val: &ShapeExtraRefVER) -> Self {
+#[make_endian]
+impl From<&ShapeExtraRef_XE_<'_>> for ShapeExtra {
+    fn from(val: &ShapeExtraRef_XE_) -> Self {
         ShapeExtra {
             info: val.info.conv(),
             offs: val.offs.iter().map(|x| x.conv()).collect(),
@@ -148,9 +147,9 @@ pub struct Shape {
     pub hk_shapes: Vec<HkShape>,
 }
 
-#[make_platforms]
-impl From<&ShapeRefVER<'_>> for Shape {
-    fn from(val: &ShapeRefVER) -> Self {
+#[make_endian]
+impl From<&ShapeRef_XE_<'_>> for Shape {
+    fn from(val: &ShapeRef_XE_) -> Self {
         Shape {
             info: val.info.conv(),
             extra: val.extra.as_ref().map(|x| x.into()),
@@ -163,52 +162,52 @@ impl From<&ShapeRefVER<'_>> for Shape {
     }
 }
 
-#[make_platforms]
-pub struct ShapeExtraDumpVER<'a> {
-    info: &'a mut ShapeExtraInfoVER,
-    offs: &'a mut [u32VER],
+#[make_endian]
+pub struct ShapeExtraDump_XE_<'a> {
+    info: &'a mut ShapeExtraInfo_XE_,
+    offs: &'a mut [u32_XE_],
     data: &'a mut [u8],
 }
 
-#[make_platforms]
-impl<'a> ShapeExtraDumpVER<'a> {
+#[make_endian]
+impl<'a> ShapeExtraDump_XE_<'a> {
     fn from_bytes(dst: &mut DumpSlice<'a>, sizes: (usize, usize)) -> Result<Self> {
-        let info = ShapeExtraInfoVER::mut_from_data(dst).context("info")?;
-        let offs = u32VER::mut_slice_from_data(dst, sizes.0).context("offs")?;
+        let info = ShapeExtraInfo_XE_::mut_from_data(dst).context("info")?;
+        let offs = u32_XE_::mut_slice_from_data(dst, sizes.0).context("offs")?;
         let data = u8::mut_slice_from_data(dst, sizes.1).context("data")?;
         Ok(Self { info, offs, data })
     }
 }
 
-#[make_platforms]
-pub trait DumpShapeExtraVER {
+#[make_endian]
+pub trait DumpShapeExtra_XE_ {
     fn get_sizes(&self) -> (usize, usize);
-    fn write_vals(&self, vals: ShapeExtraDumpVER) -> Result<()>;
+    fn write_vals(&self, vals: ShapeExtraDump_XE_) -> Result<()>;
     fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
-        let vals = ShapeExtraDumpVER::from_bytes(dst, self.get_sizes()).context("vals")?;
+        let vals = ShapeExtraDump_XE_::from_bytes(dst, self.get_sizes()).context("vals")?;
         self.write_vals(vals).context("write vals")?;
         Ok(())
     }
     fn add_size(&self, mut offset: usize) -> usize {
         let sizes = self.get_sizes();
-        offset += ShapeExtraInfoVER::size_of() + sizes.0 * u32VER::size_of() + sizes.1;
+        offset += ShapeExtraInfo_XE_::size_of() + sizes.0 * u32_XE_::size_of() + sizes.1;
         offset
     }
 }
 
-#[make_platforms]
-#[enum_dispatch(DumpShapeVER)]
-pub enum ShapeVER<'a> {
-    Ref(ShapeRefVER<'a>),
+#[make_endian]
+#[enum_dispatch(DumpShape_XE_)]
+pub enum Shape_XE_<'a> {
+    Ref(ShapeRef_XE_<'a>),
     Owned(Shape)
 }
 
-#[make_platforms]
-impl DumpShapeExtraVER for ShapeExtraRefVER<'_> {
+#[make_endian]
+impl DumpShapeExtra_XE_ for ShapeExtraRef_XE_<'_> {
     fn get_sizes(&self) -> (usize, usize) {
         (self.offs.len(), self.data.len())
     }
-    fn write_vals(&self, vals: ShapeExtraDumpVER) -> Result<()> {
+    fn write_vals(&self, vals: ShapeExtraDump_XE_) -> Result<()> {
         vals.info.write_from(self.info).context("info")?;
         vals.offs.write_from(&self.offs[..]).context("offs")?;
         vals.data.write_from(&self.data[..]).context("data")?;
@@ -216,12 +215,12 @@ impl DumpShapeExtraVER for ShapeExtraRefVER<'_> {
     }
 }
 
-#[make_platforms]
-impl DumpShapeExtraVER for ShapeExtra {
+#[make_endian]
+impl DumpShapeExtra_XE_ for ShapeExtra {
     fn get_sizes(&self) -> (usize, usize) {
         (self.offs.len(), self.data.len())
     }
-    fn write_vals(&self, vals: ShapeExtraDumpVER) -> Result<()> {
+    fn write_vals(&self, vals: ShapeExtraDump_XE_) -> Result<()> {
         *vals.info = (&self.info).conv();
         for (src, dst) in self.offs.iter().zip(vals.offs) {
             *dst = src.conv();
@@ -231,35 +230,35 @@ impl DumpShapeExtraVER for ShapeExtra {
     }
 } 
 
-#[make_platforms]
-pub trait DumpShapeImplVER {
-    fn extra(&self) -> Option<&impl DumpShapeExtraVER>;
+#[make_endian]
+pub trait DumpShapeImpl_XE_ {
+    fn extra(&self) -> Option<&impl DumpShapeExtra_XE_>;
     fn has_hk_shapes(&self) -> bool;
-    fn hk_shapes(&self) -> impl Iterator<Item=&impl DumpHkShapeVER>;
-    fn write_info(&self, info: &mut ShapeInfoVER) -> Result<()>;
+    fn hk_shapes(&self) -> impl Iterator<Item=&impl DumpHkShape_XE_>;
+    fn write_info(&self, info: &mut ShapeInfo_XE_) -> Result<()>;
 }
 
-#[make_platforms]
+#[make_endian]
 #[enum_dispatch]
-pub trait DumpShapeVER {
-    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfosVER, extra_off: Option<usize>) -> Result<()>;
+pub trait DumpShape_XE_ {
+    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfos_XE_, extra_off: Option<usize>) -> Result<()>;
     fn add_size(&self, offset: usize, infos: &mut InfoCounts) -> usize;
     fn add_extra_size(&self, offset: usize) -> usize;
     fn dump_extra_into(&self, dst: &mut DumpSlice) -> Result<Option<usize>>;
 }
-#[make_platforms]
-impl<T: DumpShapeImplVER> DumpShapeVER for T {
-    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfosVER, extra_off: Option<usize>) -> Result<()> {
+#[make_endian]
+impl<T: DumpShapeImpl_XE_> DumpShape_XE_ for T {
+    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfos_XE_, extra_off: Option<usize>) -> Result<()> {
         let info_offset = infos.shapes.offset;
         let info = infos.shapes.next().context("shapes")?;
         self.write_info(info).context("info")?;
         if let Some(off) = extra_off {
             info.offset = off.conv();
-            *infos.offsets.next().context("offsets")? = (info_offset + std::mem::offset_of!(ShapeInfoVER, offset)).conv();
+            *infos.offsets.next().context("offsets")? = (info_offset + std::mem::offset_of!(ShapeInfo_XE_, offset)).conv();
         }
         if self.has_hk_shapes() {
             info.hk_shape_offset = infos.hk_shapes.offset.conv();
-            *infos.offsets.next().context("offsets")? = (info_offset + std::mem::offset_of!(ShapeInfoVER, hk_shape_offset)).conv();
+            *infos.offsets.next().context("offsets")? = (info_offset + std::mem::offset_of!(ShapeInfo_XE_, hk_shape_offset)).conv();
         }
         for (i, shape) in self.hk_shapes().enumerate() {
             shape.dump_into(dst, infos).with_context(|| format!("hk_shape {}", i))?;
@@ -294,186 +293,186 @@ impl<T: DumpShapeImplVER> DumpShapeVER for T {
     }
 }
 
-#[make_platforms]
-impl DumpShapeImplVER for ShapeRefVER<'_> {
-    fn extra(&self) -> Option<&impl DumpShapeExtraVER> {
+#[make_endian]
+impl DumpShapeImpl_XE_ for ShapeRef_XE_<'_> {
+    fn extra(&self) -> Option<&impl DumpShapeExtra_XE_> {
         self.extra.as_ref()
     }
     fn has_hk_shapes(&self) -> bool {
         !self.hk_shapes.is_empty()    
     }
-    fn hk_shapes(&self) -> impl Iterator<Item=&impl DumpHkShapeVER> {
+    fn hk_shapes(&self) -> impl Iterator<Item=&impl DumpHkShape_XE_> {
         self.hk_shapes.iter()
     }
-    fn write_info(&self, info: &mut ShapeInfoVER) -> Result<()> {
+    fn write_info(&self, info: &mut ShapeInfo_XE_) -> Result<()> {
         info.write_from(self.info)
     }
 }
 
-#[make_platforms]
-impl DumpShapeImplVER for Shape {
-    fn extra(&self) -> Option<&impl DumpShapeExtraVER> {
+#[make_endian]
+impl DumpShapeImpl_XE_ for Shape {
+    fn extra(&self) -> Option<&impl DumpShapeExtra_XE_> {
         self.extra.as_ref()
     }
     fn has_hk_shapes(&self) -> bool {
         !self.hk_shapes.is_empty()    
     }
-    fn hk_shapes(&self) -> impl Iterator<Item=&impl DumpHkShapeVER> {
+    fn hk_shapes(&self) -> impl Iterator<Item=&impl DumpHkShape_XE_> {
         self.hk_shapes.iter()
     }
-    fn write_info(&self, info: &mut ShapeInfoVER) -> Result<()> {
+    fn write_info(&self, info: &mut ShapeInfo_XE_) -> Result<()> {
         *info = (&self.info).conv();
         Ok(())
     }
 }
 
-///gen_ffi:export
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct HkShapeInfo {
-    pub unk_0: Vector4,
-    pub unk_4: Vector4,
-    pub kind: u32,
-    pub unk_9: u32,
-    pub unk_10: u32,
-    pub unk_11: u32,
-    pub unk_12: u32,
-    pub unk_13: u32,
-    pub unk_14: u32,
-    pub unk_15: u32,
-    pub unk_16: u32,
-    pub unk_17: u32,
-    pub unk_18: u32,
-    pub unk_19: u32,
+#[derive_ordered_data]
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct HkShapeInfo_XE_ {
+    pub unk_0: Vector4_XE_,
+    pub unk_4: Vector4_XE_,
+    pub kind: u32_XE_,
+    pub unk_9: u32_XE_,
+    pub unk_10: u32_XE_,
+    pub unk_11: u32_XE_,
+    pub unk_12: u32_XE_,
+    pub unk_13: u32_XE_,
+    pub unk_14: u32_XE_,
+    pub unk_15: u32_XE_,
+    pub unk_16: u32_XE_,
+    pub unk_17: u32_XE_,
+    pub unk_18: u32_XE_,
+    pub unk_19: u32_XE_,
 }
 
-///gen_ffi:export
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct BoxShape {
-    pub translation: Vector4,
-    pub rotation: Vector4,
-    pub kind: u32,
-    pub key: Crc,
-    pub half_extents: Vector3,
-    pub unk_13: u32,
-    pub unk_14: u32,
-    pub unk_15: f32,
-    pub unk_16: f32,
-    pub unk_17: f32,
-    pub unk_18: f32,
-    pub unk_19: f32,
+#[derive_ordered_data]
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct BoxShape_XE_ {
+    pub translation: Vector4_XE_,
+    pub rotation: Vector4_XE_,
+    pub kind: u32_XE_,
+    pub key: Crc_XE_,
+    pub half_extents: Vector3_XE_,
+    pub unk_13: u32_XE_,
+    pub unk_14: u32_XE_,
+    pub unk_15: f32_XE_,
+    pub unk_16: f32_XE_,
+    pub unk_17: f32_XE_,
+    pub unk_18: f32_XE_,
+    pub unk_19: f32_XE_,
 }
 
-///gen_ffi:export
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct SphereShape {
-    pub translation: Vector4,
-    pub rotation: Vector4,
-    pub kind: u32,
-    pub key: Crc,
-    pub radius: f32,
-    pub unk_11: u32,
-    pub unk_12: f32,
-    pub unk_13: f32,
-    pub unk_14: f32,
-    pub unk_15: f32,
-    pub unk_16: f32,
-    pub unk_17: f32,
-    pub unk_18: f32,
-    pub unk_19: f32,
+#[derive_ordered_data]
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct SphereShape_XE_ {
+    pub translation: Vector4_XE_,
+    pub rotation: Vector4_XE_,
+    pub kind: u32_XE_,
+    pub key: Crc_XE_,
+    pub radius: f32_XE_,
+    pub unk_11: u32_XE_,
+    pub unk_12: f32_XE_,
+    pub unk_13: f32_XE_,
+    pub unk_14: f32_XE_,
+    pub unk_15: f32_XE_,
+    pub unk_16: f32_XE_,
+    pub unk_17: f32_XE_,
+    pub unk_18: f32_XE_,
+    pub unk_19: f32_XE_,
 }
 
-///gen_ffi:export
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct CapsuleShape {
-    pub translation: Vector4,
-    pub rotation: Vector4,
-    pub kind: u32,
-    pub key: Crc,
-    pub point1: Vector3,
-    pub point2: Vector3,
-    pub radius: f32,
-    pub unk_17: f32,
-    pub unk_18: f32,
-    pub unk_19: f32,
+#[derive_ordered_data]
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct CapsuleShape_XE_ {
+    pub translation: Vector4_XE_,
+    pub rotation: Vector4_XE_,
+    pub kind: u32_XE_,
+    pub key: Crc_XE_,
+    pub point1: Vector3_XE_,
+    pub point2: Vector3_XE_,
+    pub radius: f32_XE_,
+    pub unk_17: f32_XE_,
+    pub unk_18: f32_XE_,
+    pub unk_19: f32_XE_,
 }
 
-///gen_ffi:export
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct CylinderShape {
-    pub translation: Vector4,
-    pub rotation: Vector4,
-    pub kind: u32,
-    pub key: Crc,
-    pub point1: Vector3,
-    pub point2: Vector3,
-    pub radius: f32,
-    pub unk_17: f32,
-    pub unk_18: f32,
-    pub unk_19: f32,
+#[derive_ordered_data]
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct CylinderShape_XE_ {
+    pub translation: Vector4_XE_,
+    pub rotation: Vector4_XE_,
+    pub kind: u32_XE_,
+    pub key: Crc_XE_,
+    pub point1: Vector3_XE_,
+    pub point2: Vector3_XE_,
+    pub radius: f32_XE_,
+    pub unk_17: f32_XE_,
+    pub unk_18: f32_XE_,
+    pub unk_19: f32_XE_,
 }
 
-///gen_ffi:export
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct ConvexVerticesInfo {
-    pub translation: Vector4,
-    pub rotation: Vector4,
-    pub kind: u32,
-    pub key: Crc,
-    pub norm_num: u32,
-    pub norms_offset: u32,
-    pub vert_num: u32,
-    pub verts_offset: u32,
-    pub unk_14: f32,
-    pub unk_15: f32,
-    pub unk_16: f32,
-    pub unk_17: f32,
-    pub unk_18: f32,
-    pub unk_19: f32,
+#[derive_ordered_data]
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct ConvexVerticesInfo_XE_ {
+    pub translation: Vector4_XE_,
+    pub rotation: Vector4_XE_,
+    pub kind: u32_XE_,
+    pub key: Crc_XE_,
+    pub norm_num: u32_XE_,
+    pub norms_offset: u32_XE_,
+    pub vert_num: u32_XE_,
+    pub verts_offset: u32_XE_,
+    pub unk_14: f32_XE_,
+    pub unk_15: f32_XE_,
+    pub unk_16: f32_XE_,
+    pub unk_17: f32_XE_,
+    pub unk_18: f32_XE_,
+    pub unk_19: f32_XE_,
 }
 
-///gen_ffi:export
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct BVTreeMeshInfo {
-    pub translation: Vector4,
-    pub rotation: Vector4,
-    pub kind: u32,
-    pub key: Crc,
+#[derive_ordered_data]
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct BVTreeMeshInfo_XE_ {
+    pub translation: Vector4_XE_,
+    pub rotation: Vector4_XE_,
+    pub kind: u32_XE_,
+    pub key: Crc_XE_,
     /// triangles min bound - 0.05
-    pub offset: Vector3,
+    pub offset: Vector3_XE_,
     /// 254*256*256 / (max triangle bound + 0.1)
-    pub tree_scale: f32,
-    pub tree_size: u32,
-    pub tree_offset: u32,  // u8
-    pub vert_num: u32,     // vert_num
-    pub verts_offset: u32, // vec3 f32 verts offset
-    pub tri_num: u32,      // tri_num
-    pub inds_offset: u32,  // vec3 u16 , inds offset
+    pub tree_scale: f32_XE_,
+    pub tree_size: u32_XE_,
+    pub tree_offset: u32_XE_,  // u8
+    pub vert_num: u32_XE_,     // vert_num
+    pub verts_offset: u32_XE_, // vec3 f32 verts offset
+    pub tri_num: u32_XE_,      // tri_num
+    pub inds_offset: u32_XE_,  // vec3 u16 , inds offset
 }
-#[make_platforms]
+#[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
-pub struct ConvexVerticesRefVER<'a> {
-    pub info: &'a ConvexVerticesInfoVER,
-    pub norms: ref_slice<'a, Vector4VER>,
-    pub verts: ref_slice<'a, Vector3VER>,
+pub struct ConvexVerticesRef_XE_<'a> {
+    pub info: &'a ConvexVerticesInfo_XE_,
+    pub norms: ref_slice<'a, Vector4_XE_>,
+    pub verts: ref_slice<'a, Vector3_XE_>,
 }
 
-#[make_platforms]
-impl<'a> ConvexVerticesRefVER<'a> {
-    pub fn from_data(src: &'a [u8], info: &'a HkShapeInfoVER) -> Result<Self> {
-        let info: &ConvexVerticesInfoVER = transmute_ref!(info);
+#[make_endian]
+impl<'a> ConvexVerticesRef_XE_<'a> {
+    pub fn from_data(src: &'a [u8], info: &'a HkShapeInfo_XE_) -> Result<Self> {
+        let info: &ConvexVerticesInfo_XE_ = transmute_ref!(info);
 
-        let norms = Vector4VER::slice_from_data(
-            &src[info.norms_offset.get() as usize..],
-            info.norm_num.get() as usize,
+        let norms = Vector4_XE_::slice_from_data(
+            &src[info.norms_offset.conv()..],
+            info.norm_num.conv(),
         )
         .context("vals")?;
-        let mut vert_num = info.vert_num.get() as usize; // sketchy stuff to account for data that was not otherwise captured, is it needed?
-        while (info.verts_offset.get() as usize + vert_num * 12) % 16 != 0 {
+        let mut vert_num = info.vert_num.conv(); // sketchy stuff to account for data that was not otherwise captured, is it needed?
+        while (info.verts_offset.to_native() as usize + vert_num * 12) % 16 != 0 {
             vert_num += 1;
         }
-        let verts = Vector3VER::slice_from_data(
-            &src[info.verts_offset.get() as usize..],
+        let verts = Vector3_XE_::slice_from_data(
+            &src[info.verts_offset.conv()..],
             vert_num,
         )
         .context("vals")?;
@@ -485,34 +484,34 @@ impl<'a> ConvexVerticesRefVER<'a> {
     }
 }
 
-#[make_platforms]
+#[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
-pub struct BVTreeMeshRefVER<'a> {
-    info: &'a BVTreeMeshInfoVER,
+pub struct BVTreeMeshRef_XE_<'a> {
+    info: &'a BVTreeMeshInfo_XE_,
     tree: ref_slice<'a, u8>,
-    verts: ref_slice<'a, Vector3VER>,
-    inds: ref_slice<'a, u16VER>
+    verts: ref_slice<'a, Vector3_XE_>,
+    inds: ref_slice<'a, u16_XE_>
 }
 
-#[make_platforms]
-impl<'a> BVTreeMeshRefVER<'a> {
-    pub fn from_data(src: &'a [u8], info: &'a HkShapeInfoVER) -> Result<Self> {
-        let info: &BVTreeMeshInfoVER = transmute_ref!(info);
+#[make_endian]
+impl<'a> BVTreeMeshRef_XE_<'a> {
+    pub fn from_data(src: &'a [u8], info: &'a HkShapeInfo_XE_) -> Result<Self> {
+        let info: &BVTreeMeshInfo_XE_ = transmute_ref!(info);
 
         let tree = u8::slice_from_data(
-            &src[info.tree_offset.get() as usize..],
-            info.tree_size.get() as usize,
+            &src[info.tree_offset.conv()..],
+            info.tree_size.conv(),
         )
         .context("vals")?;
-        let verts = Vector3VER::slice_from_data(
-            &src[info.verts_offset.get() as usize..],
-            info.vert_num.get() as usize,
+        let verts = Vector3_XE_::slice_from_data(
+            &src[info.verts_offset.conv()..],
+            info.vert_num.conv(),
         )
         .context("vals")?;
-        let inds = u16VER::slice_from_data(
-            &src[info.inds_offset.get() as usize..],
-            info.tri_num.get() as usize * 3,
+        let inds = u16_XE_::slice_from_data(
+            &src[info.inds_offset.conv()..],
+            info.tri_num.to_native() as usize * 3,
         )
         .context("vals")?;
 
@@ -525,29 +524,29 @@ impl<'a> BVTreeMeshRefVER<'a> {
     }
 }
 
-#[make_platforms]
+#[make_endian]
 #[cfg_attr(feature = "ffi", repr(C, u8))]
 #[derive(PartialEq)]
-pub enum HkShapeRefVER<'a> {
-    Box(&'a BoxShapeVER),
-    Sphere(&'a SphereShapeVER),
-    Capsule(&'a CapsuleShapeVER),
-    Cylinder(&'a CylinderShapeVER),
-    ConvexVertices(ConvexVerticesRefVER<'a>),
-    BVTreeMesh(BVTreeMeshRefVER<'a>),
-    Unknown(&'a HkShapeInfoVER),
+pub enum HkShapeRef_XE_<'a> {
+    Box(&'a BoxShape_XE_),
+    Sphere(&'a SphereShape_XE_),
+    Capsule(&'a CapsuleShape_XE_),
+    Cylinder(&'a CylinderShape_XE_),
+    ConvexVertices(ConvexVerticesRef_XE_<'a>),
+    BVTreeMesh(BVTreeMeshRef_XE_<'a>),
+    Unknown(&'a HkShapeInfo_XE_),
 }
 
-#[make_platforms]
-impl<'a> HkShapeRefVER<'a> {
-    pub fn from_data(src: &'a [u8], info: &'a HkShapeInfoVER) -> Result<Self> {
-        Ok(match info.kind.get() {
-            1 => Self::Box(transmute_ref!(info)),
+#[make_endian]
+impl<'a> HkShapeRef_XE_<'a> {
+    pub fn from_data(src: &'a [u8], info: &'a HkShapeInfo_XE_) -> Result<Self> {
+        Ok(match info.kind.conv() {
+            1u32 => Self::Box(transmute_ref!(info)),
             2 => Self::Sphere(transmute_ref!(info)),
             3 => Self::Capsule(transmute_ref!(info)),
             4 => Self::Cylinder(transmute_ref!(info)),
-            5 => Self::ConvexVertices(ConvexVerticesRefVER::from_data(src, info)?),
-            6 => Self::BVTreeMesh(BVTreeMeshRefVER::from_data(src, info)?),
+            5 => Self::ConvexVertices(ConvexVerticesRef_XE_::from_data(src, info)?),
+            6 => Self::BVTreeMesh(BVTreeMeshRef_XE_::from_data(src, info)?),
             _ => {
                 warn!("Unknown & Unhandled HkShape type {}", info.kind);
                 Self::Unknown(info)
@@ -576,20 +575,20 @@ pub enum HkShape {
     Unknown(HkShapeInfo),
 }
 
-#[make_platforms]
-impl From<&HkShapeRefVER<'_>> for HkShape {
-    fn from(val: &HkShapeRefVER) -> Self {
+#[make_endian]
+impl From<&HkShapeRef_XE_<'_>> for HkShape {
+    fn from(val: &HkShapeRef_XE_) -> Self {
         match val {
-            HkShapeRefVER::Box(info) => HkShape::Box(info.conv()),
-            HkShapeRefVER::Sphere(info) => HkShape::Sphere(info.conv()),
-            HkShapeRefVER::Capsule(info) => HkShape::Capsule(info.conv()),
-            HkShapeRefVER::Cylinder(info) => HkShape::Cylinder(info.conv()),
-            HkShapeRefVER::ConvexVertices(ConvexVerticesRefVER { info, norms, verts }) => HkShape::ConvexVertices {
+            HkShapeRef_XE_::Box(info) => HkShape::Box(info.conv()),
+            HkShapeRef_XE_::Sphere(info) => HkShape::Sphere(info.conv()),
+            HkShapeRef_XE_::Capsule(info) => HkShape::Capsule(info.conv()),
+            HkShapeRef_XE_::Cylinder(info) => HkShape::Cylinder(info.conv()),
+            HkShapeRef_XE_::ConvexVertices(ConvexVerticesRef_XE_ { info, norms, verts }) => HkShape::ConvexVertices {
                 info: info.conv(),
                 norms: norms.iter().map(|x| x.conv()).collect(),
                 verts: verts.iter().map(|x| x.conv()).collect(),
             },
-            HkShapeRefVER::BVTreeMesh(BVTreeMeshRefVER {
+            HkShapeRef_XE_::BVTreeMesh(BVTreeMeshRef_XE_ {
                 info,
                 tree,
                 verts,
@@ -600,58 +599,58 @@ impl From<&HkShapeRefVER<'_>> for HkShape {
                 verts: verts.iter().map(|x| x.conv()).collect(),
                 inds: inds.iter().map(|x| x.conv()).collect(),
             },
-            HkShapeRefVER::Unknown(info) => HkShape::Unknown(info.conv()),
+            HkShapeRef_XE_::Unknown(info) => HkShape::Unknown(info.conv()),
         }
     }
 }
 
-#[make_platforms]
-#[enum_dispatch(DumpHkShapeVER)]
-pub enum HkShapeVER<'a> {
-    Ref(HkShapeRefVER<'a>),
+#[make_endian]
+#[enum_dispatch(DumpHkShape_XE_)]
+pub enum HkShape_XE_<'a> {
+    Ref(HkShapeRef_XE_<'a>),
     Owned(HkShape)
 }
 
-#[make_platforms]
-pub enum HkShapeDumpVER<'a> {
+#[make_endian]
+pub enum HkShapeDump_XE_<'a> {
     ConvexVertices {
-        norms: &'a mut [Vector4VER],
-        verts: &'a mut [Vector3VER],
+        norms: &'a mut [Vector4_XE_],
+        verts: &'a mut [Vector3_XE_],
     },
     BVTreeMesh {
         tree: &'a mut [u8],
-        verts: &'a mut [Vector3VER],
-        inds: &'a mut [u16VER],
+        verts: &'a mut [Vector3_XE_],
+        inds: &'a mut [u16_XE_],
     },
     None
 }
 
-#[make_platforms]
-impl<'a> HkShapeDumpVER<'a> {
-    fn from_bytes(dst: &mut DumpSlice<'a>, sizes: (usize, usize, usize), info: &mut HkShapeInfoVER) -> Result<Self> {
-        Ok(match info.kind.get() {
-            5 => {
-                let info: &mut ConvexVerticesInfoVER = zerocopy::transmute_mut!(info);
+#[make_endian]
+impl<'a> HkShapeDump_XE_<'a> {
+    fn from_bytes(dst: &mut DumpSlice<'a>, sizes: (usize, usize, usize), info: &mut HkShapeInfo_XE_) -> Result<Self> {
+        Ok(match info.kind.conv() {
+            5u32 => {
+                let info: &mut ConvexVerticesInfo_XE_ = zerocopy::transmute_mut!(info);
 
                 dst.align(16)?;
                 info.norms_offset = dst.offset.conv();
-                let norms = Vector4VER::mut_slice_from_data(dst, sizes.0).context("norms")?;
+                let norms = Vector4_XE_::mut_slice_from_data(dst, sizes.0).context("norms")?;
                 info.norm_num = norms.len().conv();
 
                 info.verts_offset = dst.offset.conv();
-                let verts = Vector3VER::mut_slice_from_data(dst, sizes.1).context("verts")?;
+                let verts = Vector3_XE_::mut_slice_from_data(dst, sizes.1).context("verts")?;
                 info.vert_num = (verts.len() - sizes.2).conv();
                 Self::ConvexVertices { norms, verts }
             }
             6 => {
-                let info: &mut BVTreeMeshInfoVER = zerocopy::transmute_mut!(info);
+                let info: &mut BVTreeMeshInfo_XE_ = zerocopy::transmute_mut!(info);
 
                 info.verts_offset = dst.offset.conv();
-                let verts = Vector3VER::mut_slice_from_data(dst, sizes.0).context("verts")?;
+                let verts = Vector3_XE_::mut_slice_from_data(dst, sizes.0).context("verts")?;
                 info.vert_num = verts.len().conv();
 
                 info.inds_offset = dst.offset.conv();
-                let inds = u16VER::mut_slice_from_data(dst, sizes.1).context("inds")?;
+                let inds = u16_XE_::mut_slice_from_data(dst, sizes.1).context("inds")?;
                 info.tri_num = (inds.len() / 3).conv();
 
                 dst.align(4)?;
@@ -666,13 +665,13 @@ impl<'a> HkShapeDumpVER<'a> {
     }
 }
 
-#[make_platforms]
+#[make_endian]
 #[enum_dispatch]
-pub trait DumpHkShapeVER {
+pub trait DumpHkShape_XE_ {
     fn kind(&self) -> u32;
     fn get_sizes(&self) -> (usize, usize, usize);
-    fn write_info(&self, info: &mut HkShapeInfoVER) -> Result<()>;
-    fn write_vals(&self, vals: HkShapeDumpVER) -> Result<()>;
+    fn write_info(&self, info: &mut HkShapeInfo_XE_) -> Result<()>;
+    fn write_vals(&self, vals: HkShapeDump_XE_) -> Result<()>;
     fn add_size(&self, mut offset: usize, counts: &mut InfoCounts) -> usize {
         counts.hk_shapes += 1;
         match self.kind() {
@@ -680,14 +679,14 @@ pub trait DumpHkShapeVER {
                 counts.offsets += 2;
                 let sizes = self.get_sizes();
                 offset = align_offset(offset, 16);
-                offset += sizes.0 * Vector4VER::size_of();
-                offset += sizes.1 * Vector3VER::size_of();
+                offset += sizes.0 * Vector4_XE_::size_of();
+                offset += sizes.1 * Vector3_XE_::size_of();
             }
             6 => {
                 counts.offsets += 3;
                 let sizes = self.get_sizes();
-                offset += sizes.0 * Vector3VER::size_of();
-                offset += sizes.1 * u16VER::size_of();
+                offset += sizes.0 * Vector3_XE_::size_of();
+                offset += sizes.1 * u16_XE_::size_of();
                 offset = align_offset(offset, 4);
                 offset += sizes.2;
                 offset = align_offset(offset, 4);
@@ -696,21 +695,21 @@ pub trait DumpHkShapeVER {
         }
         offset
     }
-    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfosVER) -> Result<()> {
+    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfos_XE_) -> Result<()> {
         let info_off = infos.hk_shapes.offset;
         let info = infos.hk_shapes.next().context("hk_shapes")?;
         self.write_info(info).context("write info")?;
-        let vals = HkShapeDumpVER::from_bytes(dst, self.get_sizes(), info).context("vals")?;
+        let vals = HkShapeDump_XE_::from_bytes(dst, self.get_sizes(), info).context("vals")?;
         self.write_vals(vals).context("write vals")?;
         match self.kind() {
             5 => {
-                *infos.offsets.next().context("offsets")? = ((info_off + std::mem::offset_of!(ConvexVerticesInfoVER, norms_offset)) as u32).conv();
-                *infos.offsets.next().context("offsets")? = ((info_off + std::mem::offset_of!(ConvexVerticesInfoVER, verts_offset)) as u32).conv();
+                *infos.offsets.next().context("offsets")? = ((info_off + std::mem::offset_of!(ConvexVerticesInfo_XE_, norms_offset)) as u32).conv();
+                *infos.offsets.next().context("offsets")? = ((info_off + std::mem::offset_of!(ConvexVerticesInfo_XE_, verts_offset)) as u32).conv();
             }
             6 => {
-                *infos.offsets.next().context("offsets")? = ((info_off + std::mem::offset_of!(BVTreeMeshInfoVER, verts_offset)) as u32).conv();
-                *infos.offsets.next().context("offsets")? = ((info_off + std::mem::offset_of!(BVTreeMeshInfoVER, inds_offset)) as u32).conv();
-                *infos.offsets.next().context("offsets")? = ((info_off + std::mem::offset_of!(BVTreeMeshInfoVER, tree_offset)) as u32).conv();
+                *infos.offsets.next().context("offsets")? = ((info_off + std::mem::offset_of!(BVTreeMeshInfo_XE_, verts_offset)) as u32).conv();
+                *infos.offsets.next().context("offsets")? = ((info_off + std::mem::offset_of!(BVTreeMeshInfo_XE_, inds_offset)) as u32).conv();
+                *infos.offsets.next().context("offsets")? = ((info_off + std::mem::offset_of!(BVTreeMeshInfo_XE_, tree_offset)) as u32).conv();
 
             }
             _ => ()
@@ -719,27 +718,27 @@ pub trait DumpHkShapeVER {
     }
 }
 
-#[make_platforms]
-impl DumpHkShapeVER for HkShapeRefVER<'_> { 
+#[make_endian]
+impl DumpHkShape_XE_ for HkShapeRef_XE_<'_> { 
     fn kind(&self) -> u32 {
         match self {
-            Self::Box(info) => info.kind.get(),
-            Self::Sphere(info) => info.kind.get(),
-            Self::Capsule(info) => info.kind.get(),
-            Self::Cylinder(info) => info.kind.get(),
-            Self::ConvexVertices(val) => val.info.kind.get(),
-            Self::BVTreeMesh(val) => val.info.kind.get(),
-            Self::Unknown(info) => info.kind.get(),
+            Self::Box(info) => info.kind.conv(),
+            Self::Sphere(info) => info.kind.conv(),
+            Self::Capsule(info) => info.kind.conv(),
+            Self::Cylinder(info) => info.kind.conv(),
+            Self::ConvexVertices(val) => val.info.kind.conv(),
+            Self::BVTreeMesh(val) => val.info.kind.conv(),
+            Self::Unknown(info) => info.kind.conv(),
         }
     }
     fn get_sizes(&self) -> (usize, usize, usize) {
         match self {
-            Self::ConvexVertices(ConvexVerticesRefVER { info, verts, norms }) => (norms.len(), verts.len(), verts.len() - info.vert_num.get() as usize),
-            Self::BVTreeMesh(BVTreeMeshRefVER { tree, verts, inds, .. }) => (verts.len(), inds.len(), tree.len()),
+            Self::ConvexVertices(ConvexVerticesRef_XE_ { info, verts, norms }) => (norms.len(), verts.len(), verts.len() - info.vert_num.to_native() as usize),
+            Self::BVTreeMesh(BVTreeMeshRef_XE_ { tree, verts, inds, .. }) => (verts.len(), inds.len(), tree.len()),
             _ => (0,0,0)
         }
     }
-    fn write_info(&self, info: &mut HkShapeInfoVER) -> Result<()> {
+    fn write_info(&self, info: &mut HkShapeInfo_XE_) -> Result<()> {
         match self {
             Self::Box(src) => info.write_from(zerocopy::transmute_ref!(*src)),
             Self::Sphere(src) => info.write_from(zerocopy::transmute_ref!(*src)),
@@ -750,13 +749,13 @@ impl DumpHkShapeVER for HkShapeRefVER<'_> {
             Self::Unknown(src) => info.write_from(src),
         }
     }
-    fn write_vals(&self, vals: HkShapeDumpVER) -> Result<()> {
+    fn write_vals(&self, vals: HkShapeDump_XE_) -> Result<()> {
         match (self, vals) {
-            (Self::ConvexVertices(ConvexVerticesRefVER { verts: src1, norms: src2, .. }), HkShapeDumpVER::ConvexVertices { verts: dst1, norms: dst2 }) => {
+            (Self::ConvexVertices(ConvexVerticesRef_XE_ { verts: src1, norms: src2, .. }), HkShapeDump_XE_::ConvexVertices { verts: dst1, norms: dst2 }) => {
                 dst1.write_from(src1).context("verts")?;
                 dst2.write_from(src2).context("norms")?;
             },
-            (Self::BVTreeMesh(BVTreeMeshRefVER { verts: src1, inds: src2, tree: src3, .. }), HkShapeDumpVER::BVTreeMesh { verts: dst1, inds: dst2, tree: dst3 }) => {
+            (Self::BVTreeMesh(BVTreeMeshRef_XE_ { verts: src1, inds: src2, tree: src3, .. }), HkShapeDump_XE_::BVTreeMesh { verts: dst1, inds: dst2, tree: dst3 }) => {
                 dst1.write_from(src1).context("verts")?;
                 dst2.write_from(src2).context("inds")?;
                 dst3.write_from(src3).context("tree")?;
@@ -767,8 +766,8 @@ impl DumpHkShapeVER for HkShapeRefVER<'_> {
     }
 }
 
-#[make_platforms]
-impl DumpHkShapeVER for HkShape { 
+#[make_endian]
+impl DumpHkShape_XE_ for HkShape { 
     fn kind(&self) -> u32 {
         match self {
             HkShape::Box(info) => info.kind,
@@ -787,21 +786,21 @@ impl DumpHkShapeVER for HkShape {
             _ => (0,0,0)
         }
     }
-    fn write_info(&self, info: &mut HkShapeInfoVER) -> Result<()> {
+    fn write_info(&self, info: &mut HkShapeInfo_XE_) -> Result<()> {
         match self {
-            HkShape::Box(src) => *zerocopy::transmute_mut!(info) = OrderedData::<BoxShapeVER>::conv(src),
-            HkShape::Sphere(src) => *zerocopy::transmute_mut!(info) = OrderedData::<SphereShapeVER>::conv(src),
-            HkShape::Capsule(src) => *zerocopy::transmute_mut!(info) = OrderedData::<CapsuleShapeVER>::conv(src),
-            HkShape::Cylinder(src) => *zerocopy::transmute_mut!(info) = OrderedData::<CylinderShapeVER>::conv(src),
-            HkShape::ConvexVertices { info: src, .. } => *zerocopy::transmute_mut!(info) = OrderedData::<ConvexVerticesInfoVER>::conv(src),
-            HkShape::BVTreeMesh { info: src, .. } => *zerocopy::transmute_mut!(info) = OrderedData::<BVTreeMeshInfoVER>::conv(src),
+            HkShape::Box(src) => *zerocopy::transmute_mut!(info) = OrderedData::<BoxShape_XE_>::conv(src),
+            HkShape::Sphere(src) => *zerocopy::transmute_mut!(info) = OrderedData::<SphereShape_XE_>::conv(src),
+            HkShape::Capsule(src) => *zerocopy::transmute_mut!(info) = OrderedData::<CapsuleShape_XE_>::conv(src),
+            HkShape::Cylinder(src) => *zerocopy::transmute_mut!(info) = OrderedData::<CylinderShape_XE_>::conv(src),
+            HkShape::ConvexVertices { info: src, .. } => *zerocopy::transmute_mut!(info) = OrderedData::<ConvexVerticesInfo_XE_>::conv(src),
+            HkShape::BVTreeMesh { info: src, .. } => *zerocopy::transmute_mut!(info) = OrderedData::<BVTreeMeshInfo_XE_>::conv(src),
             HkShape::Unknown(src) => *info = src.conv(),
         }
         Ok(())
     }
-    fn write_vals(&self, vals: HkShapeDumpVER) -> Result<()> {
+    fn write_vals(&self, vals: HkShapeDump_XE_) -> Result<()> {
         match (self, vals) {
-            (HkShape::ConvexVertices { verts: src1, norms: src2, .. }, HkShapeDumpVER::ConvexVertices { verts: dst1, norms: dst2 }) => {
+            (HkShape::ConvexVertices { verts: src1, norms: src2, .. }, HkShapeDump_XE_::ConvexVertices { verts: dst1, norms: dst2 }) => {
                 for (src, dst) in src1.iter().zip(dst1) {
                     *dst = src.conv();
                 }
@@ -809,7 +808,7 @@ impl DumpHkShapeVER for HkShape {
                     *dst = src.conv();
                 }
             },
-            (HkShape::BVTreeMesh { verts: src1, inds: src2, tree: src3, .. }, HkShapeDumpVER::BVTreeMesh { verts: dst1, inds: dst2, tree: dst3 }) => {
+            (HkShape::BVTreeMesh { verts: src1, inds: src2, tree: src3, .. }, HkShapeDump_XE_::BVTreeMesh { verts: dst1, inds: dst2, tree: dst3 }) => {
                 for (src, dst) in src1.iter().zip(dst1) {
                     *dst = src.conv();
                 }
@@ -824,65 +823,63 @@ impl DumpHkShapeVER for HkShape {
     }
 }
 
-///gen_ffi:export
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct HkConstraintInfo {
-    pub kind: u32,
-    pub bone_parents_offset: u32,
-    pub bone_parents_num: u32,
-    pub bone_names_offset: u32,
-    pub bone_names_num: u32,
-    pub bone_transforms_offset: u32,
-    pub bone_transforms_num: u32,
-    pub unk_7: u32,
-    pub unk_8: u32,
-    pub unk_9: u32,
-    pub bones_offset: u32,
-    pub bones_num: u16,
-    pub bone_order_num: u16,
-    pub bone_order_offset: u32,
-    pub unk_13: u32,
-    pub unk_14: f32,
-    pub vals2_num: u32,
-    pub vals2_offset: u32,
-    pub unk_17: u32,
+#[derive_ordered_data]
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct HkConstraintInfo_XE_ {
+    pub kind: u32_XE_,
+    pub bone_parents_offset: u32_XE_,
+    pub bone_parents_num: u32_XE_,
+    pub bone_names_offset: u32_XE_,
+    pub bone_names_num: u32_XE_,
+    pub bone_transforms_offset: u32_XE_,
+    pub bone_transforms_num: u32_XE_,
+    pub unk_7: u32_XE_,
+    pub unk_8: u32_XE_,
+    pub unk_9: u32_XE_,
+    pub bones_offset: u32_XE_,
+    pub bones_num: u16_XE_,
+    pub bone_order_num: u16_XE_,
+    pub bone_order_offset: u32_XE_,
+    pub unk_13: u32_XE_,
+    pub unk_14: f32_XE_,
+    pub vals2_num: u32_XE_,
+    pub vals2_offset: u32_XE_,
+    pub unk_17: u32_XE_,
 }
 
-///gen_ffi:export
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct TRS {
-    pub translation: Vector4,
-    pub rotation: Vector4,
-    pub scale: Vector4,
+#[derive_ordered_data]
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct TRS_XE_ {
+    pub translation: Vector4_XE_,
+    pub rotation: Vector4_XE_,
+    pub scale: Vector4_XE_,
 }
 
-///gen_ffi:export
-#[make_platforms]
+#[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
-pub struct HkConstraintBoneRefVER<'a> {
+pub struct HkConstraintBoneRef_XE_<'a> {
     pub name: string<'a>,
-    pub start: u32VER,
-    pub val: u32VER
+    pub start: u32_XE_,
+    pub val: u32_XE_
 }
 
-///gen_ffi:export
-#[make_platforms]
+#[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
-pub struct HkConstraintRefVER<'a> {
-    pub info: &'a HkConstraintInfoVER,
-    pub bone_parents: ref_slice<'a, i16VER>,
-    pub bone_names: slice<HkConstraintBoneRefVER<'a>>,
-    pub name_offsets: ref_slice<'a, u32VER>,
-    pub bone_transforms: ref_slice<'a, TRSVER>,
-    pub bones: ref_slice<'a, u32VER>,
-    pub bones_order: ref_slice<'a, Key2VER>,
-    pub vals2: ref_slice<'a, f32VER>,
+pub struct HkConstraintRef_XE_<'a> {
+    pub info: &'a HkConstraintInfo_XE_,
+    pub bone_parents: ref_slice<'a, i16_XE_>,
+    pub bone_names: slice<HkConstraintBoneRef_XE_<'a>>,
+    pub name_offsets: ref_slice<'a, u32_XE_>,
+    pub bone_transforms: ref_slice<'a, TRS_XE_>,
+    pub bones: ref_slice<'a, u32_XE_>,
+    pub bones_order: ref_slice<'a, Key2_XE_>,
+    pub vals2: ref_slice<'a, f32_XE_>,
 }
 
-#[make_platforms]
-impl Default for HkConstraintRefVER<'_> {
+#[make_endian]
+impl Default for HkConstraintRef_XE_<'_> {
     fn default() -> Self {
         Self {
             info: get_default_ref(),
@@ -897,60 +894,60 @@ impl Default for HkConstraintRefVER<'_> {
     }
 }
 
-#[make_platforms]
-impl<'a> HkConstraintRefVER<'a> {
+#[make_endian]
+impl<'a> HkConstraintRef_XE_<'a> {
     pub fn from_data(src: &'a[u8], offset: usize) -> Result<Self> {
-        let info = HkConstraintInfoVER::from_data(&src[offset..]).context("info")?;
-        if info.kind.get() != 0 {
+        let info = HkConstraintInfo_XE_::from_data(&src[offset..]).context("info")?;
+        if info.kind != 0 {
             warn!("Unknown & Unhandled HkConstraint type {}", info.kind);
         }
 
-        let bone_parents = i16VER::slice_from_data(
-            &src[info.bone_parents_offset.get() as usize..],
-            info.bone_parents_num.get() as usize,
+        let bone_parents = i16_XE_::slice_from_data(
+            &src[info.bone_parents_offset.conv()..],
+            info.bone_parents_num.conv(),
         )
         .context("bone_parents")?;
-        assert!(bone_parents[0].get() == -1, "first bone should be root node with no parent");
+        assert!(bone_parents[0] == -1, "first bone should be root node with no parent");
 
-        let name_offsets = u32VER::slice_from_data(
-            &src[info.bone_names_offset.get() as usize..],
-            info.bone_names_num.get() as usize,
+        let name_offsets = u32_XE_::slice_from_data(
+            &src[info.bone_names_offset.conv()..],
+            info.bone_names_num.conv(),
         )
         .context("name_offsets")?;
         let mut bone_names = Vec::with_capacity(name_offsets.len());
         for offset_ in name_offsets.iter() {
-            let start = u32VER::from_data(&src[offset_.get() as usize..]).context("start")?;
-            let val_ = u32VER::from_data(&src[offset_.get() as usize + 4..]).context("val_")?;
-            let mut offset = start.get() as usize;
+            let start = u32_XE_::from_data(&src[offset_.conv()..]).context("start")?;
+            let val_ = u32_XE_::from_data(&src[offset_.to_native() as usize + 4..]).context("val_")?;
+            let mut offset = start.conv();
             while src[offset] != 0 {
                 offset += 1;
             }
-            bone_names.push(HkConstraintBoneRefVER {
-                name: str::from_utf8(&src[start.get() as usize..offset]).context("string")?.into(),
+            bone_names.push(HkConstraintBoneRef_XE_ {
+                name: str::from_utf8(&src[start.conv()..offset]).context("string")?.into(),
                 start: *start,
                 val: *val_,
             });
         }
-        let bone_transforms = TRSVER::slice_from_data(
-            &src[info.bone_transforms_offset.get() as usize..],
-            info.bone_transforms_num.get() as usize,
+        let bone_transforms = TRS_XE_::slice_from_data(
+            &src[info.bone_transforms_offset.conv()..],
+            info.bone_transforms_num.conv(),
         )
         .context("bone_tranforms")?;
-        let bones = u32VER::slice_from_data(
-            &src[info.bones_offset.get() as usize..],
-            info.bones_num.get() as usize,
+        let bones = u32_XE_::slice_from_data(
+            &src[info.bones_offset.conv()..],
+            info.bones_num.conv(),
         )
         .context("bones")?;
-        let bones_order = Key2VER::slice_from_data(
-            &src[info.bone_order_offset.get() as usize..],
-            info.bone_order_num.get() as usize,
+        let bones_order = Key2_XE_::slice_from_data(
+            &src[info.bone_order_offset.conv()..],
+            info.bone_order_num.conv(),
         )
         .context("bone_order")?;
 
         // TODO should probably figure out what this data is
-        let vals2 = f32VER::slice_from_data(
-            &src[info.vals2_offset.get() as usize..],
-            info.vals2_num.get() as usize * 42, 
+        let vals2 = f32_XE_::slice_from_data(
+            &src[info.vals2_offset.conv()..],
+            info.vals2_num.to_native() as usize * 42, 
         )
         .context("vals2")?;
 
@@ -976,9 +973,9 @@ pub struct HkConstraint {
     pub vals2: Vec<f32>,           // probably f32
 }
 
-#[make_platforms]
-impl From<&HkConstraintRefVER<'_>> for HkConstraint {
-    fn from(val: &HkConstraintRefVER) -> Self {
+#[make_endian]
+impl From<&HkConstraintRef_XE_<'_>> for HkConstraint {
+    fn from(val: &HkConstraintRef_XE_) -> Self {
         Self {
             info: val.info.conv(),
             bone_parents: val.bone_parents.iter().map(|x| x.conv()).collect(),
@@ -993,69 +990,69 @@ impl From<&HkConstraintRefVER<'_>> for HkConstraint {
     }
 }
 
-#[make_platforms]
-#[enum_dispatch(DumpHkConstraintVER)]
-pub enum HkConstraintVER<'a> {
-    Ref(HkConstraintRefVER<'a>),
+#[make_endian]
+#[enum_dispatch(DumpHkConstraint_XE_)]
+pub enum HkConstraint_XE_<'a> {
+    Ref(HkConstraintRef_XE_<'a>),
     Owned(HkConstraint)
 }
 
-#[make_platforms]
-pub trait DumpHkConstraintImplVER {
+#[make_endian]
+pub trait DumpHkConstraintImpl_XE_ {
     fn bone_names_num(&self) -> usize;
     fn bone_transforms_num(&self) -> usize;
     fn bone_order_num(&self) -> usize;
     fn bone_parents_num(&self) -> usize;
     fn vals2_num(&self) -> usize;
     fn bone_names(&self) -> impl Iterator<Item=&str>;
-    fn write_info(&self, info: &mut HkConstraintInfoVER) -> Result<()>;
-    fn write_bone_transforms(&self, bone_transforms: &mut [TRSVER]) -> Result<()>;
-    fn write_bone_order(&self, bone_order: &mut [Key2VER]) -> Result<()>;
-    fn write_bone_parents(&self, bone_parents: &mut [i16VER]) -> Result<()>;
-    fn write_bone_name_vals<'a>(&self, vals: impl Iterator<Item = &'a mut u32VER>);
-    fn write_vals2(&self, vals2: &mut [f32VER]) -> Result<()>;
+    fn write_info(&self, info: &mut HkConstraintInfo_XE_) -> Result<()>;
+    fn write_bone_transforms(&self, bone_transforms: &mut [TRS_XE_]) -> Result<()>;
+    fn write_bone_order(&self, bone_order: &mut [Key2_XE_]) -> Result<()>;
+    fn write_bone_parents(&self, bone_parents: &mut [i16_XE_]) -> Result<()>;
+    fn write_bone_name_vals<'a>(&self, vals: impl Iterator<Item = &'a mut u32_XE_>);
+    fn write_vals2(&self, vals2: &mut [f32_XE_]) -> Result<()>;
 }
 
-#[make_platforms]
+#[make_endian]
 #[enum_dispatch]
-pub trait DumpHkConstraintVER {
-    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfosVER, bones_num: u16, bones_offset: u32) -> Result<()>;
+pub trait DumpHkConstraint_XE_ {
+    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfos_XE_, bones_num: u16, bones_offset: u32) -> Result<()>;
     fn add_size(&self, offset: usize, infos: &mut InfoCounts) -> usize;
 }
-#[make_platforms]
-impl<T: DumpHkConstraintImplVER> DumpHkConstraintVER for T {
-    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfosVER, bones_num: u16, bones_offset: u32) -> Result<()> {
+#[make_endian]
+impl<T: DumpHkConstraintImpl_XE_> DumpHkConstraint_XE_ for T {
+    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfos_XE_, bones_num: u16, bones_offset: u32) -> Result<()> {
         let info_off = infos.hk_constraints.offset;
         let info = infos.hk_constraints.next().context("hk_constraints")?;
         self.write_info(info).context("write info")?;
         info.bones_num = bones_num.conv();
         info.bones_offset = bones_offset.conv();
-        *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(HkConstraintInfoVER, bones_offset)).conv();
+        *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(HkConstraintInfo_XE_, bones_offset)).conv();
 
         info.bone_names_offset = dst.offset.conv();
-        *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(HkConstraintInfoVER, bone_names_offset)).conv();
+        *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(HkConstraintInfo_XE_, bone_names_offset)).conv();
         let mut name_off = dst.offset;
-        let name_offsets = u32VER::mut_slice_from_data(dst, self.bone_names_num()).context("name_offsets")?;
+        let name_offsets = u32_XE_::mut_slice_from_data(dst, self.bone_names_num()).context("name_offsets")?;
         let mut string_off = dst.offset;
-        let string_offs = u32VER::mut_slice_from_data(dst, name_offsets.len()*2).context("string_offs")?;
+        let string_offs = u32_XE_::mut_slice_from_data(dst, name_offsets.len()*2).context("string_offs")?;
         info.bone_names_num = name_offsets.len().conv();
 
         dst.align(16)?;
         info.bone_transforms_offset = dst.offset.conv();
-        *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(HkConstraintInfoVER, bone_transforms_offset)).conv();
-        let bone_transforms = TRSVER::mut_slice_from_data(dst, self.bone_transforms_num()).context("bone_transforms")?;
+        *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(HkConstraintInfo_XE_, bone_transforms_offset)).conv();
+        let bone_transforms = TRS_XE_::mut_slice_from_data(dst, self.bone_transforms_num()).context("bone_transforms")?;
         info.bone_transforms_num = bone_transforms.len().conv();
         self.write_bone_transforms(bone_transforms).context("write bone_transforms")?;
 
         info.bone_order_offset = dst.offset.conv();
-        *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(HkConstraintInfoVER, bone_order_offset)).conv();
-        let bone_order = Key2VER::mut_slice_from_data(dst, self.bone_order_num()).context("bone_order")?;
+        *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(HkConstraintInfo_XE_, bone_order_offset)).conv();
+        let bone_order = Key2_XE_::mut_slice_from_data(dst, self.bone_order_num()).context("bone_order")?;
         info.bone_order_num = bone_order.len().conv();
         self.write_bone_order(bone_order).context("write bone_order")?;
 
         info.bone_parents_offset = dst.offset.conv();
-        *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(HkConstraintInfoVER, bone_parents_offset)).conv();
-        let bone_parents = i16VER::mut_slice_from_data(dst, self.bone_parents_num()).context("bone_parents")?;
+        *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(HkConstraintInfo_XE_, bone_parents_offset)).conv();
+        let bone_parents = i16_XE_::mut_slice_from_data(dst, self.bone_parents_num()).context("bone_parents")?;
         info.bone_parents_num = bone_parents.len().conv();
         self.write_bone_parents(bone_parents).context("write bone_parents")?;
         dst.align(4)?;
@@ -1071,17 +1068,17 @@ impl<T: DumpHkConstraintImplVER> DumpHkConstraintVER for T {
             dst.align(4)?;
             *infos.offsets.next().context("offsets")? = name_off.conv();
             *infos.offsets.next().context("offsets")? = string_off.conv();
-            name_off += size_of::<u32VER>();
-            string_off += size_of::<u32VER>() * 2;
+            name_off += size_of::<u32_XE_>();
+            string_off += size_of::<u32_XE_>() * 2;
         }
 
         info.vals2_offset = dst.offset.conv();
-        let vals2 = f32VER::mut_slice_from_data(dst, self.vals2_num()).context("vals2")?;
+        let vals2 = f32_XE_::mut_slice_from_data(dst, self.vals2_num()).context("vals2")?;
         self.write_vals2(vals2).context("write vals2")?;
         if vals2.len() == 0 {
             info.vals2_offset = 0u32.conv();
         } else {
-            *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(HkConstraintInfoVER, vals2_offset)).conv();
+            *infos.offsets.next().context("offsets")? = (info_off + std::mem::offset_of!(HkConstraintInfo_XE_, vals2_offset)).conv();
         }
         Ok(())
     }
@@ -1091,10 +1088,10 @@ impl<T: DumpHkConstraintImplVER> DumpHkConstraintVER for T {
         if self.vals2_num() != 0 {
             infos.offsets += 1;
         }
-        offset += size_of::<u32VER>() * self.bone_names_num() * 3;
-        offset = align_offset(offset, 16) + size_of::<TRSVER>() * self.bone_transforms_num();
-        offset += size_of::<Key2VER>() * self.bone_order_num();
-        offset += size_of::<i16VER>() * self.bone_parents_num();
+        offset += size_of::<u32_XE_>() * self.bone_names_num() * 3;
+        offset = align_offset(offset, 16) + size_of::<TRS_XE_>() * self.bone_transforms_num();
+        offset += size_of::<Key2_XE_>() * self.bone_order_num();
+        offset += size_of::<i16_XE_>() * self.bone_parents_num();
         offset = align_offset(offset, 4);
 
         for string in self.bone_names() {
@@ -1103,13 +1100,13 @@ impl<T: DumpHkConstraintImplVER> DumpHkConstraintVER for T {
             offset = align_offset(offset, 4);
         }
 
-        offset += size_of::<f32VER>() * self.vals2_num();
+        offset += size_of::<f32_XE_>() * self.vals2_num();
         offset
     }
 }
 
-#[make_platforms]
-impl DumpHkConstraintImplVER for HkConstraintRefVER<'_> {
+#[make_endian]
+impl DumpHkConstraintImpl_XE_ for HkConstraintRef_XE_<'_> {
     fn bone_names_num(&self) -> usize {
         self.bone_names.len()
     }
@@ -1128,30 +1125,30 @@ impl DumpHkConstraintImplVER for HkConstraintRefVER<'_> {
     fn bone_names(&self) -> impl Iterator<Item=&str> {
         self.bone_names.iter().map(|x| &*x.name)
     }
-    fn write_info(&self, info: &mut HkConstraintInfoVER) -> Result<()> {
+    fn write_info(&self, info: &mut HkConstraintInfo_XE_) -> Result<()> {
         info.write_from(self.info)
     }
-    fn write_bone_transforms(&self, bone_transforms: &mut [TRSVER]) -> Result<()> {
+    fn write_bone_transforms(&self, bone_transforms: &mut [TRS_XE_]) -> Result<()> {
         bone_transforms.write_from(&self.bone_transforms[..])
     }
-    fn write_bone_order(&self, bone_order: &mut [Key2VER]) -> Result<()> {
+    fn write_bone_order(&self, bone_order: &mut [Key2_XE_]) -> Result<()> {
         bone_order.write_from(&self.bones_order[..])
     }
-    fn write_bone_parents(&self, bone_parents: &mut [i16VER]) -> Result<()> {
+    fn write_bone_parents(&self, bone_parents: &mut [i16_XE_]) -> Result<()> {
         bone_parents.write_from(&self.bone_parents[..])
     }
-    fn write_bone_name_vals<'a>(&self, vals: impl Iterator<Item = &'a mut u32VER>) {
+    fn write_bone_name_vals<'a>(&self, vals: impl Iterator<Item = &'a mut u32_XE_>) {
         for (src, dst) in self.bone_names.iter().map(|x| x.val).zip(vals) {
             *dst = src;
         }
     }
-    fn write_vals2(&self, vals2: &mut [f32VER]) -> Result<()> {
+    fn write_vals2(&self, vals2: &mut [f32_XE_]) -> Result<()> {
         vals2.write_from(&self.vals2[..])
     }
 }
 
-#[make_platforms]
-impl DumpHkConstraintImplVER for HkConstraint {
+#[make_endian]
+impl DumpHkConstraintImpl_XE_ for HkConstraint {
     fn bone_names_num(&self) -> usize {
         self.bone_names.len()
     }
@@ -1170,17 +1167,17 @@ impl DumpHkConstraintImplVER for HkConstraint {
     fn bone_names(&self) -> impl Iterator<Item=&str> {
         self.bone_names.iter().map(|val| val.as_str())
     }
-    fn write_info(&self, info: &mut HkConstraintInfoVER) -> Result<()> {
+    fn write_info(&self, info: &mut HkConstraintInfo_XE_) -> Result<()> {
         *info = (&self.info).conv();
         Ok(())
     }
-    fn write_bone_transforms(&self, bone_transforms: &mut [TRSVER]) -> Result<()> {
+    fn write_bone_transforms(&self, bone_transforms: &mut [TRS_XE_]) -> Result<()> {
         for (src, dst) in self.bone_transforms.iter().zip(bone_transforms) {
             *dst = src.conv();
         }
         Ok(())
     }
-    fn write_bone_order(&self, bone_order: &mut [Key2VER]) -> Result<()> {
+    fn write_bone_order(&self, bone_order: &mut [Key2_XE_]) -> Result<()> {
         let mut new_bone_order = self.bone_names.iter().enumerate().map(|(i,val)| Key2 { key: hash_string(val.as_ref(), None).into(), val: i as u32 }).collect::<Vec<_>>();
         new_bone_order.sort_by_key(|x| x.key.get());
         for (src, dst) in new_bone_order.iter().zip(bone_order) {
@@ -1188,18 +1185,18 @@ impl DumpHkConstraintImplVER for HkConstraint {
         }
         Ok(())
     }
-    fn write_bone_parents(&self, bone_parents: &mut [i16VER]) -> Result<()> {
+    fn write_bone_parents(&self, bone_parents: &mut [i16_XE_]) -> Result<()> {
         for (src, dst) in self.bone_parents.iter().zip(bone_parents) {
             *dst = src.conv();
         }
         Ok(())
     }
-    fn write_bone_name_vals<'a>(&self, vals: impl Iterator<Item = &'a mut u32VER>) {
+    fn write_bone_name_vals<'a>(&self, vals: impl Iterator<Item = &'a mut u32_XE_>) {
         for val in vals {
             *val = 0u32.conv();
         }
     }
-    fn write_vals2(&self, vals2: &mut [f32VER]) -> Result<()> {
+    fn write_vals2(&self, vals2: &mut [f32_XE_]) -> Result<()> {
         for (src, dst) in self.vals2.iter().zip(vals2) {
             *dst = src.conv();
         }
@@ -1207,35 +1204,36 @@ impl DumpHkConstraintImplVER for HkConstraint {
     }
 }
 
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct HkConstraintData {
-    pub kind: u32,
-    pub unk_1: u32,
-    pub unk_2: u32,
-    pub unk_3: u32,
-    pub unk_4: u32,
-    pub unk_5: u32,
-    pub unk_6: u32,
-    pub unk_7: u32,
-    pub unk_8: u32,
-    pub unk_9: u32,
-    pub unk_10: u32,
-    pub unk_11: u32,
-    pub unk_12: u32,
-    pub unk_13: u32,
-    pub unk_14: u32,
-    pub unk_15: u32,
-    pub unk_16: u32,
-    pub unk_17: u32,
-    pub unk_18: u32,
-    pub unk_19: u32,
-    pub unk_20: u32,
-    pub unk_21: u32,
-    pub unk_22: u32,
-    pub unk_23: u32,
-    pub unk_24: u32,
-    pub unk_25: u32,
-    pub unk_26: u32,
-    pub unk_27: u32,
-    pub unk_28: u32,
+#[derive_ordered_data]
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct HkConstraintData_XE_ {
+    pub kind: u32_XE_,
+    pub unk_1: u32_XE_,
+    pub unk_2: u32_XE_,
+    pub unk_3: u32_XE_,
+    pub unk_4: u32_XE_,
+    pub unk_5: u32_XE_,
+    pub unk_6: u32_XE_,
+    pub unk_7: u32_XE_,
+    pub unk_8: u32_XE_,
+    pub unk_9: u32_XE_,
+    pub unk_10: u32_XE_,
+    pub unk_11: u32_XE_,
+    pub unk_12: u32_XE_,
+    pub unk_13: u32_XE_,
+    pub unk_14: u32_XE_,
+    pub unk_15: u32_XE_,
+    pub unk_16: u32_XE_,
+    pub unk_17: u32_XE_,
+    pub unk_18: u32_XE_,
+    pub unk_19: u32_XE_,
+    pub unk_20: u32_XE_,
+    pub unk_21: u32_XE_,
+    pub unk_22: u32_XE_,
+    pub unk_23: u32_XE_,
+    pub unk_24: u32_XE_,
+    pub unk_25: u32_XE_,
+    pub unk_26: u32_XE_,
+    pub unk_27: u32_XE_,
+    pub unk_28: u32_XE_,
 }

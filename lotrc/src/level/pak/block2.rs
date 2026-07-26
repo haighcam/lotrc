@@ -1,24 +1,23 @@
-use crate::types::GetNative;
-use crate::types::{get_str, hash_string, Crc, DumpData, DumpSlice, RefFromData, Vector3, OrderedData, OrderedDataStrict, align_offset, ref_slice, slice};
-#[make_platforms]
+use crate::types::{get_str, hash_string, Crc, DumpData, DumpSlice, RefFromData, Vector3, OrderedData, align_offset, ref_slice, slice};
+#[make_endian]
 use crate::{
     level::pak::{
-        PakHeaderVER,
+        PakHeader_XE_,
         block1::{
-            objs::PFieldInfoVER,
+            objs::PFieldInfo_XE_,
         }
     },
     types::{
-        CrcVER, u16VER, u32VER, f32VER, Vector3VER, StringKeysRefVER,
+        Crc_XE_, u16_XE_, u32_XE_, f32_XE_, Vector3_XE_, StringKeysRef_XE_,
         sub_blocks::{
-            SubBlocksInfoRefVER, DataRefVER, DumpDataVER, DumpStringVER,
+            SubBlocksInfoRef_XE_, DataRef_XE_, DumpData_XE_, DumpString_XE_,
         },
     },
 };
 use anyhow::{anyhow, Context, Result};
 use indexmap::IndexMap;
 use log::{warn, debug};
-use lotrc_proc::{make_platforms, OrderedData};
+use lotrc_proc::{make_endian, derive_ordered_data};
 use std::collections::{HashMap, HashSet};
 use enum_dispatch::enum_dispatch;
 
@@ -41,28 +40,28 @@ pub mod keys {
     pub const KEY_LEVEL: u32 = hash_string("Level".as_bytes(), None);
 }
 
-#[make_platforms]
+#[make_endian]
 #[derive(Default)]
 #[cfg_attr(feature = "ffi", repr(C))]
-pub struct Block2RefVER<'a> {
-    pub sub_blocks: SubBlocks2RefVER<'a>,
-    pub offsets: ref_slice<'a, u32VER>
+pub struct Block2Ref_XE_<'a> {
+    pub sub_blocks: SubBlocks2Ref_XE_<'a>,
+    pub offsets: ref_slice<'a, u32_XE_>
 }
 
-#[make_platforms]
-impl<'a> Block2RefVER<'a> {
-    pub fn from_data(src: &'a [u8], pak_header: &PakHeaderVER, string_keys: &StringKeysRefVER) -> Result<Self> {
+#[make_endian]
+impl<'a> Block2Ref_XE_<'a> {
+    pub fn from_data(src: &'a [u8], pak_header: &PakHeader_XE_, string_keys: &StringKeysRef_XE_) -> Result<Self> {
         let t = std::time::Instant::now();
-        let sub_blocks = SubBlocks2RefVER::from_data(
-            &src[pak_header.sub_blocks2_offset.get() as usize..],
+        let sub_blocks = SubBlocks2Ref_XE_::from_data(
+            &src[pak_header.sub_blocks2_offset.conv()..],
             string_keys
         )
         .context("sub_blocks")?;
         debug!("Block2 sub_blocks parsed in {}", t.elapsed().as_secs_f32());
         let t = std::time::Instant::now();
-        let offsets = u32VER::slice_from_data(
-            &src[pak_header.block2_offsets_offset.get() as usize..],
-            pak_header.block2_offsets_num.get() as usize,
+        let offsets = u32_XE_::slice_from_data(
+            &src[pak_header.block2_offsets_offset.conv()..],
+            pak_header.block2_offsets_num.conv(),
         )
         .context("offsets")?;
         debug!("Block2 offsets parsed in {}", t.elapsed().as_secs_f32());
@@ -74,40 +73,40 @@ impl<'a> Block2RefVER<'a> {
     }
 }
 
-#[make_platforms]
-pub trait DumpBlock2VER {
-    fn sub_blocks(&self) -> &impl DumpSubBlocks2VER;
-    fn dump<'a>(&self, dst: &mut DumpSlice<'a>, offset_num: usize, keys: &[u32], header: &mut PakHeaderVER) -> Result<&'a mut [u32VER]> {
+#[make_endian]
+pub trait DumpBlock2_XE_ {
+    fn sub_blocks(&self) -> &impl DumpSubBlocks2_XE_;
+    fn dump<'a>(&self, dst: &mut DumpSlice<'a>, offset_num: usize, keys: &[u32], header: &mut PakHeader_XE_) -> Result<&'a mut [u32_XE_]> {
         header.sub_blocks2_offset = dst.offset.conv();
         self.sub_blocks().dump_into(dst, keys).context("sub_blocks")?;
         header.block2_offsets_offset = dst.offset.conv();
-        let offsets = u32VER::mut_slice_from_data(dst, offset_num).context("offsets")?;
+        let offsets = u32_XE_::mut_slice_from_data(dst, offset_num).context("offsets")?;
         header.block2_offsets_num = offsets.len().conv();
         Ok(offsets)
     }
 }
 
-#[make_platforms]
-impl DumpBlock2VER for Block2RefVER<'_> {
-    fn sub_blocks(&self) -> &impl DumpSubBlocks2VER {
+#[make_endian]
+impl DumpBlock2_XE_ for Block2Ref_XE_<'_> {
+    fn sub_blocks(&self) -> &impl DumpSubBlocks2_XE_ {
         &self.sub_blocks
     }
 }
 
-#[make_platforms]
+#[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
-pub struct SubBlocks2RefVER<'a> {
-    pub info: SubBlocksInfoRefVER<'a>,
-    pub spray: Option<SprayRefVER<'a>>,
-    pub crowd: Option<CrowdRefVER<'a>>,
-    pub pfields: Option<PFieldsRefVER<'a>>,
-    pub langs: IndexMap<u32, LangStringsRefVER<'a>>,
-    pub files: IndexMap<u32, DataRefVER<'a>>
+pub struct SubBlocks2Ref_XE_<'a> {
+    pub info: SubBlocksInfoRef_XE_<'a>,
+    pub spray: Option<SprayRef_XE_<'a>>,
+    pub crowd: Option<CrowdRef_XE_<'a>>,
+    pub pfields: Option<PFieldsRef_XE_<'a>>,
+    pub langs: IndexMap<u32, LangStringsRef_XE_<'a>>,
+    pub files: IndexMap<u32, DataRef_XE_<'a>>
 }
 
-#[make_platforms]
-impl Default for SubBlocks2RefVER<'_> {
+#[make_endian]
+impl Default for SubBlocks2Ref_XE_<'_> {
     fn default() -> Self {
         Self {
             info: Default::default(),
@@ -120,31 +119,31 @@ impl Default for SubBlocks2RefVER<'_> {
     }
 }
 
-#[make_platforms]
-impl<'a> SubBlocks2RefVER<'a> {
+#[make_endian]
+impl<'a> SubBlocks2Ref_XE_<'a> {
     // TODO should use the pak string to get key names
     // TODO add ref to pfeild infos in pfields struct
-    pub fn from_data(src: &'a [u8], string_keys: &StringKeysRefVER) -> Result<Self> {
+    pub fn from_data(src: &'a [u8], string_keys: &StringKeysRef_XE_) -> Result<Self> {
         use keys::*;
-        let info = SubBlocksInfoRefVER::from_data(src)?;
+        let info = SubBlocksInfoRef_XE_::from_data(src)?;
         let mut spray = None;
         let mut crowd = None;
         let mut pfields = None;
         let mut langs = IndexMap::new();
         let mut files = IndexMap::new();
         for info in info.block_headers.iter() {
-            let data = &src[info.offset.get() as usize .. (info.offset + info.size) as usize];
-            match info.key.get() {
+            let data = &src[info.offset.conv() .. (info.offset + info.size) as usize];
+            match info.key.conv() {
                 KEY_POLISH | KEY_GERMAN | KEY_FRENCH | KEY_SPANISH | KEY_RUSSIAN | KEY_SWEDISH
                 | KEY_ENGLISH | KEY_ITALIAN | KEY_NORWEGIAN => {
-                    langs.insert(info.key.get(), LangStringsRefVER::from_data(data, string_keys)?);
+                    langs.insert(info.key.conv(), LangStringsRef_XE_::from_data(data, string_keys)?);
                 }
-                KEY_SPRAY => {spray.replace(SprayRefVER::from_data(data)?);},
-                KEY_CROWD => {crowd.replace(CrowdRefVER::from_data(data)?);},
-                KEY_PFIELDS => {pfields.replace(PFieldsRefVER::from_data(data));},
+                KEY_SPRAY => {spray.replace(SprayRef_XE_::from_data(data)?);},
+                KEY_CROWD => {crowd.replace(CrowdRef_XE_::from_data(data)?);},
+                KEY_PFIELDS => {pfields.replace(PFieldsRef_XE_::from_data(data));},
                 key => {
                     warn!("Unknown block type {:?}, {:?}", key, get_str(&key).map(|x| x.to_string()).unwrap_or_default());
-                    files.insert(key, DataRefVER::from_data(data));
+                    files.insert(key, DataRef_XE_::from_data(data));
                 }
             }
         }
@@ -159,15 +158,15 @@ impl<'a> SubBlocks2RefVER<'a> {
     }
 }
 
-#[make_platforms]
-pub trait DumpSubBlocks2VER {
+#[make_endian]
+pub trait DumpSubBlocks2_XE_ {
     fn files_num(&self) -> usize;
     fn langs_num(&self) -> usize;
-    fn spray(&self) -> Option<&impl DumpSprayVER>;
-    fn crowd(&self) -> Option<&impl DumpCrowdVER>;
-    fn pfields(&self) -> Option<&impl DumpDataVER>;
-    fn files(&self) -> impl Iterator<Item = (u32, &impl DumpDataVER)>;
-    fn langs(&self) -> impl Iterator<Item = (u32, &impl DumpLangStringsVER)>;
+    fn spray(&self) -> Option<&impl DumpSpray_XE_>;
+    fn crowd(&self) -> Option<&impl DumpCrowd_XE_>;
+    fn pfields(&self) -> Option<&impl DumpData_XE_>;
+    fn files(&self) -> impl Iterator<Item = (u32, &impl DumpData_XE_)>;
+    fn langs(&self) -> impl Iterator<Item = (u32, &impl DumpLangStrings_XE_)>;
     
     fn blocks_num(&self) -> usize {
         self.files_num() + self.langs_num()
@@ -177,7 +176,7 @@ pub trait DumpSubBlocks2VER {
         let spray = self.spray();
         let crowd = self.crowd();
         let pfields = self.pfields();
-        let mut size = SubBlocksInfoRefVER::size(
+        let mut size = SubBlocksInfoRef_XE_::size(
             self.blocks_num() 
             + spray.is_some().then_some(1).unwrap_or_default() 
             + crowd.is_some().then_some(1).unwrap_or_default()
@@ -208,7 +207,7 @@ pub trait DumpSubBlocks2VER {
         let spray = self.spray();
         let crowd = self.crowd();
         let pfields = self.pfields();
-        let block_headers = SubBlocksInfoRefVER::dump(dst, 
+        let block_headers = SubBlocksInfoRef_XE_::dump(dst, 
             self.blocks_num() 
             + spray.is_some().then_some(1).unwrap_or_default() 
             + crowd.is_some().then_some(1).unwrap_or_default()
@@ -274,41 +273,41 @@ pub trait DumpSubBlocks2VER {
     }
 }
 
-#[make_platforms]
-impl DumpSubBlocks2VER for SubBlocks2RefVER<'_> {
+#[make_endian]
+impl DumpSubBlocks2_XE_ for SubBlocks2Ref_XE_<'_> {
     fn files_num(&self) -> usize {
         self.files.len()
 	}
     fn langs_num(&self) -> usize {
         self.langs.len()
 	}
-    fn spray(&self) -> Option<&impl DumpSprayVER> {
+    fn spray(&self) -> Option<&impl DumpSpray_XE_> {
         self.spray.as_ref()
 	}
-    fn crowd(&self) -> Option<&impl DumpCrowdVER> {
+    fn crowd(&self) -> Option<&impl DumpCrowd_XE_> {
         self.crowd.as_ref()
 	}
-    fn pfields(&self) -> Option<&impl DumpDataVER> {
+    fn pfields(&self) -> Option<&impl DumpData_XE_> {
         self.pfields.as_ref()
 	}
-    fn files(&self) -> impl Iterator<Item = (u32, &impl DumpDataVER)> {
+    fn files(&self) -> impl Iterator<Item = (u32, &impl DumpData_XE_)> {
         self.files.iter().map(|(k, v)| (*k, v))
 	}
-    fn langs(&self) -> impl Iterator<Item = (u32, &impl DumpLangStringsVER)> {
+    fn langs(&self) -> impl Iterator<Item = (u32, &impl DumpLangStrings_XE_)> {
         self.langs.iter().map(|(k, v)| (*k, v))
 	}
 }
 
-#[make_platforms]
+#[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
-pub struct LangStringsRefVER<'a> {
-    pub strings: IndexMap<u32, ref_slice<'a, u16VER>>,
+pub struct LangStringsRef_XE_<'a> {
+    pub strings: IndexMap<u32, ref_slice<'a, u16_XE_>>,
 }
 
-#[make_platforms]
-impl<'a> LangStringsRefVER<'a> {
-    pub fn from_data(src: &'a [u8], string_keys: &StringKeysRefVER) -> Result<Self> {
+#[make_endian]
+impl<'a> LangStringsRef_XE_<'a> {
+    pub fn from_data(src: &'a [u8], string_keys: &StringKeysRef_XE_) -> Result<Self> {
         let mut offset = 0;
         let mut strings = IndexMap::with_capacity(string_keys.vals.len());
         for key in string_keys.vals.iter() {
@@ -316,9 +315,9 @@ impl<'a> LangStringsRefVER<'a> {
             while src[offset] != 0 || src[offset + 1] != 0 {
                 offset += 2;
             }
-            let s = u16VER::slice_from_data(&src[start..offset], (offset - start) / 2)
+            let s = u16_XE_::slice_from_data(&src[start..offset], (offset - start) / 2)
                 .with_context(|| format!("string {}", strings.len()))?;
-            strings.insert(key.key.get(), s.into());
+            strings.insert(key.key.conv(), s.into());
             offset += 2;
         }
         Ok(Self {
@@ -333,8 +332,8 @@ pub struct LangStrings {
     pub strings: IndexMap<Crc, String>,
 }
 
-#[make_platforms]
-fn parse_string_ver(val: &ref_slice<'_, u16VER>) -> Result<String, std::string::FromUtf16Error> {
+#[make_endian]
+fn parse_string_xe_(val: &ref_slice<'_, u16_XE_>) -> Result<String, std::string::FromUtf16Error> {
     String::from_utf16(
         val.iter()
             .map(|y| y.conv())
@@ -343,47 +342,47 @@ fn parse_string_ver(val: &ref_slice<'_, u16VER>) -> Result<String, std::string::
     )
 }
 
-#[make_platforms]
-impl TryFrom<&LangStringsRefVER<'_>> for LangStrings {
+#[make_endian]
+impl TryFrom<&LangStringsRef_XE_<'_>> for LangStrings {
     type Error = std::string::FromUtf16Error;
-    fn try_from(val: &LangStringsRefVER) -> Result<Self, Self::Error> {
+    fn try_from(val: &LangStringsRef_XE_) -> Result<Self, Self::Error> {
         Ok(Self {
             strings: val
                 .strings
                 .iter()
-                .map(|(k, v)| Ok(((*k).into(), parse_string_ver(v)?)))
+                .map(|(k, v)| Ok(((*k).into(), parse_string_xe_(v)?)))
                 .collect::<Result<_, Self::Error>>()?,
         })
     }
 }
 
-#[make_platforms]
-#[enum_dispatch(DumpLangStringsVER)]
-pub enum LangStringsVER<'a> {
-    Ref(LangStringsRefVER<'a>),
+#[make_endian]
+#[enum_dispatch(DumpLangStrings_XE_)]
+pub enum LangStrings_XE_<'a> {
+    Ref(LangStringsRef_XE_<'a>),
     Owned(LangStrings)
 }
 
 
-#[make_platforms]
-pub trait DumpLangStringsImplVER {
-    fn strings(&self) -> impl Iterator<Item = (u32, &impl DumpStringVER)>;
-    fn get(&self, k: &u32) -> Option<&impl DumpStringVER>;
+#[make_endian]
+pub trait DumpLangStringsImpl_XE_ {
+    fn strings(&self) -> impl Iterator<Item = (u32, &impl DumpString_XE_)>;
+    fn get(&self, k: &u32) -> Option<&impl DumpString_XE_>;
 }
 
-#[make_platforms]
+#[make_endian]
 #[enum_dispatch]
-pub trait DumpLangStringsVER {
+pub trait DumpLangStrings_XE_ {
     fn size(&self, keys: &mut HashSet<u32>) -> usize;
     fn dump_into(&self, dst: &mut DumpSlice, keys: &[u32]) -> Result<()>;
 }
-#[make_platforms]
-impl<T: DumpLangStringsImplVER> DumpLangStringsVER for T {
+#[make_endian]
+impl<T: DumpLangStringsImpl_XE_> DumpLangStrings_XE_ for T {
     fn size(&self, keys: &mut HashSet<u32>) -> usize {
         self.strings()
             .map(|(k, v)| {
                 keys.insert(k);
-                v.string_size() + u16VER::size_of()
+                v.string_size() + u16_XE_::size_of()
             })
             .sum::<usize>()
     }
@@ -392,85 +391,85 @@ impl<T: DumpLangStringsImplVER> DumpLangStringsVER for T {
             if let Some(string) = self.get(k) {
                 string.dump_string(dst).with_context(|| format!("string {}", k))?;
             }
-            u16VER::from(0u16)
+            u16_XE_::from(0u16)
                 .dump_into(dst)
                 .with_context(|| format!("string pad {}", k))?;
         }
         Ok(())
     }
 }
-#[make_platforms]
-impl DumpLangStringsImplVER for LangStringsRefVER<'_> {
-    fn strings(&self) -> impl Iterator<Item = (u32, &impl DumpStringVER)> {
+#[make_endian]
+impl DumpLangStringsImpl_XE_ for LangStringsRef_XE_<'_> {
+    fn strings(&self) -> impl Iterator<Item = (u32, &impl DumpString_XE_)> {
         self.strings.iter().map(|(k, v)| (*k, v))
     }
-    fn get(&self, k: &u32) -> Option<&impl DumpStringVER> {
+    fn get(&self, k: &u32) -> Option<&impl DumpString_XE_> {
         self.strings.get(k)
     }
 }
 
-#[make_platforms]
-impl DumpLangStringsImplVER for LangStrings {
-    fn strings(&self) -> impl Iterator<Item = (u32, &impl DumpStringVER)> {
+#[make_endian]
+impl DumpLangStringsImpl_XE_ for LangStrings {
+    fn strings(&self) -> impl Iterator<Item = (u32, &impl DumpString_XE_)> {
         self.strings.iter().map(|(k, v)| (k.get(), v))
     }
-    fn get(&self, k: &u32) -> Option<&impl DumpStringVER> {
+    fn get(&self, k: &u32) -> Option<&impl DumpString_XE_> {
         self.strings.get(k)
     }
 }
 
-///gen_ffi:export
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct SprayInstance {
-    pub key: Crc,
-    pub tex1: Crc,
-    pub tex2: Crc,
-    pub unk_3: u32,
-    pub width: u32,
-    pub height: u32,
-    pub unk_6: f32,
-    pub unk_7: f32,
-    pub size_w: u32,
-    pub size_h: u32,
-    pub scale_w: f32,
-    pub scale_h: f32,
-    pub delay: u32,
-    pub stride_x: f32,
-    pub stride_y: f32,
-    pub unk_15: u32,
-    pub unk_16: u32,
+#[derive_ordered_data]
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct SprayInstance_XE_ {
+    pub key: Crc_XE_,
+    pub tex1: Crc_XE_,
+    pub tex2: Crc_XE_,
+    pub unk_3: u32_XE_,
+    pub width: u32_XE_,
+    pub height: u32_XE_,
+    pub unk_6: f32_XE_,
+    pub unk_7: f32_XE_,
+    pub size_w: u32_XE_,
+    pub size_h: u32_XE_,
+    pub scale_w: f32_XE_,
+    pub scale_h: f32_XE_,
+    pub delay: u32_XE_,
+    pub stride_x: f32_XE_,
+    pub stride_y: f32_XE_,
+    pub unk_15: u32_XE_,
+    pub unk_16: u32_XE_,
 }
 
-///gen_ffi:export
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct SprayVal {
-    pub position: Vector3,
-    pub scale: f32,
-    pub instance: u16,
-    pub rotation: u16,
+#[derive_ordered_data]
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct SprayVal_XE_ {
+    pub position: Vector3_XE_,
+    pub scale: f32_XE_,
+    pub instance: u16_XE_,
+    pub rotation: u16_XE_,
 }
 
-#[make_platforms]
+#[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
-pub struct SprayRefVER<'a> {
-    pub instances: ref_slice<'a, SprayInstanceVER>,
-    pub vals: ref_slice<'a, SprayValVER>,
+pub struct SprayRef_XE_<'a> {
+    pub instances: ref_slice<'a, SprayInstance_XE_>,
+    pub vals: ref_slice<'a, SprayVal_XE_>,
 }
 
-#[make_platforms]
-impl<'a> SprayRefVER<'a> {
+#[make_endian]
+impl<'a> SprayRef_XE_<'a> {
     pub fn from_data(src: &'a [u8]) -> Result<Self> {
         let mut offset = 0;
-        let n = u32VER::from_data(&src[offset..]).context("n1")?;
+        let n = u32_XE_::from_data(&src[offset..]).context("n1")?;
         offset += n.size();
-        let instances = SprayInstanceVER::slice_from_data(&src[offset..], n.get() as usize)
+        let instances = SprayInstance_XE_::slice_from_data(&src[offset..], n.conv())
             .context("instances")?;
         offset += instances.size();
-        let n = u32VER::from_data(&src[offset..]).context("n2")?;
+        let n = u32_XE_::from_data(&src[offset..]).context("n2")?;
         offset += n.size();
         let vals =
-            SprayValVER::slice_from_data(&src[offset..], n.get() as usize).context("vals")?;
+            SprayVal_XE_::slice_from_data(&src[offset..], n.conv()).context("vals")?;
 
         Ok(Self {
             instances: instances.into(),
@@ -485,9 +484,9 @@ pub struct Spray {
     pub vals: Vec<SprayVal>,
 }
 
-#[make_platforms]
-impl From<&SprayRefVER<'_>> for Spray {
-    fn from(val: &SprayRefVER) -> Self {
+#[make_endian]
+impl From<&SprayRef_XE_<'_>> for Spray {
+    fn from(val: &SprayRef_XE_) -> Self {
         Self {
             instances: val.instances.iter().map(|x| x.conv()).collect(),
             vals: val.vals.iter().map(|x| x.conv()).collect(),
@@ -495,72 +494,72 @@ impl From<&SprayRefVER<'_>> for Spray {
     }
 }
 
-#[make_platforms]
-#[enum_dispatch(DumpSprayVER)]
-pub enum SprayVER<'a> {
-    Ref(SprayRefVER<'a>),
+#[make_endian]
+#[enum_dispatch(DumpSpray_XE_)]
+pub enum Spray_XE_<'a> {
+    Ref(SprayRef_XE_<'a>),
     Owned(Spray)
 }
 
-#[make_platforms]
+#[make_endian]
 #[enum_dispatch]
-pub trait DumpSprayVER {
+pub trait DumpSpray_XE_ {
     fn instances_len(&self) -> usize;
     fn vals_len(&self) -> usize;
-    fn write_instances(&self, instances: &mut [SprayInstanceVER]) -> Result<()>;
-    fn write_vals(&self, vals: &mut [SprayValVER]) -> Result<()>;
+    fn write_instances(&self, instances: &mut [SprayInstance_XE_]) -> Result<()>;
+    fn write_vals(&self, vals: &mut [SprayVal_XE_]) -> Result<()>;
 
     fn size(&self) -> usize {
-        u32VER::size_of() * 2
-            + SprayInstanceVER::size_of() * self.instances_len()
-            + SprayValVER::size_of() * self.vals_len()
+        u32_XE_::size_of() * 2
+            + SprayInstance_XE_::size_of() * self.instances_len()
+            + SprayVal_XE_::size_of() * self.vals_len()
     }
 
     fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
-        let n = u32VER::mut_from_data(dst).context("n1")?;
-        let instances = SprayInstanceVER::mut_slice_from_data(dst, self.instances_len())
+        let n = u32_XE_::mut_from_data(dst).context("n1")?;
+        let instances = SprayInstance_XE_::mut_slice_from_data(dst, self.instances_len())
             .context("instances")?;
         *n = instances.len().conv();
         self.write_instances(instances).context("write instances")?;
-        let n = u32VER::mut_from_data(dst).context("n1")?;
-        let vals = SprayValVER::mut_slice_from_data(dst, self.vals_len()).context("vals")?;
+        let n = u32_XE_::mut_from_data(dst).context("n1")?;
+        let vals = SprayVal_XE_::mut_slice_from_data(dst, self.vals_len()).context("vals")?;
         *n = vals.len().conv();
         self.write_vals(vals).context("write vals")?;
         Ok(())
     }
 }
 
-#[make_platforms]
-impl DumpSprayVER for SprayRefVER<'_> {
+#[make_endian]
+impl DumpSpray_XE_ for SprayRef_XE_<'_> {
     fn instances_len(&self) -> usize {
         self.instances.len()
     }
     fn vals_len(&self) -> usize {
         self.vals.len()
     }
-    fn write_instances(&self, instances: &mut [SprayInstanceVER]) -> Result<()> {
+    fn write_instances(&self, instances: &mut [SprayInstance_XE_]) -> Result<()> {
         instances.write_from(&self.instances[..])
     }
-    fn write_vals(&self, vals: &mut [SprayValVER]) -> Result<()> {
+    fn write_vals(&self, vals: &mut [SprayVal_XE_]) -> Result<()> {
         vals.write_from(&self.vals[..])
     }
 }
 
-#[make_platforms]
-impl DumpSprayVER for Spray {
+#[make_endian]
+impl DumpSpray_XE_ for Spray {
     fn instances_len(&self) -> usize {
         self.instances.len()
     }
     fn vals_len(&self) -> usize {
         self.vals.len()
     }
-    fn write_instances(&self, instances: &mut [SprayInstanceVER]) -> Result<()> {
+    fn write_instances(&self, instances: &mut [SprayInstance_XE_]) -> Result<()> {
         for (src, dst) in self.instances.iter().zip(instances) {
             *dst = src.conv()
         }
         Ok(())
     }
-    fn write_vals(&self, vals: &mut [SprayValVER]) -> Result<()> {
+    fn write_vals(&self, vals: &mut [SprayVal_XE_]) -> Result<()> {
         for (src, dst) in self.vals.iter().zip(vals) {
             *dst = src.conv()
         }
@@ -568,47 +567,47 @@ impl DumpSprayVER for Spray {
     }
 }
 
-///gen_ffi:export
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct CrowdItemHeader {
-    pub key: Crc,
-    pub key_main: Crc,
-    pub key_right: Crc,
-    pub key_left: Crc,
-    pub unk_4: f32,
-    pub animation_num: u32,
-    pub instance_num: u32,
+#[derive_ordered_data]
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct CrowdItemHeader_XE_ {
+    pub key: Crc_XE_,
+    pub key_main: Crc_XE_,
+    pub key_right: Crc_XE_,
+    pub key_left: Crc_XE_,
+    pub unk_4: f32_XE_,
+    pub animation_num: u32_XE_,
+    pub instance_num: u32_XE_,
 }
 
-///gen_ffi:export
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct CrowdVal {
-    pub position: Vector3,
-    pub rotation: f32,
-    pub lod: f32,
+#[derive_ordered_data]
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct CrowdVal_XE_ {
+    pub position: Vector3_XE_,
+    pub rotation: f32_XE_,
+    pub lod: f32_XE_,
 }
 
-#[make_platforms]
+#[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
-pub struct CrowdItemRefVER<'a> {
-    pub header: &'a CrowdItemHeaderVER,
-    pub animations: ref_slice<'a, CrcVER>,
-    pub instances: ref_slice<'a, CrowdValVER>
+pub struct CrowdItemRef_XE_<'a> {
+    pub header: &'a CrowdItemHeader_XE_,
+    pub animations: ref_slice<'a, Crc_XE_>,
+    pub instances: ref_slice<'a, CrowdVal_XE_>
 }
 
-#[make_platforms]
-impl<'a> CrowdItemRefVER<'a> {
+#[make_endian]
+impl<'a> CrowdItemRef_XE_<'a> {
     pub fn from_data(src: &'a [u8]) -> Result<Self> {
         let mut offset = 0;
-        let header = CrowdItemHeaderVER::from_data(&src[offset..]).context("header")?;
+        let header = CrowdItemHeader_XE_::from_data(&src[offset..]).context("header")?;
         offset += header.size();
         let animations =
-            CrcVER::slice_from_data(&src[offset..], header.animation_num.get() as usize)
+            Crc_XE_::slice_from_data(&src[offset..], header.animation_num.conv())
                 .context("animations")?;
         offset += animations.size();
         let instances =
-            CrowdValVER::slice_from_data(&src[offset..], header.instance_num.get() as usize)
+            CrowdVal_XE_::slice_from_data(&src[offset..], header.instance_num.conv())
                 .context("instances")?;
         Ok(Self {
             header: header,
@@ -625,9 +624,9 @@ pub struct CrowdItem {
     pub instances: Vec<CrowdVal>,
 }
 
-#[make_platforms]
-impl From<&CrowdItemRefVER<'_>> for CrowdItem {
-    fn from(val: &CrowdItemRefVER) -> Self {
+#[make_endian]
+impl From<&CrowdItemRef_XE_<'_>> for CrowdItem {
+    fn from(val: &CrowdItemRef_XE_) -> Self {
         Self {
             header: val.header.conv(),
             animations: val.animations.iter().map(|x| x.conv()).collect(),
@@ -636,82 +635,82 @@ impl From<&CrowdItemRefVER<'_>> for CrowdItem {
     }
 }
 
-#[make_platforms]
-#[enum_dispatch(DumpCrowdItemVER)]
-pub enum CrowdItemVER<'a> {
-    Ref(CrowdItemRefVER<'a>),
+#[make_endian]
+#[enum_dispatch(DumpCrowdItem_XE_)]
+pub enum CrowdItem_XE_<'a> {
+    Ref(CrowdItemRef_XE_<'a>),
     Owned(CrowdItem)
 }
 
-#[make_platforms]
+#[make_endian]
 #[enum_dispatch]
-pub trait DumpCrowdItemVER {
+pub trait DumpCrowdItem_XE_ {
     fn animations_len(&self) -> usize;
     fn instances_len(&self) -> usize;
-    fn write_header(&self, header: &mut CrowdItemHeaderVER) -> Result<()>;
-    fn write_animations(&self, animations: &mut [CrcVER]) -> Result<()>;
-    fn write_instances(&self, instances: &mut [CrowdValVER]) -> Result<()>;
+    fn write_header(&self, header: &mut CrowdItemHeader_XE_) -> Result<()>;
+    fn write_animations(&self, animations: &mut [Crc_XE_]) -> Result<()>;
+    fn write_instances(&self, instances: &mut [CrowdVal_XE_]) -> Result<()>;
 
     fn size(&self) -> usize {
-        CrowdItemHeaderVER::size_of()
-            + CrcVER::size_of() * self.animations_len()
-            + CrowdValVER::size_of() * self.instances_len()
+        CrowdItemHeader_XE_::size_of()
+            + Crc_XE_::size_of() * self.animations_len()
+            + CrowdVal_XE_::size_of() * self.instances_len()
     }
 
     fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
-        let header = CrowdItemHeaderVER::mut_from_data(dst).context("header")?;
+        let header = CrowdItemHeader_XE_::mut_from_data(dst).context("header")?;
         self.write_header(header).context("write header")?;
         header.animation_num = self.animations_len().conv();
         header.instance_num = self.instances_len().conv();
         let animations =
-            CrcVER::mut_slice_from_data(dst, self.animations_len()).context("animations")?;
+            Crc_XE_::mut_slice_from_data(dst, self.animations_len()).context("animations")?;
         self.write_animations(animations)
             .context("write animations")?;
         let instances =
-            CrowdValVER::mut_slice_from_data(dst, self.instances_len()).context("instances")?;
+            CrowdVal_XE_::mut_slice_from_data(dst, self.instances_len()).context("instances")?;
         self.write_instances(instances).context("write instances")?;
         Ok(())
     }
 }
 
-#[make_platforms]
-impl DumpCrowdItemVER for CrowdItemRefVER<'_> {
+#[make_endian]
+impl DumpCrowdItem_XE_ for CrowdItemRef_XE_<'_> {
     fn animations_len(&self) -> usize {
         self.animations.len()
     }
     fn instances_len(&self) -> usize {
         self.instances.len()
     }
-    fn write_header(&self, header: &mut CrowdItemHeaderVER) -> Result<()> {
+    fn write_header(&self, header: &mut CrowdItemHeader_XE_) -> Result<()> {
         header.write_from(self.header)
     }
-    fn write_instances(&self, instances: &mut [CrowdValVER]) -> Result<()> {
+    fn write_instances(&self, instances: &mut [CrowdVal_XE_]) -> Result<()> {
         instances.write_from(&self.instances[..])
     }
-    fn write_animations(&self, animations: &mut [CrcVER]) -> Result<()> {
+    fn write_animations(&self, animations: &mut [Crc_XE_]) -> Result<()> {
         animations.write_from(&self.animations[..])
     }
 }
 
-#[make_platforms]
-impl DumpCrowdItemVER for CrowdItem {
+#[make_endian]
+impl DumpCrowdItem_XE_ for CrowdItem {
     fn animations_len(&self) -> usize {
         self.animations.len()
     }
     fn instances_len(&self) -> usize {
         self.instances.len()
     }
-    fn write_header(&self, header: &mut CrowdItemHeaderVER) -> Result<()> {
+    fn write_header(&self, header: &mut CrowdItemHeader_XE_) -> Result<()> {
         *header = (&self.header).conv();
         Ok(())
     }
-    fn write_instances(&self, instances: &mut [CrowdValVER]) -> Result<()> {
+    fn write_instances(&self, instances: &mut [CrowdVal_XE_]) -> Result<()> {
         for (src, dst) in self.instances.iter().zip(instances) {
             *dst = src.conv();
         }
         Ok(())
     }
-    fn write_animations(&self, animations: &mut [CrcVER]) -> Result<()> {
+    fn write_animations(&self, animations: &mut [Crc_XE_]) -> Result<()> {
         for (src, dst) in self.animations.iter().zip(animations) {
             *dst = src.conv();
         }
@@ -719,36 +718,36 @@ impl DumpCrowdItemVER for CrowdItem {
     }
 }
 
-///gen_ffi:export
-#[derive(Debug, Default, Clone, OrderedData)]
-pub struct CrowdHeader {
-    pub const0x65: u32,
-    pub n: u32,
+#[derive_ordered_data]
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct CrowdHeader_XE_ {
+    pub const0x65: u32_XE_,
+    pub n: u32_XE_,
 }
 
-#[make_platforms]
+#[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
-pub struct CrowdRefVER<'a>{
-    pub header: &'a CrowdHeaderVER,
-    pub offs: ref_slice<'a, u32VER>,
-    pub vals: slice<CrowdItemRefVER<'a>>
+pub struct CrowdRef_XE_<'a>{
+    pub header: &'a CrowdHeader_XE_,
+    pub offs: ref_slice<'a, u32_XE_>,
+    pub vals: slice<CrowdItemRef_XE_<'a>>
 }
 
-#[make_platforms]
-impl<'a> CrowdRefVER<'a> {
+#[make_endian]
+impl<'a> CrowdRef_XE_<'a> {
     pub fn from_data(src: &'a [u8]) -> Result<Self> {
-        let header = CrowdHeaderVER::from_data(src).context("header")?;
-        if header.const0x65.get() != 0x65 {
+        let header = CrowdHeader_XE_::from_data(src).context("header")?;
+        if header.const0x65 != 0x65 {
             return Err(anyhow!("Invalid Block Data for Crowd Block"));
         }
-        let offs = u32VER::slice_from_data(&src[header.size()..], header.n.get() as usize)
+        let offs = u32_XE_::slice_from_data(&src[header.size()..], header.n.conv())
             .context("offs")?;
         let vals = offs
             .into_iter()
             .enumerate()
             .map(|(i, off)| {
-                CrowdItemRefVER::from_data(&src[off.get() as usize..])
+                CrowdItemRef_XE_::from_data(&src[off.conv()..])
                     .with_context(|| format!("item {}", i))
             })
             .collect::<Result<Vec<_>>>()?.into_boxed_slice();
@@ -766,61 +765,61 @@ pub struct Crowd {
     pub vals: Vec<CrowdItem>,
 }
 
-#[make_platforms]
-impl From<&CrowdRefVER<'_>> for Crowd {
-    fn from(val: &CrowdRefVER) -> Self {
+#[make_endian]
+impl From<&CrowdRef_XE_<'_>> for Crowd {
+    fn from(val: &CrowdRef_XE_) -> Self {
         Self {
             vals: val.vals.iter().map(|x| x.into()).collect(),
         }
     }
 }
 
-#[make_platforms]
-pub struct CrowdImplVER<'a> {
-    pub vals: Vec<CrowdItemVER<'a>>
+#[make_endian]
+pub struct CrowdImpl_XE_<'a> {
+    pub vals: Vec<CrowdItem_XE_<'a>>
 }
 
-#[make_platforms]
-impl<'a> From<CrowdRefVER<'a>> for CrowdImplVER<'a> {
-    fn from(val: CrowdRefVER<'a>) -> Self {
+#[make_endian]
+impl<'a> From<CrowdRef_XE_<'a>> for CrowdImpl_XE_<'a> {
+    fn from(val: CrowdRef_XE_<'a>) -> Self {
         Self {
             vals: Box::<[_]>::from(val.vals).into_vec().into_iter().map(|x| x.into()).collect(),
         }
     }
 }
 
-#[make_platforms]
-#[enum_dispatch(DumpCrowdVER)]
-pub enum CrowdVER<'a> {
-    Ref(CrowdRefVER<'a>),
-    Owned(CrowdImplVER<'a>)
+#[make_endian]
+#[enum_dispatch(DumpCrowd_XE_)]
+pub enum Crowd_XE_<'a> {
+    Ref(CrowdRef_XE_<'a>),
+    Owned(CrowdImpl_XE_<'a>)
 }
 
-#[make_platforms]
-pub trait DumpCrowdImplVER {
+#[make_endian]
+pub trait DumpCrowdImpl_XE_ {
     fn vals_len(&self) -> usize;
-    fn vals(&self) -> impl Iterator<Item = &impl DumpCrowdItemVER>;
+    fn vals(&self) -> impl Iterator<Item = &impl DumpCrowdItem_XE_>;
 }
 
-#[make_platforms]
+#[make_endian]
 #[enum_dispatch]
-pub trait DumpCrowdVER {
+pub trait DumpCrowd_XE_ {
     fn size(&self) -> usize;
     fn dump_into(&self, dst: &mut DumpSlice) -> Result<()>;
 }
 
-#[make_platforms]
-impl<T: DumpCrowdImplVER> DumpCrowdVER for T {
+#[make_endian]
+impl<T: DumpCrowdImpl_XE_> DumpCrowd_XE_ for T {
     fn size(&self) -> usize {
-        CrowdHeaderVER::size_of()
-            + u32VER::size_of() * self.vals_len()
+        CrowdHeader_XE_::size_of()
+            + u32_XE_::size_of() * self.vals_len()
             + self.vals().map(|x| x.size()).sum::<usize>()
     }
 
     fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
         let start = dst.offset;
-        let header = CrowdHeaderVER::mut_from_data(dst).context("header")?;
-        let offs = u32VER::mut_slice_from_data(dst, self.vals_len()).context("offs")?;
+        let header = CrowdHeader_XE_::mut_from_data(dst).context("header")?;
+        let offs = u32_XE_::mut_slice_from_data(dst, self.vals_len()).context("offs")?;
         header.n = offs.len().conv();
         header.const0x65 = 0x65u32.conv();
 
@@ -832,38 +831,38 @@ impl<T: DumpCrowdImplVER> DumpCrowdVER for T {
     }
 }
 
-#[make_platforms]
-impl DumpCrowdImplVER for CrowdRefVER<'_> {
+#[make_endian]
+impl DumpCrowdImpl_XE_ for CrowdRef_XE_<'_> {
     fn vals_len(&self) -> usize {
         self.vals.len()
     }
-    fn vals(&self) -> impl Iterator<Item = &impl DumpCrowdItemVER> {
+    fn vals(&self) -> impl Iterator<Item = &impl DumpCrowdItem_XE_> {
         self.vals.iter()
     }
 }
 
-#[make_platforms]
-impl DumpCrowdImplVER for Crowd {
+#[make_endian]
+impl DumpCrowdImpl_XE_ for Crowd {
     fn vals_len(&self) -> usize {
         self.vals.len()
     }
-    fn vals(&self) -> impl Iterator<Item = &impl DumpCrowdItemVER> {
+    fn vals(&self) -> impl Iterator<Item = &impl DumpCrowdItem_XE_> {
         self.vals.iter()
     }
 }
 
-#[make_platforms]
-impl DumpCrowdImplVER for CrowdImplVER<'_> {
+#[make_endian]
+impl DumpCrowdImpl_XE_ for CrowdImpl_XE_<'_> {
     fn vals_len(&self) -> usize {
         self.vals.len()
     }
-    fn vals(&self) -> impl Iterator<Item = &impl DumpCrowdItemVER> {
+    fn vals(&self) -> impl Iterator<Item = &impl DumpCrowdItem_XE_> {
         self.vals.iter()
     }
 }
 
-#[make_platforms]
-pub type PFieldsRefVER<'a> = DataRefVER<'a>;
+#[make_endian]
+pub type PFieldsRef_XE_<'a> = DataRef_XE_<'a>;
 
 #[derive(Debug, Default, Clone)]
 pub struct PField {
@@ -878,15 +877,15 @@ pub struct PFields {
     pub vals: IndexMap<u32, PField>,
 }
 
-#[make_platforms]
-#[enum_dispatch(DumpDataVER)]
-pub enum PFieldsVER<'a> {
-    Ref(PFieldsRefVER<'a>),
+#[make_endian]
+#[enum_dispatch(DumpData_XE_)]
+pub enum PFields_XE_<'a> {
+    Ref(PFieldsRef_XE_<'a>),
     Owned(PFields)
 }
 
-#[make_platforms]
-impl DumpDataVER for PFields { 
+#[make_endian]
+impl DumpData_XE_ for PFields { 
     fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
         for (i, pfield) in self.vals.values().enumerate() {
             for (j, (_, vals)) in pfield.vals.iter().enumerate() {
@@ -906,17 +905,17 @@ impl DumpDataVER for PFields {
 }
 
 impl PFields {
-    #[make_platforms]
-    pub fn from_ver(val: &PFieldsRefVER, infos: &[PFieldInfoVER]) -> Self {
+    #[make_endian]
+    pub fn from_xe_(val: &PFieldsRef_XE_, infos: &[PFieldInfo_XE_]) -> Self {
         let mut offset_maps: HashMap<u32, HashMap<u32, usize>> = HashMap::new();
         let mut pfields = IndexMap::new();
         let data = &val.data[..];
         for info in infos {
-            let link_guid = info.link_guid.get();
-            let offset = info.offset.get();
-            let gamemode_guid = info.gamemode_guid.get();
-            let width = info.width.get();
-            let height = info.height.get();
+            let link_guid = info.link_guid.conv();
+            let offset = info.offset.conv();
+            let gamemode_guid = info.gamemode_guid.conv();
+            let width = info.width.conv();
+            let height = info.height.conv();
             if !pfields.contains_key(&link_guid) {
                 pfields.insert(
                     link_guid,
@@ -946,14 +945,14 @@ impl PFields {
         Self { vals: pfields }
     }
 
-    #[make_platforms]
-    pub fn infos_ver(&self) -> Vec<PFieldInfoVER> {
+    #[make_endian]
+    pub fn infos_xe_(&self) -> Vec<PFieldInfo_XE_> {
         let mut infos = vec![];
         let mut offset = 0u32;
         for pfield in self.vals.values() {
             for (gamemodes, _) in &pfield.vals {
                 for &gamemode_guid in gamemodes {
-                    infos.push(PFieldInfoVER {
+                    infos.push(PFieldInfo_XE_ {
                         link_guid: pfield.link_guid.into(),
                         width: pfield.width.into(),
                         height: pfield.height.into(),

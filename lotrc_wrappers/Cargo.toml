@@ -1,0 +1,9 @@
+[package]
+name = "lotrc_wrappers"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+lotrc_proc = { path = "../lotrc_proc" }
+zerocopy = { workspace = true, features = ["derive", "alloc"] }
+rend = { version = "0.5", features = ["zerocopy-0_8"] }

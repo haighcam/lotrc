@@ -4,8 +4,7 @@ members = [
     "lotrc",
     "lotrc_rs",
     "lotrc_proc",
-    "ffi",
-]
+    "ffi", "lotrc_wrappers"]
 
 [profile.release]
 #strip = true

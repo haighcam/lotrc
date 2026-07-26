@@ -1,6 +1,7 @@
 /target
 /things
-/out
+/out/*
+/*old
 *.ron
 *.svg
 *.data*

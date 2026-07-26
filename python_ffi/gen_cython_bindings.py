@@ -182,19 +182,12 @@ for ty in structs:
 
 def get_ty(ty, ptrs):
     n_ptrs = 0
-    if ty == 'void':
-        if len(ptrs) > 0:
-            n_ptrs = 1
-            ty = 'ctypes.c_void_p'
-        else:
-            ty = 'None'
-    elif ty not in non_ref_objs and len(ptrs) > 0:
+    assert(ty != 'void')
+    if ty not in non_ref_objs and len(ptrs) > 0:
         n_ptrs += 1
-    else:
+    elif ty not in basetype:
         ty = types[ty]
-    while len(ptrs) > n_ptrs:
-        n_ptrs += 1
-        ty = f'ctypes.POINTER({ty})'
+    assert(len(ptrs) == n_ptrs)
     return ty
 
 def get_field(name, ty, ptrs):
@@ -221,10 +214,10 @@ def create_method(struct, fn, name):
     res, args = functions[fn]
     arg_names = []
     fn_arg_names = []
-    is_static = True
-    print(struct, name)
+    is_static = struct is not None
+    indent = "" if struct is None else "\t"
+    print(struct, name, res)
     for (i, arg) in enumerate(args):
-        print("  ",arg, get_ty(*arg[1]))
         if arg[1][0] == struct and i == 0:
             fn_arg_names.append("self.ptr")
             arg_names.append("self")
@@ -234,25 +227,25 @@ def create_method(struct, fn, name):
             arg_names.append(arg[0])
         elif arg[1][0] in basetype:
             fn_arg_names.append(("&" * len(arg[1][1])) + arg[0])
-            #arg_names.append(arg[0])
             arg_names.append(f"lotrc_rs.{arg[1][0]} {arg[0]}")
         else:
             fn_arg_names.append(f"{arg[0]}.ptr")
             arg_names.append(f"{arg[1][0]} {arg[0]}")
     print(fn_arg_names, arg_names)
     if is_static:
-        ret += "\t@staticmethod\n"
+        ret += f"{indent}@staticmethod\n"
     names = ", ".join(arg_names)
     fnames = ", ".join(fn_arg_names)
     fn_call = f"lotrc_rs.{fn}({fnames})"
-    ret += f"\tdef {name}({names}):\n\t\t"
+    ret += f"{indent}def {name}({names}):\n{indent}\t"
+    print(res)
     if res[0] not in basetype:
         assert(len(res[1]) > 0 and len(res[1]) < 3)
         if len(res[1]) == 2:
             fn_call = f"dereference({fn_call})"
         ret += f"""val = {res[0]}()
-\t\tval.ptr = {fn_call}
-\t\treturn val
+{indent}\tval.ptr = {fn_call}
+{indent}\treturn val
 """
     elif res == ('void', []):
         ret += fn_call + "\n"
@@ -263,16 +256,6 @@ def create_method(struct, fn, name):
     return ret
 
 def add_property(name, ty, ptrs):
-#    if len(ptrs) > 0 or ty in non_ref_objs:
-#        return f"""\t@property
-#\tdef {name}(self):
-#\t\treturn self.ptr.{name}
-#"""
-#    else:
-#        return f"""\t@property
-#\tdef {name}(self):
-#\t\treturn {get_ty(ty, ["*"])}(self.ptr.{name})
-#"""
     if ty in struct_aliases:
         ty = types[ty]
     ret = ""
@@ -327,14 +310,74 @@ class {name}(ctypes.POINTER(_{name})):
             ret += union_get(name)
     return ret
 
+def add_slice_method(g, l, s):
+    t = None 
+    return f"""
+\tdef get_arr(self):
+\t\tcdef {t}[:] arr = <{t}[:lotrc_rs.{l}(self.ptr)]> lotrc_rs.{g}(self.ptr, 0)
+\t\treturn arr
+"""
+    ret = ""
+    res, args = functions[fn]
+    arg_names = []
+    fn_arg_names = []
+    is_static = True
+    print(struct, name, res)
+    for (i, arg) in enumerate(args):
+        if arg[1][0] == struct and i == 0:
+            fn_arg_names.append("self.ptr")
+            arg_names.append("self")
+            is_static = False
+        elif arg[1][0] == "char":
+            fn_arg_names.append(arg[0])
+            arg_names.append(arg[0])
+        elif arg[1][0] in basetype:
+            fn_arg_names.append(("&" * len(arg[1][1])) + arg[0])
+            #arg_names.append(arg[0])
+            arg_names.append(f"lotrc_rs.{arg[1][0]} {arg[0]}")
+        else:
+            fn_arg_names.append(f"{arg[0]}.ptr")
+            arg_names.append(f"{arg[1][0]} {arg[0]}")
+    print(fn_arg_names, arg_names)
+    if is_static:
+        ret += "\t@staticmethod\n"
+    names = ", ".join(arg_names)
+    fnames = ", ".join(fn_arg_names)
+    fn_call = f"lotrc_rs.{fn}({fnames})"
+    ret += f"\tdef {name}({names}):\n\t\t"
+    print(res)
+    if res[0] not in basetype:
+        assert(len(res[1]) > 0 and len(res[1]) < 3)
+        if len(res[1]) == 2:
+            fn_call = f"dereference({fn_call})"
+        ret += f"""val = {res[0]}()
+\t\tval.ptr = {fn_call}
+\t\treturn val
+"""
+    elif res == ('void', []):
+        ret += fn_call + "\n"
+    elif res[1] != []:
+        ret += f"return dereference({fn_call})\n"
+    else:
+        ret += f"return {fn_call}\n"
+    return ret
+
+def get_slice_methods(methods):
+    return False
+
 def create_class(name, fields, union):
     ret = f"""cdef class {name}:
 \tcdef lotrc_rs.{name}* ptr
 """
-    for k,v in class_methods.get(name, {}).items():
-        if k == "free":
-            k = "__dealloc__"
-        ret += create_method(name, v, k)
+    methods = class_methods.get(name, {}).items()
+    if name.startswith("slice") and (slice_methods := get_slice_methods(methods)) is not None:
+        #ret += 
+        print(name, "is slice")
+    else:
+        for k,v in methods:
+            if k == "free":
+                k = "__dealloc__"
+            ret += create_method(name, v, k)
     if not union:
         for name, ty in fields.items():
             if name == 'align' or name.startswith('pad['): continue 
@@ -342,6 +385,7 @@ def create_class(name, fields, union):
     return ret + "\n"
 
 def set_fn_info(name, ret, args):
+    print(name, ret, args)
     ret = get_ty(*ret)
     if args == [('void', [])]:
         args_s = "[]"
@@ -367,35 +411,19 @@ basetype = set([
     'char',
     'float',
     'uintptr_t',
-    'void'
+    'void',
 ])
 
-types = {
-    'size_t': 'ctypes.c_size_t',
-    'uint16_t': 'ctypes.c_uint16',
-    'uint32_t': 'ctypes.c_uint32',
-    'uint64_t': 'ctypes.c_uint64',
-    'int16_t': 'ctypes.c_uint16',
-    'int32_t': 'ctypes.c_int32',
-    'uint8_t': 'ctypes.c_uint8',
-    'bool': 'ctypes.c_bool',
-    'char': 'ctypes.c_char',
-    'float': 'ctypes.c_float',
-    'uintptr_t': 'ctypes.c_size_t'
-}
+types = {}
 
-ver_types = {
-    'u8':  'ctypes.c_uint8',
-    'u16': 'ctypes.c_uint16',
-    'u32': 'ctypes.c_uint32',
-    'u64': 'ctypes.c_uint64',
-    'i16': 'ctypes.c_int16',
-    'i32': 'ctypes.c_int32',
-    'I32': 'ctypes.c_int32',
-    'f32': 'ctypes.c_float',
-    'U32': 'ctypes.c_uint32',
-    'Crc': 'ctypes.c_uint32',
-}
+ver_types = [
+    'u16',
+    'u32',
+    'u64',
+    'i16',
+    'i32',
+    'f32',
+]
 
 bindings = """cimport lotrc_rs
 from cython.operator import dereference
@@ -403,34 +431,34 @@ from cython.operator import dereference
 """
 
 for ty in enums:
-    print(ty)
     basetype.add(ty)
 
-for ver in ['_le', '_be']:
-    for k,v in ver_types.items():
-        types[k+ver] = v
-        basetype.add(k+ver)
-for plat in ['Pc', 'Xbox', 'Ps3']:
-    for k in ver_types.keys():
-        basetype.add(k+plat)
+#for ver in ['_le', '_be']:
+#    for k in ver_types:
+#        basetype.add(k+ver)
+#for plat in ['Pc', 'Xbox', 'Ps3']:
+#    for k in ver_types:
+#        basetype.add(k+plat)
+
 print(basetype)
+print(aliases)
+print(enums)
+for name in aliases.keys():
+    basetype.add(name)
 for struct in structs:
     if struct in non_ref_objs:
         types[struct] = struct
     else:
         types[struct] = "_" + struct;
-for name, ty in aliases.items():
-    types[name] = types[ty]
 for name, ty in struct_aliases.items():
     types[name] = types[ty]
 for name, ty in enums.items():
-    types[name] = types[ty[0]]
+    if ty[0] in basetype:
+        types[name] = ty[0]
+    else:
+        types[name] = types[ty[0]]
 for ty in types:
     non_ref_objs.add(ty)
-
-#for name, ty in types.items():
-#    bindings += f"{name} = {ty}\n"
-
 
 for name, fields in structs.items():
     is_union = name in unions
@@ -442,12 +470,10 @@ for name, fields in structs.items():
     bindings += create_class(name, fields, is_union)
 
 
-#for name, (ret, args) in functions.items():
-#   bindings += set_fn_info(name, ret, args)
-
-#for name in functions:
-#    if name not in seen_methods:
-#        bindings += f"{name} = lib.{name}\n"
+for name, (ret, args) in functions.items():
+    if name not in seen_methods:
+        bindings += create_method(None, name, name)
 
 with open(f"{base_dir}/lotrc.pyx", "w") as f:
     f.write(bindings)
+

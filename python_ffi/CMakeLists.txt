@@ -5,7 +5,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 find_package(
   Python
-  COMPONENTS Interpreter Development.Module
+  COMPONENTS Interpreter Development.Module NumPy
   REQUIRED)
 
 add_custom_command(
@@ -15,10 +15,10 @@ add_custom_command(
   DEPENDS lotrc.pyx
   VERBATIM)
 
-add_compile_options(-D Py_LIMITED_API=0x03080000)
-add_compile_definitions(Py_LIMITED_API=0x03080000)
+add_compile_options(-D Py_LIMITED_API=0x030B0000)
+add_compile_definitions(Py_LIMITED_API=0x030B0000)
 python_add_library(lotrc MODULE lotrc.c WITH_SOABI)
 
-target_link_libraries(lotrc PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../target/release/liblotrc_ffi.a)
+target_link_libraries(lotrc PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../target/release/liblotrc_ffi.a Python::NumPy)
 
 install(TARGETS lotrc DESTINATION .)

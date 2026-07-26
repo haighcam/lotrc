@@ -92,6 +92,8 @@ typedef struct OwnedLevelRefXbox OwnedLevelRefXbox;
  */
 typedef struct OwnedVecCompressedData OwnedVecCompressedData;
 
+typedef struct Vec______CompressedDataRef Vec______CompressedDataRef;
+
 typedef struct slice_AnimationBlockInfoPc slice_AnimationBlockInfoPc;
 
 typedef struct slice_AnimationBlockInfoPs3 slice_AnimationBlockInfoPs3;
@@ -2568,47 +2570,6 @@ typedef struct InfoCounts {
  * This is a proxy struct for correct size and alignment only
  * don't construct this directly and use the provided methods to access
  */
-typedef struct mut_slice_u8 {
-  uint64_t align;
-  uint8_t pad[8];
-} mut_slice_u8;
-
-typedef struct DumpSlice {
-  struct mut_slice_u8 vals;
-  uintptr_t offset;
-} DumpSlice;
-
-/**
- * This is a proxy struct for correct size and alignment only
- * don't construct this directly and use the provided methods to access
- */
-typedef struct mut_slice_u32Pc {
-  uint64_t align;
-  uint8_t pad[8];
-} mut_slice_u32Pc;
-
-/**
- * This is a proxy struct for correct size and alignment only
- * don't construct this directly and use the provided methods to access
- */
-typedef struct mut_slice_u32Xbox {
-  uint64_t align;
-  uint8_t pad[8];
-} mut_slice_u32Xbox;
-
-/**
- * This is a proxy struct for correct size and alignment only
- * don't construct this directly and use the provided methods to access
- */
-typedef struct mut_slice_u32Ps3 {
-  uint64_t align;
-  uint8_t pad[8];
-} mut_slice_u32Ps3;
-
-/**
- * This is a proxy struct for correct size and alignment only
- * don't construct this directly and use the provided methods to access
- */
 typedef struct mut_slice_ObjAPc {
   uint64_t align;
   uint8_t pad[8];
@@ -2949,6 +2910,15 @@ typedef struct DumpInfo_RadiosityValsInfoPc {
   uintptr_t ind;
   uintptr_t offset;
 } DumpInfo_RadiosityValsInfoPc;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_u32Pc {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_u32Pc;
 
 typedef struct DumpInfo_u32Pc {
   struct mut_slice_u32Pc vals;
@@ -3339,6 +3309,15 @@ typedef struct DumpInfo_RadiosityValsInfoXbox {
   uintptr_t offset;
 } DumpInfo_RadiosityValsInfoXbox;
 
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_u32Xbox {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_u32Xbox;
+
 typedef struct DumpInfo_u32Xbox {
   struct mut_slice_u32Xbox vals;
   uintptr_t ind;
@@ -3728,6 +3707,15 @@ typedef struct DumpInfo_RadiosityValsInfoPs3 {
   uintptr_t offset;
 } DumpInfo_RadiosityValsInfoPs3;
 
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_u32Ps3 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_u32Ps3;
+
 typedef struct DumpInfo_u32Ps3 {
   struct mut_slice_u32Ps3 vals;
   uintptr_t ind;
@@ -3771,6 +3759,20 @@ typedef struct DumpInfosPs3 {
   struct Vec_DumpInfoDataPs3 model_data;
   struct Vec_DumpInfoDataPs3 texture_data;
 } DumpInfosPs3;
+
+/**
+ * This is a proxy struct for correct size and alignment only
+ * don't construct this directly and use the provided methods to access
+ */
+typedef struct mut_slice_u8 {
+  uint64_t align;
+  uint8_t pad[8];
+} mut_slice_u8;
+
+typedef struct DumpSlice {
+  struct mut_slice_u8 vals;
+  uintptr_t offset;
+} DumpSlice;
 
 /**
  * This is a proxy struct for correct size and alignment only
@@ -3867,9 +3869,7 @@ typedef struct ref_slice_VertexUsage {
   uint8_t pad[8];
 } ref_slice_VertexUsage;
 
-typedef struct AlignmentHelper {
-  uint32_t a;
-} AlignmentHelper;
+typedef uint32_t AlignmentHelper;
 
 /**
  * This is a proxy struct for correct size and alignment only
@@ -10646,26 +10646,42 @@ struct LevelData *OwnedLevelData_get(struct OwnedLevelData *val);
 
 void OwnedLevelData_free(struct OwnedLevelData *val);
 
-struct OwnedLevelData *LevelData_read_data(const char *path);
+struct OwnedLevelData *OwnedLevelData_read_data(const char *path);
 
 Version LevelData_version(const struct LevelData *src);
 
-struct OwnedLevelCompressedData *LevelCompressedData_new(void);
+struct LevelCompressedData *OwnedLevelCompressedData_get(struct OwnedLevelCompressedData *val);
 
-struct OwnedLevelRefPc *LevelRefPc_from_data(const struct LevelData *src,
-                                             struct LevelCompressedData *data);
+void OwnedLevelCompressedData_free(struct OwnedLevelCompressedData *val);
 
-struct LevelData *LevelRefPc_dump(const struct LevelRefPc *src, uint32_t compression);
+struct OwnedLevelCompressedData *OwnedLevelCompressedData_new(void);
 
-struct OwnedLevelRefXbox *LevelRefXbox_from_data(const struct LevelData *src,
-                                                 struct LevelCompressedData *data);
+struct LevelRefPc *OwnedLevelRefPc_get(struct OwnedLevelRefPc *val);
 
-struct LevelData *LevelRefXbox_dump(const struct LevelRefXbox *src, uint32_t compression);
+void OwnedLevelRefPc_free(struct OwnedLevelRefPc *val);
 
-struct OwnedLevelRefPs3 *LevelRefPs3_from_data(const struct LevelData *src,
-                                               struct LevelCompressedData *data);
+struct LevelRefXbox *OwnedLevelRefXbox_get(struct OwnedLevelRefXbox *val);
 
-struct LevelData *LevelRefPs3_dump(const struct LevelRefPs3 *src, uint32_t compression);
+void OwnedLevelRefXbox_free(struct OwnedLevelRefXbox *val);
+
+struct LevelRefPs3 *OwnedLevelRefPs3_get(struct OwnedLevelRefPs3 *val);
+
+void OwnedLevelRefPs3_free(struct OwnedLevelRefPs3 *val);
+
+struct OwnedLevelRefPc *OwnedLevelRefPc_from_data(const struct LevelData *src,
+                                                  struct LevelCompressedData *data);
+
+struct OwnedLevelRefXbox *OwnedLevelRefXbox_from_data(const struct LevelData *src,
+                                                      struct LevelCompressedData *data);
+
+struct OwnedLevelRefPs3 *OwnedLevelRefPs3_from_data(const struct LevelData *src,
+                                                    struct LevelCompressedData *data);
+
+struct OwnedLevelData *LevelRefPc_dump(const struct LevelRefPc *src, uint32_t compression);
+
+struct OwnedLevelData *LevelRefXbox_dump(const struct LevelRefXbox *src, uint32_t compression);
+
+struct OwnedLevelData *LevelRefPs3_dump(const struct LevelRefPs3 *src, uint32_t compression);
 
 struct InfoCounts *OwnedInfoCounts_get(struct OwnedInfoCounts *val);
 
@@ -10679,6 +10695,18 @@ uintptr_t InfoCounts_size_xbox(const struct InfoCounts *counts);
 
 uintptr_t InfoCounts_size_ps3(const struct InfoCounts *counts);
 
+struct DumpInfosPc *OwnedDumpInfosPc_get(struct OwnedDumpInfosPc *val);
+
+void OwnedDumpInfosPc_free(struct OwnedDumpInfosPc *val);
+
+struct DumpInfosXbox *OwnedDumpInfosXbox_get(struct OwnedDumpInfosXbox *val);
+
+void OwnedDumpInfosXbox_free(struct OwnedDumpInfosXbox *val);
+
+struct DumpInfosPs3 *OwnedDumpInfosPs3_get(struct OwnedDumpInfosPs3 *val);
+
+void OwnedDumpInfosPs3_free(struct OwnedDumpInfosPs3 *val);
+
 struct OwnedDumpInfosPc *DumpInfosPc_from_data(struct DumpSlice *dst,
                                                const struct InfoCounts *counts,
                                                struct mut_slice_u32Pc *offsets);
@@ -10690,6 +10718,10 @@ struct OwnedDumpInfosXbox *DumpInfosXbox_from_data(struct DumpSlice *dst,
 struct OwnedDumpInfosPs3 *DumpInfosPs3_from_data(struct DumpSlice *dst,
                                                  const struct InfoCounts *counts,
                                                  struct mut_slice_u32Ps3 *offsets);
+
+struct Vec______CompressedDataRef *OwnedVecCompressedData_get(struct OwnedVecCompressedData *val);
+
+void OwnedVecCompressedData_free(struct OwnedVecCompressedData *val);
 
 struct OwnedVecCompressedData *AnimationsRefPc_dump(const struct AnimationsRefPc *anims,
                                                     struct DumpInfosPc *infos);
@@ -10774,8 +10806,8 @@ const struct CompressedDataRef *slice_CompressedDataRef_get(const struct slice_C
 
 uintptr_t slice_CompressedDataRef_len(const struct slice_CompressedDataRef *slice);
 
-const struct AlignmentHelper *slice_AlignmentHelper_get(const struct slice_AlignmentHelper *slice,
-                                                        uintptr_t idx);
+const AlignmentHelper *slice_AlignmentHelper_get(const struct slice_AlignmentHelper *slice,
+                                                 uintptr_t idx);
 
 uintptr_t slice_AlignmentHelper_len(const struct slice_AlignmentHelper *slice);
 
@@ -10951,10 +10983,10 @@ const struct ShapeRefPc *slice_ShapeRefPc_get(const struct slice_ShapeRefPc *sli
 
 uintptr_t slice_ShapeRefPc_len(const struct slice_ShapeRefPc *slice);
 
-const struct HkShapeRefPc *owned_slice_HkShapeRefPc_get(const struct slice_HkShapeRefPc *slice,
-                                                        uintptr_t idx);
+const struct HkShapeRefPc *slice_HkShapeRefPc_get(const struct slice_HkShapeRefPc *slice,
+                                                  uintptr_t idx);
 
-uintptr_t owned_slice_HkShapeRefPc_len(const struct slice_HkShapeRefPc *slice);
+uintptr_t slice_HkShapeRefPc_len(const struct slice_HkShapeRefPc *slice);
 
 const struct FoliageRefPc *slice_FoliageRefPc_get(const struct slice_FoliageRefPc *slice,
                                                   uintptr_t idx);
@@ -10989,11 +11021,6 @@ uintptr_t slice_BlockValARefPc_len(const struct slice_BlockValARefPc *slice);
 const struct Obj1RefPc *slice_Obj1RefPc_get(const struct slice_Obj1RefPc *slice, uintptr_t idx);
 
 uintptr_t slice_Obj1RefPc_len(const struct slice_Obj1RefPc *slice);
-
-const struct HkShapeRefPc *slice_HkShapeRefPc_get(const struct slice_HkShapeRefPc *slice,
-                                                  uintptr_t idx);
-
-uintptr_t slice_HkShapeRefPc_len(const struct slice_HkShapeRefPc *slice);
 
 const struct BoundingBoxPc *ref_slice_BoundingBoxPc_get(const struct ref_slice_BoundingBoxPc *slice,
                                                         uintptr_t idx);
@@ -11553,10 +11580,10 @@ const struct ShapeRefXbox *slice_ShapeRefXbox_get(const struct slice_ShapeRefXbo
 
 uintptr_t slice_ShapeRefXbox_len(const struct slice_ShapeRefXbox *slice);
 
-const struct HkShapeRefXbox *owned_slice_HkShapeRefXbox_get(const struct slice_HkShapeRefXbox *slice,
-                                                            uintptr_t idx);
+const struct HkShapeRefXbox *slice_HkShapeRefXbox_get(const struct slice_HkShapeRefXbox *slice,
+                                                      uintptr_t idx);
 
-uintptr_t owned_slice_HkShapeRefXbox_len(const struct slice_HkShapeRefXbox *slice);
+uintptr_t slice_HkShapeRefXbox_len(const struct slice_HkShapeRefXbox *slice);
 
 const struct FoliageRefXbox *slice_FoliageRefXbox_get(const struct slice_FoliageRefXbox *slice,
                                                       uintptr_t idx);
@@ -11592,11 +11619,6 @@ const struct Obj1RefXbox *slice_Obj1RefXbox_get(const struct slice_Obj1RefXbox *
                                                 uintptr_t idx);
 
 uintptr_t slice_Obj1RefXbox_len(const struct slice_Obj1RefXbox *slice);
-
-const struct HkShapeRefXbox *slice_HkShapeRefXbox_get(const struct slice_HkShapeRefXbox *slice,
-                                                      uintptr_t idx);
-
-uintptr_t slice_HkShapeRefXbox_len(const struct slice_HkShapeRefXbox *slice);
 
 const struct BoundingBoxXbox *ref_slice_BoundingBoxXbox_get(const struct ref_slice_BoundingBoxXbox *slice,
                                                             uintptr_t idx);
@@ -12169,10 +12191,10 @@ const struct ShapeRefPs3 *slice_ShapeRefPs3_get(const struct slice_ShapeRefPs3 *
 
 uintptr_t slice_ShapeRefPs3_len(const struct slice_ShapeRefPs3 *slice);
 
-const struct HkShapeRefPs3 *owned_slice_HkShapeRefPs3_get(const struct slice_HkShapeRefPs3 *slice,
-                                                          uintptr_t idx);
+const struct HkShapeRefPs3 *slice_HkShapeRefPs3_get(const struct slice_HkShapeRefPs3 *slice,
+                                                    uintptr_t idx);
 
-uintptr_t owned_slice_HkShapeRefPs3_len(const struct slice_HkShapeRefPs3 *slice);
+uintptr_t slice_HkShapeRefPs3_len(const struct slice_HkShapeRefPs3 *slice);
 
 const struct FoliageRefPs3 *slice_FoliageRefPs3_get(const struct slice_FoliageRefPs3 *slice,
                                                     uintptr_t idx);
@@ -12207,11 +12229,6 @@ uintptr_t slice_BlockValARefPs3_len(const struct slice_BlockValARefPs3 *slice);
 const struct Obj1RefPs3 *slice_Obj1RefPs3_get(const struct slice_Obj1RefPs3 *slice, uintptr_t idx);
 
 uintptr_t slice_Obj1RefPs3_len(const struct slice_Obj1RefPs3 *slice);
-
-const struct HkShapeRefPs3 *slice_HkShapeRefPs3_get(const struct slice_HkShapeRefPs3 *slice,
-                                                    uintptr_t idx);
-
-uintptr_t slice_HkShapeRefPs3_len(const struct slice_HkShapeRefPs3 *slice);
 
 const struct BoundingBoxPs3 *ref_slice_BoundingBoxPs3_get(const struct ref_slice_BoundingBoxPs3 *slice,
                                                           uintptr_t idx);

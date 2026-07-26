@@ -75,6 +75,9 @@ cdef extern from "lotrc.h":
   cdef struct OwnedVecCompressedData:
     pass
 
+  cdef struct Vec______CompressedDataRef:
+    pass
+
   cdef struct slice_AnimationBlockInfoPc:
     pass
 
@@ -2110,34 +2113,6 @@ cdef extern from "lotrc.h":
 
   # This is a proxy struct for correct size and alignment only
   # don't construct this directly and use the provided methods to access
-  cdef struct mut_slice_u8:
-    uint64_t align;
-    uint8_t pad[8];
-
-  cdef struct DumpSlice:
-    mut_slice_u8 vals;
-    uintptr_t offset;
-
-  # This is a proxy struct for correct size and alignment only
-  # don't construct this directly and use the provided methods to access
-  cdef struct mut_slice_u32Pc:
-    uint64_t align;
-    uint8_t pad[8];
-
-  # This is a proxy struct for correct size and alignment only
-  # don't construct this directly and use the provided methods to access
-  cdef struct mut_slice_u32Xbox:
-    uint64_t align;
-    uint8_t pad[8];
-
-  # This is a proxy struct for correct size and alignment only
-  # don't construct this directly and use the provided methods to access
-  cdef struct mut_slice_u32Ps3:
-    uint64_t align;
-    uint8_t pad[8];
-
-  # This is a proxy struct for correct size and alignment only
-  # don't construct this directly and use the provided methods to access
   cdef struct mut_slice_ObjAPc:
     uint64_t align;
     uint8_t pad[8];
@@ -2388,6 +2363,12 @@ cdef extern from "lotrc.h":
     mut_slice_RadiosityValsInfoPc vals;
     uintptr_t ind;
     uintptr_t offset;
+
+  # This is a proxy struct for correct size and alignment only
+  # don't construct this directly and use the provided methods to access
+  cdef struct mut_slice_u32Pc:
+    uint64_t align;
+    uint8_t pad[8];
 
   cdef struct DumpInfo_u32Pc:
     mut_slice_u32Pc vals;
@@ -2681,6 +2662,12 @@ cdef extern from "lotrc.h":
     uintptr_t ind;
     uintptr_t offset;
 
+  # This is a proxy struct for correct size and alignment only
+  # don't construct this directly and use the provided methods to access
+  cdef struct mut_slice_u32Xbox:
+    uint64_t align;
+    uint8_t pad[8];
+
   cdef struct DumpInfo_u32Xbox:
     mut_slice_u32Xbox vals;
     uintptr_t ind;
@@ -2973,6 +2960,12 @@ cdef extern from "lotrc.h":
     uintptr_t ind;
     uintptr_t offset;
 
+  # This is a proxy struct for correct size and alignment only
+  # don't construct this directly and use the provided methods to access
+  cdef struct mut_slice_u32Ps3:
+    uint64_t align;
+    uint8_t pad[8];
+
   cdef struct DumpInfo_u32Ps3:
     mut_slice_u32Ps3 vals;
     uintptr_t ind;
@@ -3011,6 +3004,16 @@ cdef extern from "lotrc.h":
     DumpInfo_u32Ps3 offsets;
     Vec_DumpInfoDataPs3 model_data;
     Vec_DumpInfoDataPs3 texture_data;
+
+  # This is a proxy struct for correct size and alignment only
+  # don't construct this directly and use the provided methods to access
+  cdef struct mut_slice_u8:
+    uint64_t align;
+    uint8_t pad[8];
+
+  cdef struct DumpSlice:
+    mut_slice_u8 vals;
+    uintptr_t offset;
 
   # This is a proxy struct for correct size and alignment only
   # don't construct this directly and use the provided methods to access
@@ -3070,8 +3073,7 @@ cdef extern from "lotrc.h":
     uint64_t align;
     uint8_t pad[8];
 
-  cdef struct AlignmentHelper:
-    uint32_t a;
+  ctypedef uint32_t AlignmentHelper;
 
   # This is a proxy struct for correct size and alignment only
   # don't construct this directly and use the provided methods to access
@@ -8210,23 +8212,39 @@ cdef extern from "lotrc.h":
 
   void OwnedLevelData_free(OwnedLevelData *val);
 
-  OwnedLevelData *LevelData_read_data(const char *path);
+  OwnedLevelData *OwnedLevelData_read_data(const char *path);
 
   Version LevelData_version(const LevelData *src);
 
-  OwnedLevelCompressedData *LevelCompressedData_new();
+  LevelCompressedData *OwnedLevelCompressedData_get(OwnedLevelCompressedData *val);
 
-  OwnedLevelRefPc *LevelRefPc_from_data(const LevelData *src, LevelCompressedData *data);
+  void OwnedLevelCompressedData_free(OwnedLevelCompressedData *val);
 
-  LevelData *LevelRefPc_dump(const LevelRefPc *src, uint32_t compression);
+  OwnedLevelCompressedData *OwnedLevelCompressedData_new();
 
-  OwnedLevelRefXbox *LevelRefXbox_from_data(const LevelData *src, LevelCompressedData *data);
+  LevelRefPc *OwnedLevelRefPc_get(OwnedLevelRefPc *val);
 
-  LevelData *LevelRefXbox_dump(const LevelRefXbox *src, uint32_t compression);
+  void OwnedLevelRefPc_free(OwnedLevelRefPc *val);
 
-  OwnedLevelRefPs3 *LevelRefPs3_from_data(const LevelData *src, LevelCompressedData *data);
+  LevelRefXbox *OwnedLevelRefXbox_get(OwnedLevelRefXbox *val);
 
-  LevelData *LevelRefPs3_dump(const LevelRefPs3 *src, uint32_t compression);
+  void OwnedLevelRefXbox_free(OwnedLevelRefXbox *val);
+
+  LevelRefPs3 *OwnedLevelRefPs3_get(OwnedLevelRefPs3 *val);
+
+  void OwnedLevelRefPs3_free(OwnedLevelRefPs3 *val);
+
+  OwnedLevelRefPc *OwnedLevelRefPc_from_data(const LevelData *src, LevelCompressedData *data);
+
+  OwnedLevelRefXbox *OwnedLevelRefXbox_from_data(const LevelData *src, LevelCompressedData *data);
+
+  OwnedLevelRefPs3 *OwnedLevelRefPs3_from_data(const LevelData *src, LevelCompressedData *data);
+
+  OwnedLevelData *LevelRefPc_dump(const LevelRefPc *src, uint32_t compression);
+
+  OwnedLevelData *LevelRefXbox_dump(const LevelRefXbox *src, uint32_t compression);
+
+  OwnedLevelData *LevelRefPs3_dump(const LevelRefPs3 *src, uint32_t compression);
 
   InfoCounts *OwnedInfoCounts_get(OwnedInfoCounts *val);
 
@@ -8240,6 +8258,18 @@ cdef extern from "lotrc.h":
 
   uintptr_t InfoCounts_size_ps3(const InfoCounts *counts);
 
+  DumpInfosPc *OwnedDumpInfosPc_get(OwnedDumpInfosPc *val);
+
+  void OwnedDumpInfosPc_free(OwnedDumpInfosPc *val);
+
+  DumpInfosXbox *OwnedDumpInfosXbox_get(OwnedDumpInfosXbox *val);
+
+  void OwnedDumpInfosXbox_free(OwnedDumpInfosXbox *val);
+
+  DumpInfosPs3 *OwnedDumpInfosPs3_get(OwnedDumpInfosPs3 *val);
+
+  void OwnedDumpInfosPs3_free(OwnedDumpInfosPs3 *val);
+
   OwnedDumpInfosPc *DumpInfosPc_from_data(DumpSlice *dst,
                                           const InfoCounts *counts,
                                           mut_slice_u32Pc *offsets);
@@ -8251,6 +8281,10 @@ cdef extern from "lotrc.h":
   OwnedDumpInfosPs3 *DumpInfosPs3_from_data(DumpSlice *dst,
                                             const InfoCounts *counts,
                                             mut_slice_u32Ps3 *offsets);
+
+  Vec______CompressedDataRef *OwnedVecCompressedData_get(OwnedVecCompressedData *val);
+
+  void OwnedVecCompressedData_free(OwnedVecCompressedData *val);
 
   OwnedVecCompressedData *AnimationsRefPc_dump(const AnimationsRefPc *anims, DumpInfosPc *infos);
 
@@ -8499,9 +8533,9 @@ cdef extern from "lotrc.h":
 
   uintptr_t slice_ShapeRefPc_len(const slice_ShapeRefPc *slice);
 
-  const HkShapeRefPc *owned_slice_HkShapeRefPc_get(const slice_HkShapeRefPc *slice, uintptr_t idx);
+  const HkShapeRefPc *slice_HkShapeRefPc_get(const slice_HkShapeRefPc *slice, uintptr_t idx);
 
-  uintptr_t owned_slice_HkShapeRefPc_len(const slice_HkShapeRefPc *slice);
+  uintptr_t slice_HkShapeRefPc_len(const slice_HkShapeRefPc *slice);
 
   const FoliageRefPc *slice_FoliageRefPc_get(const slice_FoliageRefPc *slice, uintptr_t idx);
 
@@ -8532,10 +8566,6 @@ cdef extern from "lotrc.h":
   const Obj1RefPc *slice_Obj1RefPc_get(const slice_Obj1RefPc *slice, uintptr_t idx);
 
   uintptr_t slice_Obj1RefPc_len(const slice_Obj1RefPc *slice);
-
-  const HkShapeRefPc *slice_HkShapeRefPc_get(const slice_HkShapeRefPc *slice, uintptr_t idx);
-
-  uintptr_t slice_HkShapeRefPc_len(const slice_HkShapeRefPc *slice);
 
   const BoundingBoxPc *ref_slice_BoundingBoxPc_get(const ref_slice_BoundingBoxPc *slice,
                                                    uintptr_t idx);
@@ -9061,10 +9091,9 @@ cdef extern from "lotrc.h":
 
   uintptr_t slice_ShapeRefXbox_len(const slice_ShapeRefXbox *slice);
 
-  const HkShapeRefXbox *owned_slice_HkShapeRefXbox_get(const slice_HkShapeRefXbox *slice,
-                                                       uintptr_t idx);
+  const HkShapeRefXbox *slice_HkShapeRefXbox_get(const slice_HkShapeRefXbox *slice, uintptr_t idx);
 
-  uintptr_t owned_slice_HkShapeRefXbox_len(const slice_HkShapeRefXbox *slice);
+  uintptr_t slice_HkShapeRefXbox_len(const slice_HkShapeRefXbox *slice);
 
   const FoliageRefXbox *slice_FoliageRefXbox_get(const slice_FoliageRefXbox *slice, uintptr_t idx);
 
@@ -9098,10 +9127,6 @@ cdef extern from "lotrc.h":
   const Obj1RefXbox *slice_Obj1RefXbox_get(const slice_Obj1RefXbox *slice, uintptr_t idx);
 
   uintptr_t slice_Obj1RefXbox_len(const slice_Obj1RefXbox *slice);
-
-  const HkShapeRefXbox *slice_HkShapeRefXbox_get(const slice_HkShapeRefXbox *slice, uintptr_t idx);
-
-  uintptr_t slice_HkShapeRefXbox_len(const slice_HkShapeRefXbox *slice);
 
   const BoundingBoxXbox *ref_slice_BoundingBoxXbox_get(const ref_slice_BoundingBoxXbox *slice,
                                                        uintptr_t idx);
@@ -9640,10 +9665,9 @@ cdef extern from "lotrc.h":
 
   uintptr_t slice_ShapeRefPs3_len(const slice_ShapeRefPs3 *slice);
 
-  const HkShapeRefPs3 *owned_slice_HkShapeRefPs3_get(const slice_HkShapeRefPs3 *slice,
-                                                     uintptr_t idx);
+  const HkShapeRefPs3 *slice_HkShapeRefPs3_get(const slice_HkShapeRefPs3 *slice, uintptr_t idx);
 
-  uintptr_t owned_slice_HkShapeRefPs3_len(const slice_HkShapeRefPs3 *slice);
+  uintptr_t slice_HkShapeRefPs3_len(const slice_HkShapeRefPs3 *slice);
 
   const FoliageRefPs3 *slice_FoliageRefPs3_get(const slice_FoliageRefPs3 *slice, uintptr_t idx);
 
@@ -9676,10 +9700,6 @@ cdef extern from "lotrc.h":
   const Obj1RefPs3 *slice_Obj1RefPs3_get(const slice_Obj1RefPs3 *slice, uintptr_t idx);
 
   uintptr_t slice_Obj1RefPs3_len(const slice_Obj1RefPs3 *slice);
-
-  const HkShapeRefPs3 *slice_HkShapeRefPs3_get(const slice_HkShapeRefPs3 *slice, uintptr_t idx);
-
-  uintptr_t slice_HkShapeRefPs3_len(const slice_HkShapeRefPs3 *slice);
 
   const BoundingBoxPs3 *ref_slice_BoundingBoxPs3_get(const ref_slice_BoundingBoxPs3 *slice,
                                                      uintptr_t idx);

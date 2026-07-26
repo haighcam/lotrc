@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use lotrc_proc::make_platforms;
+use lotrc_proc::make_endian;
 use std::path::Path;
 use std::io::Read;
 use log::debug;
@@ -8,11 +8,11 @@ use crate::{
     types::{AlignedBuf, DumpSlice},
 };
 
-#[make_platforms]
+#[make_endian]
 use crate::{
     level::{
-        bin::{DumpBinVER},
-        pak::{DumpPakVER}
+        bin::{DumpBin_XE_},
+        pak::{DumpPak_XE_}
     }
 };
 
@@ -28,11 +28,22 @@ pub struct LevelData {
    pub bin: AlignedBuf
 }
 
+#[derive(Copy, Clone)]
 #[cfg_attr(feature = "ffi", repr(u8))]
 pub enum Version {
     Pc = 0,
     Xbox,
     Ps3, Err
+}
+
+impl Version {
+    #[inline(always)]
+    pub const fn is_xbox(&self) -> bool {
+        match self {
+            Self::Xbox => true,
+            _ => false
+        }
+    }
 }
 
 impl LevelData {
@@ -79,30 +90,30 @@ pub struct LevelCompressedData<'a> {
     pub bin: bin::BinCompressedData<'a>,
 }
 
-#[make_platforms]
+#[make_endian]
 #[derive(Default)]
 #[cfg_attr(feature = "ffi", repr(C))]
-pub struct LevelRefVER<'a> {
-    pub pak: pak::PakRefVER<'a>,
-    pub bin: bin::BinRefVER<'a>,
+pub struct LevelRef_XE_<'a> {
+    pub pak: pak::PakRef_XE_<'a>,
+    pub bin: bin::BinRef_XE_<'a>,
 }
 
-#[make_platforms]
-impl<'a> LevelRefVER<'a> {
+#[make_endian]
+impl<'a> LevelRef_XE_<'a> {
     pub fn from_data<'b: 'a, 'c: 'b>(src: &'c LevelData, data: &'a mut LevelCompressedData<'b>) -> Result<Self> {
-        let bin = bin::BinRefVER::from_data(&src.bin[..], &mut data.bin).context("bin")?;
+        let bin = bin::BinRef_XE_::from_data(&src.bin[..], &mut data.bin).context("bin")?;
         Ok(Self {
-            pak: pak::PakRefVER::from_data(&src.pak[..], &mut data.pak, &bin).context("pak")?,
+            pak: pak::PakRef_XE_::from_data(&src.pak[..], &mut data.pak, &bin).context("pak")?,
             bin,
         })
     }
 }
 
-#[make_platforms]
-pub trait DumpLevelVER {
-    fn pak(&self) -> &impl DumpPakVER;
-    fn bin(&self) -> &impl DumpBinVER;
-    fn dump(&self, c: flate2::Compression) -> Result<LevelData> {
+#[make_endian]
+pub trait DumpLevel_XE_ {
+    fn pak(&self) -> &impl DumpPak_XE_;
+    fn bin(&self) -> &impl DumpBin_XE_;
+    fn dump(&self, c: flate2::Compression, version: Version) -> Result<LevelData> {
         let t = std::time::Instant::now();
         let pak = self.pak();
         let bin = self.bin();
@@ -118,7 +129,7 @@ pub trait DumpLevelVER {
         let bin_size = bin.size(&model_data, &texture_data, rad_data.as_ref());
         let mut bin_data = AlignedBuf::with_capacity(bin_size);
         let mut dump_slice = DumpSlice::from(&mut bin_data[..]);
-        bin.dump(&mut dump_slice, &model_data, &texture_data, rad_data.as_ref()).context("dump bin")?;
+        bin.dump(&mut dump_slice, &model_data, &texture_data, rad_data.as_ref(), version).context("dump bin")?;
         debug!("bin dumped in {}", t.elapsed().as_secs_f32());
 
         Ok(LevelData {
@@ -128,12 +139,12 @@ pub trait DumpLevelVER {
     }
 }
 
-#[make_platforms]
-impl DumpLevelVER for LevelRefVER<'_> {
-    fn pak(&self) -> &impl DumpPakVER {
+#[make_endian]
+impl DumpLevel_XE_ for LevelRef_XE_<'_> {
+    fn pak(&self) -> &impl DumpPak_XE_ {
         &self.pak
     }
-    fn bin(&self) -> &impl DumpBinVER {
+    fn bin(&self) -> &impl DumpBin_XE_ {
         &self.bin
     }
 }
@@ -172,20 +183,20 @@ mod compressed_data {
 }
 
 #[cfg(feature="ffi")]
-#[make_platforms]
-#[export(mod_name=LevelRefVER)]
+#[make_endian]
+#[export(mod_name=LevelRef_XE_)]
 mod ref_ver {
     use super::*;
-    fn from_data<'a>(src: Option<&'a LevelData>, data: Option<&'a mut LevelCompressedData<'a>>) -> Option<NonNull<LevelRefVER<'a>>> {
+    fn from_data<'a>(src: Option<&'a LevelData>, data: Option<&'a mut LevelCompressedData<'a>>) -> Option<NonNull<LevelRef_XE_<'a>>> {
         if src.is_none() || data.is_none() {
             return None;
         }
-        LevelRefVER::from_data(src.unwrap(), data.unwrap()).ok().map(|x| Box::leak(Box::new(x)).into())
+        LevelRef_XE_::from_data(src.unwrap(), data.unwrap()).ok().map(|x| Box::leak(Box::new(x)).into())
     }
-    fn dump(src: Option<&LevelRefVER>, compression: u32) -> Option<NonNull<LevelData>> {
+    fn dump(src: Option<&LevelRef_XE_>, compression: u32) -> Option<NonNull<LevelData>> {
         src.and_then(|x| x.dump(flate2::Compression::new(compression)).ok().map(|x| Box::leak(Box::new(x)).into()))
     }
-    fn free(val: Option<std::ptr::NonNull<LevelRefVER>>) {
+    fn free(val: Option<std::ptr::NonNull<LevelRef_XE_>>) {
         if let Some(val) = val {
             drop(Box::from(val))
         }
@@ -222,8 +233,8 @@ pub struct Level {
 */
 
 /*
-#[make_platforms]
-fn level_parse_ver(level: &LevelVER) -> Result<Level> {
+#[make_endian]
+fn level_parse_ver(level: &Level_XE_) -> Result<Level> {
     let block1 = level.pak().block1().unwrap();
     let block2 = level.pak().block2().unwrap();
 

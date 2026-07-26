@@ -498,7 +498,8 @@ mod wrapper_ver {
         lotrc::level::model::shape::ShapeRefVER,
         lotrc::level::model::shape::ShapeRefVER<'a>
     );
-    make_slice_wrapper!(owned_slice_HkShapeRefVER,
+    make_slice_wrapper!(
+        slice_HkShapeRefVER,
         lotrc::level::model::shape::HkShapeRefVER,
         lotrc::level::model::shape::HkShapeRefVER<'a>
     );
@@ -537,11 +538,13 @@ mod wrapper_ver {
         lotrc::level::pak::animation::Obj1RefVER,
         lotrc::level::pak::animation::Obj1RefVER<'a>
     );
+    /*
     make_slice_wrapper!(
         slice_HkShapeRefVER,
         lotrc::level::model::shape::HkShapeRefVER,
         lotrc::level::model::shape::HkShapeRefVER<'a>
     );
+    */
 
     make_ref_slice_wrapper!(ref_slice_BoundingBoxVER, lotrc::level::model::BoundingBoxVER);
     make_ref_slice_wrapper!(ref_slice_BufferInfoVER, lotrc::level::model::data::BufferInfoVER);

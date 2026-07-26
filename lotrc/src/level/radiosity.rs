@@ -2,30 +2,30 @@ use anyhow::{anyhow, Context, Result};
 use enum_dispatch::enum_dispatch;
 use indexmap::IndexMap;
 
-use crate::types::GetNative;
-use crate::types::{OwnedCompressedData, CompressedData, hash_string, Color, RefFromData, OrderedData, OrderedDataStrict, CompressedDataRef, DumpSlice, DumpData, align_offset, ref_slice};
-#[make_platforms]
+use crate::types::{OwnedCompressedData, CompressedData, hash_string, Color, RefFromData, OrderedData, CompressedDataRef, DumpSlice, DumpData, align_offset, ref_slice};
+#[make_endian]
 use crate::{
     level::{
         pak::{
             block1::{
-                infos::DumpInfosVER,
-                gameobjs::BaseTypeRefVER,
-                Block1RefVER
+                infos::DumpInfos_XE_,
+                gameobjs::BaseTypeRef_XE_,
+                Block1Ref_XE_
             }
         },
     },
-    types::{ColorVER, i32VER, u32VER},
+    types::{Color_XE_, i32_XE_, u32_XE_},
 };
 use crate::level::pak::block1::infos::InfoCounts;
-use lotrc_proc::{make_platforms, OrderedData};
+use lotrc_proc::{make_endian, derive_ordered_data};
 
-#[derive(Debug, Default, Clone, OrderedData)]
+#[derive_ordered_data]
+#[derive(Debug, Default, Clone, PartialEq)]
 // points to list of ints in block1
-pub struct RadiosityValsInfo {
-    pub guid: u32,
-    pub num: u32,
-    pub offset: u32,
+pub struct RadiosityValsInfo_XE_ {
+    pub guid: u32_XE_,
+    pub num: u32_XE_,
+    pub offset: u32_XE_,
 }
 
 // list of ints pointing to the radiosity data
@@ -33,60 +33,60 @@ pub struct RadiosityValsInfo {
 // corresponding to the object pointed to by the guid
 // (value if offset to consecutive values in radiosity, one for each vertex of the mesh)
 // a value of -1 means no radiosity for that mesh
-#[make_platforms]
+#[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
-pub struct RadiosityValsRefVER<'a> {
-    pub info: &'a RadiosityValsInfoVER,
-    pub offs: ref_slice<'a, i32VER>,
+pub struct RadiosityValsRef_XE_<'a> {
+    pub info: &'a RadiosityValsInfo_XE_,
+    pub offs: ref_slice<'a, i32_XE_>,
 }
 
-#[make_platforms]
-impl<'a> RadiosityValsRefVER<'a> {
-    pub fn from_data(src: &'a [u8], info: &'a RadiosityValsInfoVER) -> Result<Self> {
-        let offs = i32VER::slice_from_data(&src[info.offset.get() as usize..], info.num.get() as usize).context("offs")?;
+#[make_endian]
+impl<'a> RadiosityValsRef_XE_<'a> {
+    pub fn from_data(src: &'a [u8], info: &'a RadiosityValsInfo_XE_) -> Result<Self> {
+        let offs = i32_XE_::slice_from_data(&src[info.offset.conv()..], info.num.conv()).context("offs")?;
         Ok(Self { info, offs: offs.into() })
     }
 }
 
-#[make_platforms]
-pub trait DumpRadiosityValsVER {
+#[make_endian]
+pub trait DumpRadiosityVals_XE_ {
     fn off_num(&self) -> usize;
-    fn write_offs(&self, offs: &mut [i32VER]) -> Result<()>;
-    fn dump_into(&self, dst: &mut DumpSlice, info: &mut RadiosityValsInfoVER) -> Result<()> {
+    fn write_offs(&self, offs: &mut [i32_XE_]) -> Result<()>;
+    fn dump_into(&self, dst: &mut DumpSlice, info: &mut RadiosityValsInfo_XE_) -> Result<()> {
         info.offset = dst.offset.conv(); 
-        let offs = i32VER::mut_slice_from_data(dst, self.off_num()).context("offs")?;
+        let offs = i32_XE_::mut_slice_from_data(dst, self.off_num()).context("offs")?;
         info.num = offs.len().conv();
         self.write_offs(offs).context("write offs")?;
         dst.align(16)?;
         Ok(())
     }
     fn add_size(&self, offset: usize) -> usize {
-        align_offset(offset + self.off_num() * std::mem::size_of::<i32VER>(), 16)
+        align_offset(offset + self.off_num() * std::mem::size_of::<i32_XE_>(), 16)
     }
 }
 
-#[make_platforms]
-impl DumpRadiosityValsVER for RadiosityValsRefVER<'_> {
+#[make_endian]
+impl DumpRadiosityVals_XE_ for RadiosityValsRef_XE_<'_> {
     fn off_num(&self) -> usize {
         self.offs.len()
     }
-    fn write_offs(&self, offs: &mut [i32VER]) -> Result<()> {
+    fn write_offs(&self, offs: &mut [i32_XE_]) -> Result<()> {
         offs.write_from(&self.offs[..])
     }
 }
 
-#[make_platforms]
+#[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
-pub struct RadiosityRefVER<'a> {
+pub struct RadiosityRef_XE_<'a> {
     pub data: Option<&'a CompressedDataRef<'a>>,
-    pub vals: IndexMap<u32, RadiosityValsRefVER<'a>>,
+    pub vals: IndexMap<u32, RadiosityValsRef_XE_<'a>>,
     pub usage: u32,
 }
 
-#[make_platforms]
-impl Default for RadiosityRefVER<'_> {
+#[make_endian]
+impl Default for RadiosityRef_XE_<'_> {
     fn default() -> Self {
         Self {
             data: None,
@@ -96,10 +96,10 @@ impl Default for RadiosityRefVER<'_> {
     }
 }
 
-#[make_platforms]
-impl<'a> RadiosityRefVER<'a> {
-    pub fn from_data(src: &'a [u8], infos: &'a [RadiosityValsInfoVER], data: Option<&'a CompressedDataRef<'a>>, usage: u32) -> Result<Self> {
-        let vals = infos.into_iter().map(|info| Ok((info.guid.get(), RadiosityValsRefVER::from_data(src, info).with_context(|| format!("radiosity {}", info.guid.get()))?))).collect::<Result<IndexMap<_, _>>>()?;
+#[make_endian]
+impl<'a> RadiosityRef_XE_<'a> {
+    pub fn from_data(src: &'a [u8], infos: &'a [RadiosityValsInfo_XE_], data: Option<&'a CompressedDataRef<'a>>, usage: u32) -> Result<Self> {
+        let vals = infos.into_iter().map(|info| Ok((info.guid.conv(), RadiosityValsRef_XE_::from_data(src, info).with_context(|| format!("radiosity {}", info.guid.to_native()))?))).collect::<Result<IndexMap<_, _>>>()?;
         Ok(Self {
             data: data.into(),
             vals: vals.into(),
@@ -121,8 +121,8 @@ pub struct Radiosity {
 }
 
 impl Radiosity {
-    #[make_platforms]
-    pub fn from_ver(val: &RadiosityRefVER, block1: &Block1RefVER) -> Result<Self> {
+    #[make_endian]
+    pub fn from_xe_(val: &RadiosityRef_XE_, block1: &Block1Ref_XE_) -> Result<Self> {
         let gameobjs = &block1.sub_blocks.level;
         let models = &block1.objs.models;
         let mut off: usize = 0;
@@ -133,14 +133,14 @@ impl Radiosity {
         };
         Ok(Radiosity {
             vals: val.vals.values()
-                .map(|RadiosityValsRefVER { info, offs: vals }| {
-                    let obj = gameobjs.objs.get(&info.guid.get()).unwrap();
+                .map(|RadiosityValsRef_XE_ { info, offs: vals }| {
+                    let obj = gameobjs.objs.get(&info.guid.to_native()).unwrap();
                     let model = obj
                         .fields
                         .get(&hash_string(b"mesh", None))
                         .ok_or(anyhow!("missing mesh field"))
-                        .and_then(|field| if let BaseTypeRefVER::Crc(x) = field {
-                            Ok(x.get())
+                        .and_then(|field| if let BaseTypeRef_XE_::Crc(x) = field {
+                            Ok(x.to_native())
                         } else {
                             Err(anyhow!("mesh field not crc"))
                         })
@@ -148,20 +148,20 @@ impl Radiosity {
                             models.get(&mesh)
                             .ok_or_else(|| anyhow!("model {} missing", mesh))
                         })
-                        .with_context(|| format!("obj {}", info.guid.get()))?;
+                        .with_context(|| format!("obj {}", info.guid.to_native()))?;
                     Ok((
-                        info.guid.get(),
+                        info.guid.conv(),
                         model.data.infos.iter()
-                            .map(|x| (x.vbuff_size.get() / x.v_size.get()) as usize)
+                            .map(|x| (x.vbuff_size.to_native() / x.v_size.to_native()) as usize)
                             .zip(vals.iter())
                             .map(|(size, offset)| {
-                                let offset = offset.get() as usize;
+                                let offset: usize = offset.conv();
                                 Ok(if offset != off {
                                     RadiosityVal::NoRadiosity(offset as u32)
                                 } else {
                                     off += size;
                                     RadiosityVal::Radiosity(
-                                        ColorVER::slice_from_data(&data[offset*4..], size).with_context(|| format!("rad data from {}", info.guid.get()))?
+                                        Color_XE_::slice_from_data(&data[offset*4..], size).with_context(|| format!("rad data from {}", info.guid.to_native()))?
                                             .iter()
                                             .map(|x| x.conv())
                                             .collect(),
@@ -177,32 +177,32 @@ impl Radiosity {
     }
 }
 
-#[make_platforms]
-#[enum_dispatch(DumpRadiosityVER)]
-pub enum RadiosityVER<'a> {
-    Ref(RadiosityRefVER<'a>),
+#[make_endian]
+#[enum_dispatch(DumpRadiosity_XE_)]
+pub enum Radiosity_XE_<'a> {
+    Ref(RadiosityRef_XE_<'a>),
     Owned(Radiosity)
 }
 
-#[make_platforms]
-pub trait DumpRadiosityImplVER {
-    fn vals(&self) -> impl Iterator<Item=(u32, &impl DumpRadiosityValsVER)>;
+#[make_endian]
+pub trait DumpRadiosityImpl_XE_ {
+    fn vals(&self) -> impl Iterator<Item=(u32, &impl DumpRadiosityVals_XE_)>;
     fn data(&self) -> CompressedData<'_>;
 }
 
-#[make_platforms]
+#[make_endian]
 #[enum_dispatch]
-pub trait DumpRadiosityVER {
-    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfosVER) -> Result<CompressedData<'_>>;
+pub trait DumpRadiosity_XE_ {
+    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfos_XE_) -> Result<CompressedData<'_>>;
     fn add_size(&self, offset: usize, counts: &mut InfoCounts) -> usize;
-    fn usage(&self) -> u32VER;
+    fn usage(&self) -> u32_XE_;
 }
 
-#[make_platforms]
-impl DumpRadiosityVER for RadiosityRefVER<'_> {
-    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfosVER) -> Result<CompressedData<'_>> {
+#[make_endian]
+impl DumpRadiosity_XE_ for RadiosityRef_XE_<'_> {
+    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfos_XE_) -> Result<CompressedData<'_>> {
         for (guid, vals) in self.vals.iter() {
-            *infos.offsets.next().context("offsets")? = (infos.radiosity_vals.offset + std::mem::offset_of!(RadiosityValsInfoVER, offset)).conv();
+            *infos.offsets.next().context("offsets")? = (infos.radiosity_vals.offset + std::mem::offset_of!(RadiosityValsInfo_XE_, offset)).conv();
             let info = infos.radiosity_vals.next().context("radiosity_vals")?;
             vals.dump_into(dst, info).with_context(|| format!("vals {}", guid))?;
             info.guid = guid.conv();
@@ -217,22 +217,22 @@ impl DumpRadiosityVER for RadiosityRefVER<'_> {
         }
         offset
     }
-    fn usage(&self) -> u32VER {
+    fn usage(&self) -> u32_XE_ {
         self.usage.conv()
     }
 }
 
-#[make_platforms]
-impl DumpRadiosityVER for Radiosity {
-    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfosVER) -> Result<CompressedData<'_>> {
+#[make_endian]
+impl DumpRadiosity_XE_ for Radiosity {
+    fn dump_into(&self, dst: &mut DumpSlice, infos: &mut DumpInfos_XE_) -> Result<CompressedData<'_>> {
         let mut data_len = 0;
         for (guid, vals) in self.vals.iter() {
-            *infos.offsets.next().context("offsets")? = (infos.radiosity_vals.offset + std::mem::offset_of!(RadiosityValsInfoVER, offset)).conv();
+            *infos.offsets.next().context("offsets")? = (infos.radiosity_vals.offset + std::mem::offset_of!(RadiosityValsInfo_XE_, offset)).conv();
             let info = infos.radiosity_vals.next().context("radiosity_vals")?;
             info.guid = guid.conv();
             info.num = vals.len().conv();
             info.offset = dst.offset.conv();
-            let offs = u32VER::mut_slice_from_data(dst, vals.len()).context("offs")?;
+            let offs = u32_XE_::mut_slice_from_data(dst, vals.len()).context("offs")?;
             for (val, dst) in vals.iter().zip(offs) {
                 match val {
                     RadiosityVal::NoRadiosity(val) => *dst = val.conv(),
@@ -250,7 +250,7 @@ impl DumpRadiosityVER for Radiosity {
             for val in vals {
                 match val {
                     RadiosityVal::Radiosity(val) => {
-                        let dst = u32VER::mut_slice_from_data(&mut data_dst, val.len()).context("vals")?;
+                        let dst = u32_XE_::mut_slice_from_data(&mut data_dst, val.len()).context("vals")?;
                         for (src, dst) in val.iter().zip(dst) {
                             *dst = src.conv();
                         }
@@ -265,11 +265,11 @@ impl DumpRadiosityVER for Radiosity {
         for vals in self.vals.values() {
             counts.radiosity_vals += 1; 
             counts.offsets += 1;
-            offset = align_offset(offset + vals.len() * std::mem::size_of::<u32VER>(), 16);
+            offset = align_offset(offset + vals.len() * std::mem::size_of::<u32_XE_>(), 16);
         }
         offset
     }
-    fn usage(&self) -> u32VER {
+    fn usage(&self) -> u32_XE_ {
         self.usage.conv()
     }
 }

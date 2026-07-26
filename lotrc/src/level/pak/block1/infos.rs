@@ -1,182 +1,180 @@
 use log::debug;
 use anyhow::{Context, Result};
 
-use crate::types::GetNative;
 use crate::types::{CompressedData, OrderedData, DumpSlice, ref_slice, align_offset, mut_slice, DumpData, RefFromData};
 
-
-use lotrc_proc::{make_platforms};
-#[make_platforms]
+use lotrc_proc::{make_endian};
+#[make_endian]
 use crate::{
     level::{
         model::{
-            data::{BufferInfoVER, IBuffInfoVER, VBuffInfoVER},
-            mat::{Mat1VER, Mat2VER, Mat3VER, Mat4VER, MatExtraVER},
+            data::{BufferInfo_XE_, IBuffInfo_XE_, VBuffInfo_XE_},
+            mat::{Mat1_XE_, Mat2_XE_, Mat3_XE_, Mat4_XE_, MatExtra_XE_},
             shape::{
-                HkConstraintDataVER, HkConstraintInfoVER, HkShapeInfoVER,
-                ShapeInfoVER,
+                HkConstraintData_XE_, HkConstraintInfo_XE_, HkShapeInfo_XE_,
+                ShapeInfo_XE_,
             },
-            ModelInfoVER  
+            ModelInfo_XE_  
         },
         pak::{
-            PakHeaderVER,
-            animation::{AnimationBlockInfoVER, AnimationInfoVER},
+            PakHeader_XE_,
+            animation::{AnimationBlockInfo_XE_, AnimationInfo_XE_},
             block1::{
-                objs::{ObjAVER, Obj0VER, EffectInfoVER, PFieldInfoVER, GFXBlockInfoVER, FoliageInfoVER},
+                objs::{ObjA_XE_, Obj0_XE_, EffectInfo_XE_, PFieldInfo_XE_, GFXBlockInfo_XE_, FoliageInfo_XE_},
             },
         },
-        radiosity::{RadiosityValsInfoVER},
-        texture::{TextureInfoVER},
+        radiosity::{RadiosityValsInfo_XE_},
+        texture::{TextureInfo_XE_},
     },
-    types::u32VER
+    types::u32_XE_
 };
 
-#[make_platforms]
+#[make_endian]
 #[derive(Default)]
 #[cfg_attr(feature = "ffi", repr(C))]
-pub struct InfosRefVER<'a> {
-    pub objas: ref_slice<'a, ObjAVER>,
-    pub obj0s: ref_slice<'a, Obj0VER>,
-    pub models: ref_slice<'a, ModelInfoVER>,
-    pub buffers: ref_slice<'a, BufferInfoVER>,
-    pub mat1s: ref_slice<'a, Mat1VER>,
-    pub mat2s: ref_slice<'a, Mat2VER>,
-    pub mat3s: ref_slice<'a, Mat3VER>,
-    pub mat4s: ref_slice<'a, Mat4VER>,
-    pub mat_extras: ref_slice<'a, MatExtraVER>,
-    pub shapes: ref_slice<'a, ShapeInfoVER>,
-    pub hk_shapes: ref_slice<'a, HkShapeInfoVER>,
-    pub hk_constraint_datas: ref_slice<'a, HkConstraintDataVER>,
-    pub vbuffs: ref_slice<'a, VBuffInfoVER>,
-    pub ibuffs: ref_slice<'a, IBuffInfoVER>,
-    pub textures: ref_slice<'a, TextureInfoVER>,
-    pub animations: ref_slice<'a, AnimationInfoVER>,
-    pub hk_constraints: ref_slice<'a, HkConstraintInfoVER>,
-    pub effects: ref_slice<'a, EffectInfoVER>,
-    pub pfields: ref_slice<'a, PFieldInfoVER>,
-    pub gfxs: ref_slice<'a, GFXBlockInfoVER>,
-    pub animation_blocks: ref_slice<'a, AnimationBlockInfoVER>,
-    pub foliages: ref_slice<'a, FoliageInfoVER>,
-    pub radiosity_vals: ref_slice<'a, RadiosityValsInfoVER>,
+pub struct InfosRef_XE_<'a> {
+    pub objas: ref_slice<'a, ObjA_XE_>,
+    pub obj0s: ref_slice<'a, Obj0_XE_>,
+    pub models: ref_slice<'a, ModelInfo_XE_>,
+    pub buffers: ref_slice<'a, BufferInfo_XE_>,
+    pub mat1s: ref_slice<'a, Mat1_XE_>,
+    pub mat2s: ref_slice<'a, Mat2_XE_>,
+    pub mat3s: ref_slice<'a, Mat3_XE_>,
+    pub mat4s: ref_slice<'a, Mat4_XE_>,
+    pub mat_extras: ref_slice<'a, MatExtra_XE_>,
+    pub shapes: ref_slice<'a, ShapeInfo_XE_>,
+    pub hk_shapes: ref_slice<'a, HkShapeInfo_XE_>,
+    pub hk_constraint_datas: ref_slice<'a, HkConstraintData_XE_>,
+    pub vbuffs: ref_slice<'a, VBuffInfo_XE_>,
+    pub ibuffs: ref_slice<'a, IBuffInfo_XE_>,
+    pub textures: ref_slice<'a, TextureInfo_XE_>,
+    pub animations: ref_slice<'a, AnimationInfo_XE_>,
+    pub hk_constraints: ref_slice<'a, HkConstraintInfo_XE_>,
+    pub effects: ref_slice<'a, EffectInfo_XE_>,
+    pub pfields: ref_slice<'a, PFieldInfo_XE_>,
+    pub gfxs: ref_slice<'a, GFXBlockInfo_XE_>,
+    pub animation_blocks: ref_slice<'a, AnimationBlockInfo_XE_>,
+    pub foliages: ref_slice<'a, FoliageInfo_XE_>,
+    pub radiosity_vals: ref_slice<'a, RadiosityValsInfo_XE_>,
 }
 
-#[make_platforms]
-impl<'a> InfosRefVER<'a> {
-    pub fn from_data(src: &'a [u8], pak_header: &PakHeaderVER) -> Result<Self> {
-        let objas = ObjAVER::slice_from_data(
-            &src[pak_header.obja_offset.get() as usize..],
-            pak_header.obja_num.get() as usize,
+#[make_endian]
+impl<'a> InfosRef_XE_<'a> {
+    pub fn from_data(src: &'a [u8], pak_header: &PakHeader_XE_) -> Result<Self> {
+        let objas = ObjA_XE_::slice_from_data(
+            &src[pak_header.obja_offset.conv()..],
+            pak_header.obja_num.conv(),
         )
         .context("objas")?;
-        let obj0s = Obj0VER::slice_from_data(
-            &src[pak_header.obj0_offset.get() as usize..],
-            pak_header.obj0_num.get() as usize,
+        let obj0s = Obj0_XE_::slice_from_data(
+            &src[pak_header.obj0_offset.conv()..],
+            pak_header.obj0_num.conv(),
         )
         .context("obj0s")?;
-        let models = ModelInfoVER::slice_from_data(
-            &src[pak_header.model_info_offset.get() as usize..],
-            pak_header.model_info_num.get() as usize,
+        let models = ModelInfo_XE_::slice_from_data(
+            &src[pak_header.model_info_offset.conv()..],
+            pak_header.model_info_num.conv(),
         )
         .context("models")?;
-        let buffers = BufferInfoVER::slice_from_data(
-            &src[pak_header.buffer_info_offset.get() as usize..],
-            pak_header.buffer_info_num.get() as usize,
+        let buffers = BufferInfo_XE_::slice_from_data(
+            &src[pak_header.buffer_info_offset.conv()..],
+            pak_header.buffer_info_num.conv(),
         )
         .context("buffers")?;
-        let mat1s = Mat1VER::slice_from_data(
-            &src[pak_header.mat1_offset.get() as usize..],
-            pak_header.mat1_num.get() as usize,
+        let mat1s = Mat1_XE_::slice_from_data(
+            &src[pak_header.mat1_offset.conv()..],
+            pak_header.mat1_num.conv(),
         )
         .context("mat1s")?;
-        let mat2s = Mat2VER::slice_from_data(
-            &src[pak_header.mat2_offset.get() as usize..],
-            pak_header.mat2_num.get() as usize,
+        let mat2s = Mat2_XE_::slice_from_data(
+            &src[pak_header.mat2_offset.conv()..],
+            pak_header.mat2_num.conv(),
         )
         .context("mat2s")?;
-        let mat3s = Mat3VER::slice_from_data(
-            &src[pak_header.mat3_offset.get() as usize..],
-            pak_header.mat3_num.get() as usize,
+        let mat3s = Mat3_XE_::slice_from_data(
+            &src[pak_header.mat3_offset.conv()..],
+            pak_header.mat3_num.conv(),
         )
         .context("mat3s")?;
-        let mat4s = Mat4VER::slice_from_data(
-            &src[pak_header.mat4_offset.get() as usize..],
-            pak_header.mat4_num.get() as usize,
+        let mat4s = Mat4_XE_::slice_from_data(
+            &src[pak_header.mat4_offset.conv()..],
+            pak_header.mat4_num.conv(),
         )
         .context("mat4s")?;
-        let mat_extras = MatExtraVER::slice_from_data(
-            &src[pak_header.mat_extra_offset.get() as usize..],
-            pak_header.mat_extra_num.get() as usize,
+        let mat_extras = MatExtra_XE_::slice_from_data(
+            &src[pak_header.mat_extra_offset.conv()..],
+            pak_header.mat_extra_num.conv(),
         )
         .context("mat_extras")?;
-        let shapes = ShapeInfoVER::slice_from_data(
-            &src[pak_header.shape_info_offset.get() as usize..],
-            pak_header.shape_info_num.get() as usize,
+        let shapes = ShapeInfo_XE_::slice_from_data(
+            &src[pak_header.shape_info_offset.conv()..],
+            pak_header.shape_info_num.conv(),
         )
         .context("shapes")?;
-        let hk_shapes = HkShapeInfoVER::slice_from_data(
-            &src[pak_header.hk_shape_info_offset.get() as usize..],
-            pak_header.hk_shape_info_num.get() as usize,
+        let hk_shapes = HkShapeInfo_XE_::slice_from_data(
+            &src[pak_header.hk_shape_info_offset.conv()..],
+            pak_header.hk_shape_info_num.conv(),
         )
         .context("hk_shapes")?;
-        let hk_constraint_datas = HkConstraintDataVER::slice_from_data(
-            &src[pak_header.hk_constraint_data_offset.get() as usize..],
-            pak_header.hk_constraint_data_num.get() as usize,
+        let hk_constraint_datas = HkConstraintData_XE_::slice_from_data(
+            &src[pak_header.hk_constraint_data_offset.conv()..],
+            pak_header.hk_constraint_data_num.conv(),
         )
         .context("hk_constraint_datas")?;
-        let vbuffs = VBuffInfoVER::slice_from_data(
-            &src[pak_header.vbuff_info_offset.get() as usize..],
-            pak_header.vbuff_info_num.get() as usize,
+        let vbuffs = VBuffInfo_XE_::slice_from_data(
+            &src[pak_header.vbuff_info_offset.conv()..],
+            pak_header.vbuff_info_num.conv(),
         )
         .context("vbuffs")?;
-        let ibuffs = IBuffInfoVER::slice_from_data(
-            &src[pak_header.ibuff_info_offset.get() as usize..],
-            pak_header.ibuff_info_num.get() as usize,
+        let ibuffs = IBuffInfo_XE_::slice_from_data(
+            &src[pak_header.ibuff_info_offset.conv()..],
+            pak_header.ibuff_info_num.conv(),
         )
         .context("ibuffs")?;
-        let textures = TextureInfoVER::slice_from_data(
-            &src[pak_header.texture_info_offset.get() as usize..],
-            pak_header.texture_info_num.get() as usize,
+        let textures = TextureInfo_XE_::slice_from_data(
+            &src[pak_header.texture_info_offset.conv()..],
+            pak_header.texture_info_num.conv(),
         )
         .context("textures")?;
-        let animations = AnimationInfoVER::slice_from_data(
-            &src[pak_header.animation_info_offset.get() as usize..],
-            pak_header.animation_info_num.get() as usize,
+        let animations = AnimationInfo_XE_::slice_from_data(
+            &src[pak_header.animation_info_offset.conv()..],
+            pak_header.animation_info_num.conv(),
         )
         .context("animations")?;
-        let hk_constraints = HkConstraintInfoVER::slice_from_data(
-            &src[pak_header.hk_constraint_info_offset.get() as usize..],
-            pak_header.hk_constraint_info_num.get() as usize,
+        let hk_constraints = HkConstraintInfo_XE_::slice_from_data(
+            &src[pak_header.hk_constraint_info_offset.conv()..],
+            pak_header.hk_constraint_info_num.conv(),
         )
         .context("hk_constraints")?;
-        let effects = EffectInfoVER::slice_from_data(
-            &src[pak_header.effect_info_offset.get() as usize..],
-            pak_header.effect_info_num.get() as usize,
+        let effects = EffectInfo_XE_::slice_from_data(
+            &src[pak_header.effect_info_offset.conv()..],
+            pak_header.effect_info_num.conv(),
         )
         .context("effects")?;
-        let pfields = PFieldInfoVER::slice_from_data(
-            &src[pak_header.pfield_info_offset.get() as usize..],
-            pak_header.pfield_info_num.get() as usize,
+        let pfields = PFieldInfo_XE_::slice_from_data(
+            &src[pak_header.pfield_info_offset.conv()..],
+            pak_header.pfield_info_num.conv(),
         )
         .context("pfields")?;
-        let gfxs = GFXBlockInfoVER::slice_from_data(
-            &src[pak_header.gfx_block_info_offset.get() as usize..],
-            pak_header.gfx_block_info_num.get() as usize,
+        let gfxs = GFXBlockInfo_XE_::slice_from_data(
+            &src[pak_header.gfx_block_info_offset.conv()..],
+            pak_header.gfx_block_info_num.conv(),
         )
         .context("gfxs")?;
-        let animation_blocks = AnimationBlockInfoVER::slice_from_data(
-            &src[pak_header.animation_block_info_offset.get() as usize..],
-            pak_header.animation_block_info_num.get() as usize,
+        let animation_blocks = AnimationBlockInfo_XE_::slice_from_data(
+            &src[pak_header.animation_block_info_offset.conv()..],
+            pak_header.animation_block_info_num.conv(),
         )
         .context("animation_blocks")?;
         debug!("animation block infos {:#?}", animation_blocks);
-        let foliages = FoliageInfoVER::slice_from_data(
-            &src[pak_header.foliage_info_offset.get() as usize..],
-            pak_header.foliage_info_num.get() as usize,
+        let foliages = FoliageInfo_XE_::slice_from_data(
+            &src[pak_header.foliage_info_offset.conv()..],
+            pak_header.foliage_info_num.conv(),
         )
         .context("foliages")?;
-        let radiosity_vals = RadiosityValsInfoVER::slice_from_data(
-            &src[pak_header.radiosity_vals_info_offset.get() as usize..],
-            pak_header.radiosity_vals_info_num.get() as usize,
+        let radiosity_vals = RadiosityValsInfo_XE_::slice_from_data(
+            &src[pak_header.radiosity_vals_info_offset.conv()..],
+            pak_header.radiosity_vals_info_num.conv(),
         )
         .context("radiosity_vals")?;
         Ok(Self {
@@ -207,17 +205,17 @@ impl<'a> InfosRefVER<'a> {
     }
 }
 
-#[make_platforms]
-pub trait DumpExtraInfosVER {
+#[make_endian]
+pub trait DumpExtraInfos_XE_ {
     fn obja_num(&self) -> usize;
     fn obj0_num(&self) -> usize;
     // TODO proper pfield dumping
     fn pfield_num(&self) -> usize;
-    fn write_objas(&self, objas: &mut [ObjAVER]) -> Result<()>;
-    fn write_obj0s(&self, obj0s: &mut [Obj0VER]) -> Result<()>;
+    fn write_objas(&self, objas: &mut [ObjA_XE_]) -> Result<()>;
+    fn write_obj0s(&self, obj0s: &mut [Obj0_XE_]) -> Result<()>;
 
-    fn dump_into<'a, 'b>(&'b self, dst: &mut DumpSlice<'a>, offsets: &'a mut [u32VER], counts: &InfoCounts, pak_header: &mut PakHeaderVER) -> Result<DumpInfosVER<'a, 'b>> {
-        let mut dump_infos = DumpInfosVER::from_data(dst, counts, offsets).context("dump infos")?;
+    fn dump_into<'a, 'b>(&'b self, dst: &mut DumpSlice<'a>, offsets: &'a mut [u32_XE_], counts: &InfoCounts, pak_header: &mut PakHeader_XE_) -> Result<DumpInfos_XE_<'a, 'b>> {
+        let mut dump_infos = DumpInfos_XE_::from_data(dst, counts, offsets).context("dump infos")?;
         dump_infos.update_header(pak_header);
         debug!("updated header {:#?}", pak_header);
         self.write_objas(dump_infos.objas.take()).context("write objas")?;
@@ -229,12 +227,12 @@ pub trait DumpExtraInfosVER {
         counts.objas = self.obja_num();
         counts.obj0s = self.obj0_num();
         counts.pfields = self.pfield_num();
-        counts.size_ver(offset)
+        counts.size_xe_(offset)
     }
 }
 
-#[make_platforms]
-impl<'a> DumpExtraInfosVER for InfosRefVER<'a> {
+#[make_endian]
+impl<'a> DumpExtraInfos_XE_ for InfosRef_XE_<'a> {
     fn obja_num(&self) -> usize {
         self.objas.len()
     }
@@ -244,10 +242,10 @@ impl<'a> DumpExtraInfosVER for InfosRefVER<'a> {
     fn pfield_num(&self) -> usize {
         self.pfields.len()
     }
-    fn write_objas(&self, objas: &mut [ObjAVER]) -> Result<()> {
+    fn write_objas(&self, objas: &mut [ObjA_XE_]) -> Result<()> {
         objas.write_from(&self.objas[..])
     }
-    fn write_obj0s(&self, obj0s: &mut [Obj0VER]) -> Result<()> {
+    fn write_obj0s(&self, obj0s: &mut [Obj0_XE_]) -> Result<()> {
         obj0s.write_from(&self.obj0s[..])
     }
 }
@@ -282,32 +280,32 @@ pub struct InfoCounts {
 }
 
 impl InfoCounts {
-    #[make_platforms]
-    pub fn size_ver(&self, mut offset: usize) -> usize {
+    #[make_endian]
+    pub fn size_xe_(&self, mut offset: usize) -> usize {
         offset = align_offset(offset, 16);
-        offset = align_offset(offset + self.objas * std::mem::size_of::<ObjAVER>(), 16);
-        offset = align_offset(offset + self.obj0s * std::mem::size_of::<Obj0VER>(), 16);
-        offset = align_offset(offset + self.models * std::mem::size_of::<ModelInfoVER>(), 16);
-        offset = align_offset(offset + self.buffers * std::mem::size_of::<BufferInfoVER>(), 16);
-        offset = align_offset(offset + self.mat1s * std::mem::size_of::<Mat1VER>(), 16);
-        offset = align_offset(offset + self.mat2s * std::mem::size_of::<Mat2VER>(), 16);
-        offset = align_offset(offset + self.mat3s * std::mem::size_of::<Mat3VER>(), 16);
-        offset = align_offset(offset + self.mat4s * std::mem::size_of::<Mat4VER>(), 16);
-        offset = align_offset(offset + self.mat_extras * std::mem::size_of::<MatExtraVER>(), 16);
-        offset = align_offset(offset + self.shapes * std::mem::size_of::<ShapeInfoVER>(), 16);
-        offset = align_offset(offset + self.hk_shapes * std::mem::size_of::<HkShapeInfoVER>(), 16);
-        offset = align_offset(offset + self.hk_constraint_datas * std::mem::size_of::<HkConstraintDataVER>(), 16);
-        offset = align_offset(offset + self.vbuffs * std::mem::size_of::<VBuffInfoVER>(), 16);
-        offset = align_offset(offset + self.ibuffs * std::mem::size_of::<IBuffInfoVER>(), 16);
-        offset = align_offset(offset + self.textures * std::mem::size_of::<TextureInfoVER>(), 16);
-        offset = align_offset(offset + self.animations * std::mem::size_of::<AnimationInfoVER>(), 16);
-        offset = align_offset(offset + self.hk_constraints * std::mem::size_of::<HkConstraintInfoVER>(), 16);
-        offset = align_offset(offset + self.effects * std::mem::size_of::<EffectInfoVER>(), 16);
-        offset = align_offset(offset + self.pfields * std::mem::size_of::<PFieldInfoVER>(), 16);
-        offset = align_offset(offset + self.gfxs * std::mem::size_of::<GFXBlockInfoVER>(), 16);
-        offset = align_offset(offset + self.animation_blocks * std::mem::size_of::<AnimationBlockInfoVER>(), 16);
-        offset = align_offset(offset + self.foliages * std::mem::size_of::<FoliageInfoVER>(), 16);
-        offset = align_offset(offset + self.radiosity_vals * std::mem::size_of::<RadiosityValsInfoVER>(), 16);
+        offset = align_offset(offset + self.objas * std::mem::size_of::<ObjA_XE_>(), 16);
+        offset = align_offset(offset + self.obj0s * std::mem::size_of::<Obj0_XE_>(), 16);
+        offset = align_offset(offset + self.models * std::mem::size_of::<ModelInfo_XE_>(), 16);
+        offset = align_offset(offset + self.buffers * std::mem::size_of::<BufferInfo_XE_>(), 16);
+        offset = align_offset(offset + self.mat1s * std::mem::size_of::<Mat1_XE_>(), 16);
+        offset = align_offset(offset + self.mat2s * std::mem::size_of::<Mat2_XE_>(), 16);
+        offset = align_offset(offset + self.mat3s * std::mem::size_of::<Mat3_XE_>(), 16);
+        offset = align_offset(offset + self.mat4s * std::mem::size_of::<Mat4_XE_>(), 16);
+        offset = align_offset(offset + self.mat_extras * std::mem::size_of::<MatExtra_XE_>(), 16);
+        offset = align_offset(offset + self.shapes * std::mem::size_of::<ShapeInfo_XE_>(), 16);
+        offset = align_offset(offset + self.hk_shapes * std::mem::size_of::<HkShapeInfo_XE_>(), 16);
+        offset = align_offset(offset + self.hk_constraint_datas * std::mem::size_of::<HkConstraintData_XE_>(), 16);
+        offset = align_offset(offset + self.vbuffs * std::mem::size_of::<VBuffInfo_XE_>(), 16);
+        offset = align_offset(offset + self.ibuffs * std::mem::size_of::<IBuffInfo_XE_>(), 16);
+        offset = align_offset(offset + self.textures * std::mem::size_of::<TextureInfo_XE_>(), 16);
+        offset = align_offset(offset + self.animations * std::mem::size_of::<AnimationInfo_XE_>(), 16);
+        offset = align_offset(offset + self.hk_constraints * std::mem::size_of::<HkConstraintInfo_XE_>(), 16);
+        offset = align_offset(offset + self.effects * std::mem::size_of::<EffectInfo_XE_>(), 16);
+        offset = align_offset(offset + self.pfields * std::mem::size_of::<PFieldInfo_XE_>(), 16);
+        offset = align_offset(offset + self.gfxs * std::mem::size_of::<GFXBlockInfo_XE_>(), 16);
+        offset = align_offset(offset + self.animation_blocks * std::mem::size_of::<AnimationBlockInfo_XE_>(), 16);
+        offset = align_offset(offset + self.foliages * std::mem::size_of::<FoliageInfo_XE_>(), 16);
+        offset = align_offset(offset + self.radiosity_vals * std::mem::size_of::<RadiosityValsInfo_XE_>(), 16);
         debug!("infos size {}", offset);
         offset
     }
@@ -373,116 +371,116 @@ impl<'a, T: RefFromData> DumpInfo<'a, T> {
     }
 }
 
-#[make_platforms]
+#[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
-pub struct DumpInfoDataVER<'a> {
-    pub key: u32VER,
-    pub kind: u32VER,
+pub struct DumpInfoData_XE_<'a> {
+    pub key: u32_XE_,
+    pub kind: u32_XE_,
     pub data: CompressedData<'a>
 }
 
-#[make_platforms]
+#[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
-pub struct DumpInfosVER<'a, 'd> {
-    pub objas: DumpInfo<'a, ObjAVER>,
-    pub obj0s: DumpInfo<'a, Obj0VER>,
-    pub models: DumpInfo<'a, ModelInfoVER>,
-    pub buffers: DumpInfo<'a, BufferInfoVER>,
-    pub mat1s: DumpInfo<'a, Mat1VER>,
-    pub mat2s: DumpInfo<'a, Mat2VER>,
-    pub mat3s: DumpInfo<'a, Mat3VER>,
-    pub mat4s: DumpInfo<'a, Mat4VER>,
-    pub mat_extras: DumpInfo<'a, MatExtraVER>,
-    pub shapes: DumpInfo<'a, ShapeInfoVER>,
-    pub hk_shapes: DumpInfo<'a, HkShapeInfoVER>,
-    pub hk_constraint_datas: DumpInfo<'a, HkConstraintDataVER>,
-    pub vbuffs: DumpInfo<'a, VBuffInfoVER>,
-    pub ibuffs: DumpInfo<'a, IBuffInfoVER>,
-    pub textures: DumpInfo<'a, TextureInfoVER>,
-    pub animations: DumpInfo<'a, AnimationInfoVER>,
-    pub hk_constraints: DumpInfo<'a, HkConstraintInfoVER>,
-    pub effects: DumpInfo<'a, EffectInfoVER>,
-    pub pfields: DumpInfo<'a, PFieldInfoVER>,
-    pub gfxs: DumpInfo<'a, GFXBlockInfoVER>,
-    pub animation_blocks: DumpInfo<'a, AnimationBlockInfoVER>,
-    pub foliages: DumpInfo<'a, FoliageInfoVER>,
-    pub radiosity_vals: DumpInfo<'a, RadiosityValsInfoVER>,
-    pub offsets: DumpInfo<'a, u32VER>,
-    pub model_data: Vec<DumpInfoDataVER<'d>>,
-    pub texture_data: Vec<DumpInfoDataVER<'d>>,
+pub struct DumpInfos_XE_<'a, 'd> {
+    pub objas: DumpInfo<'a, ObjA_XE_>,
+    pub obj0s: DumpInfo<'a, Obj0_XE_>,
+    pub models: DumpInfo<'a, ModelInfo_XE_>,
+    pub buffers: DumpInfo<'a, BufferInfo_XE_>,
+    pub mat1s: DumpInfo<'a, Mat1_XE_>,
+    pub mat2s: DumpInfo<'a, Mat2_XE_>,
+    pub mat3s: DumpInfo<'a, Mat3_XE_>,
+    pub mat4s: DumpInfo<'a, Mat4_XE_>,
+    pub mat_extras: DumpInfo<'a, MatExtra_XE_>,
+    pub shapes: DumpInfo<'a, ShapeInfo_XE_>,
+    pub hk_shapes: DumpInfo<'a, HkShapeInfo_XE_>,
+    pub hk_constraint_datas: DumpInfo<'a, HkConstraintData_XE_>,
+    pub vbuffs: DumpInfo<'a, VBuffInfo_XE_>,
+    pub ibuffs: DumpInfo<'a, IBuffInfo_XE_>,
+    pub textures: DumpInfo<'a, TextureInfo_XE_>,
+    pub animations: DumpInfo<'a, AnimationInfo_XE_>,
+    pub hk_constraints: DumpInfo<'a, HkConstraintInfo_XE_>,
+    pub effects: DumpInfo<'a, EffectInfo_XE_>,
+    pub pfields: DumpInfo<'a, PFieldInfo_XE_>,
+    pub gfxs: DumpInfo<'a, GFXBlockInfo_XE_>,
+    pub animation_blocks: DumpInfo<'a, AnimationBlockInfo_XE_>,
+    pub foliages: DumpInfo<'a, FoliageInfo_XE_>,
+    pub radiosity_vals: DumpInfo<'a, RadiosityValsInfo_XE_>,
+    pub offsets: DumpInfo<'a, u32_XE_>,
+    pub model_data: Vec<DumpInfoData_XE_<'d>>,
+    pub texture_data: Vec<DumpInfoData_XE_<'d>>,
 }
 
-#[make_platforms]
-impl<'a> DumpInfosVER<'a, '_> {
-    pub fn from_data(dst: &mut DumpSlice<'a>, counts: &InfoCounts, offsets: &'a mut [u32VER]) -> Result<Self> {
+#[make_endian]
+impl<'a> DumpInfos_XE_<'a, '_> {
+    pub fn from_data(dst: &mut DumpSlice<'a>, counts: &InfoCounts, offsets: &'a mut [u32_XE_]) -> Result<Self> {
         dst.align(16)?;
-        let objas = DumpInfo::<ObjAVER>::ref_from(dst, counts.objas).context("objas")?;
+        let objas = DumpInfo::<ObjA_XE_>::ref_from(dst, counts.objas).context("objas")?;
         
         dst.align(16)?;
-        let obj0s = DumpInfo::<Obj0VER>::ref_from(dst, counts.obj0s).context("obj0s")?;
+        let obj0s = DumpInfo::<Obj0_XE_>::ref_from(dst, counts.obj0s).context("obj0s")?;
 
         dst.align(16)?;
-        let models = DumpInfo::<ModelInfoVER>::ref_from(dst, counts.models).context("model_infos")?;
+        let models = DumpInfo::<ModelInfo_XE_>::ref_from(dst, counts.models).context("model_infos")?;
 
         dst.align(16)?;
-        let buffers = DumpInfo::<BufferInfoVER>::ref_from(dst, counts.buffers).context("buffer_infos")?;
+        let buffers = DumpInfo::<BufferInfo_XE_>::ref_from(dst, counts.buffers).context("buffer_infos")?;
 
         dst.align(16)?;
-        let mat1s = DumpInfo::<Mat1VER>::ref_from(dst, counts.mat1s).context("mat1s")?;
+        let mat1s = DumpInfo::<Mat1_XE_>::ref_from(dst, counts.mat1s).context("mat1s")?;
 
         dst.align(16)?;
-        let mat2s = DumpInfo::<Mat2VER>::ref_from(dst, counts.mat2s).context("mat2s")?;
+        let mat2s = DumpInfo::<Mat2_XE_>::ref_from(dst, counts.mat2s).context("mat2s")?;
 
         dst.align(16)?;
-        let mat3s = DumpInfo::<Mat3VER>::ref_from(dst, counts.mat3s).context("mat3s")?;
+        let mat3s = DumpInfo::<Mat3_XE_>::ref_from(dst, counts.mat3s).context("mat3s")?;
 
         dst.align(16)?;
-        let mat4s = DumpInfo::<Mat4VER>::ref_from(dst, counts.mat4s).context("mat4s")?;
+        let mat4s = DumpInfo::<Mat4_XE_>::ref_from(dst, counts.mat4s).context("mat4s")?;
 
         dst.align(16)?;
-        let mat_extras = DumpInfo::<MatExtraVER>::ref_from(dst, counts.mat_extras).context("mat_extras")?;
+        let mat_extras = DumpInfo::<MatExtra_XE_>::ref_from(dst, counts.mat_extras).context("mat_extras")?;
 
         dst.align(16)?;
-        let shapes = DumpInfo::<ShapeInfoVER>::ref_from(dst, counts.shapes).context("shape_infos")?;
+        let shapes = DumpInfo::<ShapeInfo_XE_>::ref_from(dst, counts.shapes).context("shape_infos")?;
 
         dst.align(16)?;
-        let hk_shapes = DumpInfo::<HkShapeInfoVER>::ref_from(dst, counts.hk_shapes).context("hk_shape_infos")?;
+        let hk_shapes = DumpInfo::<HkShapeInfo_XE_>::ref_from(dst, counts.hk_shapes).context("hk_shape_infos")?;
 
         dst.align(16)?;
-        let hk_constraint_datas = DumpInfo::<HkConstraintDataVER>::ref_from(dst, counts.hk_constraint_datas).context("hk_constraint_datas")?;
+        let hk_constraint_datas = DumpInfo::<HkConstraintData_XE_>::ref_from(dst, counts.hk_constraint_datas).context("hk_constraint_datas")?;
 
         dst.align(16)?;
-        let vbuffs = DumpInfo::<VBuffInfoVER>::ref_from(dst, counts.vbuffs).context("vbuff_infos")?;
+        let vbuffs = DumpInfo::<VBuffInfo_XE_>::ref_from(dst, counts.vbuffs).context("vbuff_infos")?;
 
         dst.align(16)?;
-        let ibuffs = DumpInfo::<IBuffInfoVER>::ref_from(dst, counts.ibuffs).context("ibuff_infos")?;
+        let ibuffs = DumpInfo::<IBuffInfo_XE_>::ref_from(dst, counts.ibuffs).context("ibuff_infos")?;
 
         dst.align(16)?;
-        let textures = DumpInfo::<TextureInfoVER>::ref_from(dst, counts.textures).context("texture_infos")?;
+        let textures = DumpInfo::<TextureInfo_XE_>::ref_from(dst, counts.textures).context("texture_infos")?;
 
         dst.align(16)?;
-        let animations = DumpInfo::<AnimationInfoVER>::ref_from(dst, counts.animations).context("animation_infos")?;
+        let animations = DumpInfo::<AnimationInfo_XE_>::ref_from(dst, counts.animations).context("animation_infos")?;
 
         dst.align(16)?;
-        let hk_constraints = DumpInfo::<HkConstraintInfoVER>::ref_from(dst, counts.hk_constraints).context("hk_constraint_infos")?;
+        let hk_constraints = DumpInfo::<HkConstraintInfo_XE_>::ref_from(dst, counts.hk_constraints).context("hk_constraint_infos")?;
 
         dst.align(16)?;
-        let effects = DumpInfo::<EffectInfoVER>::ref_from(dst, counts.effects).context("effect_infos")?;
+        let effects = DumpInfo::<EffectInfo_XE_>::ref_from(dst, counts.effects).context("effect_infos")?;
 
         dst.align(16)?;
-        let pfields = DumpInfo::<PFieldInfoVER>::ref_from(dst, counts.pfields).context("pfield_infos")?;
+        let pfields = DumpInfo::<PFieldInfo_XE_>::ref_from(dst, counts.pfields).context("pfield_infos")?;
 
         dst.align(16)?;
-        let gfxs = DumpInfo::<GFXBlockInfoVER>::ref_from(dst, counts.gfxs).context("gfx_block_infos")?;
+        let gfxs = DumpInfo::<GFXBlockInfo_XE_>::ref_from(dst, counts.gfxs).context("gfx_block_infos")?;
 
         dst.align(16)?;
-        let animation_blocks = DumpInfo::<AnimationBlockInfoVER>::ref_from(dst, counts.animation_blocks).context("animation_block_infos")?;
+        let animation_blocks = DumpInfo::<AnimationBlockInfo_XE_>::ref_from(dst, counts.animation_blocks).context("animation_block_infos")?;
 
         dst.align(16)?;
-        let foliages = DumpInfo::<FoliageInfoVER>::ref_from(dst, counts.foliages).context("foliage_infos")?;
+        let foliages = DumpInfo::<FoliageInfo_XE_>::ref_from(dst, counts.foliages).context("foliage_infos")?;
 
         dst.align(16)?;
-        let radiosity_vals = DumpInfo::<RadiosityValsInfoVER>::ref_from(dst, counts.radiosity_vals).context("radiosity_vals_infos")?;
+        let radiosity_vals = DumpInfo::<RadiosityValsInfo_XE_>::ref_from(dst, counts.radiosity_vals).context("radiosity_vals_infos")?;
         dst.align(16)?;
 
         let texture_data = Vec::with_capacity(textures.len() * 2);
@@ -518,7 +516,7 @@ impl<'a> DumpInfosVER<'a, '_> {
         })
     }
 
-    pub fn update_header(&self, pak_header: &mut PakHeaderVER) {
+    pub fn update_header(&self, pak_header: &mut PakHeader_XE_) {
         pak_header.obja_offset = self.objas.offset.conv();
         pak_header.obja_num = self.objas.len().conv();
         pak_header.obj0_offset = self.obj0s.offset.conv();

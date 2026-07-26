@@ -2,14 +2,17 @@
   description = "Rust development environment";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs?ref=26.05";
     flake-utils.url = "github:numtide/flake-utils";
   };
+
 
   outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+        #pkgs = nixpkgs.legacyPackages.${system}.extend ./cython_git.nix;
+        #pkgs = import nixpkgs { inherit system; overlays = [(import ./cython_git.nix)]; };
         # Read the file relative to the flake's root
         overrides = (builtins.fromTOML (builtins.readFile (self + "/rust-toolchain.toml")));
       in
@@ -22,6 +25,8 @@
             rustup
             cmake
             python313Packages.cython
+            python313Packages.jupyterlab
+            python313Packages.numpy
           ];
 
           RUSTC_VERSION = overrides.toolchain.channel;

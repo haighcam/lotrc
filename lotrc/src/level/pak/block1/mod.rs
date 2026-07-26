@@ -1,7 +1,6 @@
 use anyhow::{Context, Result};
 use log::debug;
 
-use crate::types::GetNative;
 use crate::types::{CompressedData, StringKeys, OrderedData, DumpSlice};
 use crate::level::pak::{
     block1::{
@@ -10,45 +9,45 @@ use crate::level::pak::{
     }
 };
 
-#[make_platforms]
+#[make_endian]
 use crate::{
     level::{
         pak::{
-            PakHeaderVER,
+            PakHeader_XE_,
             block1::{
-                infos::{InfosRefVER, DumpInfosVER, DumpExtraInfosVER},
-                objs::{ObjsRefVER, DumpObjsVER},
-                sub_blocks::{SubBlocks1RefVER, DumpSubBlocks1VER},
-                gameobjs::DumpGameObjsVER,
+                infos::{InfosRef_XE_, DumpInfos_XE_, DumpExtraInfos_XE_},
+                objs::{ObjsRef_XE_, DumpObjs_XE_},
+                sub_blocks::{SubBlocks1Ref_XE_, DumpSubBlocks1_XE_},
+                gameobjs::DumpGameObjs_XE_,
             },
         },
-        bin::{BinRefVER},
+        bin::{BinRef_XE_},
     },
-    types::{u32VER, StringKeysRefVER, DumpStringKeysVER}
+    types::{u32_XE_, StringKeysRef_XE_, DumpStringKeys_XE_}
 };
-use lotrc_proc::{make_platforms};
+use lotrc_proc::{make_endian};
 
 pub mod gameobjs;
 pub mod infos;
 pub mod objs;
 pub mod sub_blocks;
 
-#[make_platforms]
+#[make_endian]
 #[derive(Default)]
 #[cfg_attr(feature = "ffi", repr(C))]
-pub struct Block1RefVER<'a> {
-    pub infos: InfosRefVER<'a>,
-    pub objs: ObjsRefVER<'a>,
-    pub sub_blocks: SubBlocks1RefVER<'a>,
-    pub string_keys: StringKeysRefVER<'a>
+pub struct Block1Ref_XE_<'a> {
+    pub infos: InfosRef_XE_<'a>,
+    pub objs: ObjsRef_XE_<'a>,
+    pub sub_blocks: SubBlocks1Ref_XE_<'a>,
+    pub string_keys: StringKeysRef_XE_<'a>
 }
 
-#[make_platforms]
-impl<'a> Block1RefVER<'a> {
-    pub fn from_data(src: &'a [u8], pak_header: &PakHeaderVER, bin: &BinRefVER<'a>) -> Result<Self> {
+#[make_endian]
+impl<'a> Block1Ref_XE_<'a> {
+    pub fn from_data(src: &'a [u8], pak_header: &PakHeader_XE_, bin: &BinRef_XE_<'a>) -> Result<Self> {
         let t = std::time::Instant::now();
-        let sub_blocks = SubBlocks1RefVER::from_data(
-            &src[pak_header.sub_blocks1_offset.get() as usize..]
+        let sub_blocks = SubBlocks1Ref_XE_::from_data(
+            &src[pak_header.sub_blocks1_offset.conv()..]
         )
         .context("sub_blocks")?;
         debug!("Block1 sub_blocks parsed in {}", t.elapsed().as_secs_f32());
@@ -56,13 +55,13 @@ impl<'a> Block1RefVER<'a> {
         let name = sub_blocks.level.level_name()?;
 
         let t = std::time::Instant::now();
-        let infos = InfosRefVER::from_data(src, pak_header).context("infos")?;
-        let objs = ObjsRefVER::from_data(src, &infos, bin, name).context("objs")?;
+        let infos = InfosRef_XE_::from_data(src, pak_header).context("infos")?;
+        let objs = ObjsRef_XE_::from_data(src, &infos, bin, name).context("objs")?;
         debug!("Block1 objs parsed in {}", t.elapsed().as_secs_f32());
 
         let t = std::time::Instant::now();
         let string_keys =
-            StringKeysRefVER::from_data(&src[pak_header.string_keys_offset.get() as usize..])
+            StringKeysRef_XE_::from_data(&src[pak_header.string_keys_offset.conv()..])
                 .context("string_keys")?;
         debug!("Block1 string_keys parsed in {}", t.elapsed().as_secs_f32());
         Ok(Self {
@@ -80,12 +79,12 @@ pub struct Block1 {
     pub strings_keys: StringKeys,
 }
 
-#[make_platforms]
-pub trait DumpBlock1VER {
-    fn infos(&self) -> &impl DumpExtraInfosVER;
-    fn objs(&self) -> &impl DumpObjsVER; 
-    fn sub_blocks(&self) -> &impl DumpSubBlocks1VER;
-    fn dump<'a, 'b>(&'b self, dst: &mut DumpSlice<'a>, offsets: &'a mut [u32VER], counts: &InfoCounts, pak_header: &mut PakHeaderVER, type_infos: (&TypeInfos, &[TypeInfos]), string_keys: &[u32]) -> Result<(DumpInfosVER<'a, 'b>, CompressedData<'b>)> {
+#[make_endian]
+pub trait DumpBlock1_XE_ {
+    fn infos(&self) -> &impl DumpExtraInfos_XE_;
+    fn objs(&self) -> &impl DumpObjs_XE_; 
+    fn sub_blocks(&self) -> &impl DumpSubBlocks1_XE_;
+    fn dump<'a, 'b>(&'b self, dst: &mut DumpSlice<'a>, offsets: &'a mut [u32_XE_], counts: &InfoCounts, pak_header: &mut PakHeader_XE_, type_infos: (&TypeInfos, &[TypeInfos]), string_keys: &[u32]) -> Result<(DumpInfos_XE_<'a, 'b>, CompressedData<'b>)> {
         debug!("Dumping block1 into buffer of size {}", dst.vals.len());
         let t = std::time::Instant::now();
         let mut infos = self.infos().dump_into(dst, offsets, counts, pak_header).context("infos")?;
@@ -97,7 +96,7 @@ pub trait DumpBlock1VER {
         // TODO: generate string keys based solely on the LangString sub_blocks to make those
         // easier to deal with
         pak_header.string_keys_offset = dst.offset.conv();
-        DumpStringKeysVER::dump_into(string_keys, dst).context("string_keys")?;
+        DumpStringKeys_XE_::dump_into(string_keys, dst).context("string_keys")?;
         debug!("string keys dumped in {}, size {}", t.elapsed().as_secs_f32(), dst.offset);
         Ok((infos, rad_data))
     }
@@ -109,21 +108,21 @@ pub trait DumpBlock1VER {
         let (s, ty) = self.sub_blocks().size();
         size += s;
         debug!("sub_blocks1 size in {}, size {}", t.elapsed().as_secs_f32(), size);
-        size += DumpStringKeysVER::size(string_keys);
+        size += DumpStringKeys_XE_::size(string_keys);
         debug!("string keys size in {}, size {}", t.elapsed().as_secs_f32(), size);
         (size, (ty, obj_infos))
     }
 }
 
-#[make_platforms]
-impl<'a> DumpBlock1VER for Block1RefVER<'a> {
-    fn infos(&self) -> &impl DumpExtraInfosVER {
+#[make_endian]
+impl<'a> DumpBlock1_XE_ for Block1Ref_XE_<'a> {
+    fn infos(&self) -> &impl DumpExtraInfos_XE_ {
         &self.infos
     }
-    fn objs(&self) -> &impl DumpObjsVER {
+    fn objs(&self) -> &impl DumpObjs_XE_ {
         &self.objs
     }
-    fn sub_blocks(&self) -> &impl DumpSubBlocks1VER {
+    fn sub_blocks(&self) -> &impl DumpSubBlocks1_XE_ {
         &self.sub_blocks
     }
 }
