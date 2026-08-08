@@ -6,4 +6,5 @@ edition = "2024"
 [dependencies]
 lotrc_proc = { path = "../lotrc_proc" }
 zerocopy = { workspace = true, features = ["derive", "alloc"] }
-rend = { version = "0.5", features = ["zerocopy-0_8"] }
+rend = { version = "0.5", features = ["zerocopy-0_8", "bytemuck-1"] }
+bytemuck = { workspace = true, features = ["derive"] }

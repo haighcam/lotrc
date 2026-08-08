@@ -1,11 +1,19 @@
 use anyhow::{Context, Result};
 use log::debug;
 
-use crate::types::{CompressedData, StringKeys, OrderedData, DumpSlice};
-use crate::level::pak::{
-    block1::{
-        infos::InfoCounts,
-        gameobjs::TypeInfos
+use crate::;
+use crate::{
+    level::pak::{
+        block1::{
+            infos::{InfoCounts, InfosRef},
+            objs::ObjsRef,
+            sub_blocks::SubBlocks1Ref,
+            gameobjs::TypeInfos
+        }
+    },
+    types::{
+        CompressedData, OrderedData, DumpSlice,
+        sub_blocks::{StringKeys, StringKeysRef}
     }
 };
 
@@ -23,7 +31,7 @@ use crate::{
         },
         bin::{BinRef_XE_},
     },
-    types::{u32_XE_, StringKeysRef_XE_, DumpStringKeys_XE_}
+    types::{u32_XE_, sub_blocks::{StringKeysRef_XE_, DumpStringKeys_XE_}}
 };
 use lotrc_proc::{make_endian};
 
@@ -31,6 +39,52 @@ pub mod gameobjs;
 pub mod infos;
 pub mod objs;
 pub mod sub_blocks;
+
+use sub_blocks::SubBlock1Types;
+
+pub trait Block1Types: SubBlock1Types {
+
+}
+
+#[derive(Default)]
+#[cfg_attr(feature = "ffi", repr(C))]
+pub struct Block1Ref<'a> {
+    pub infos: InfosRef<'a>,
+    pub objs: ObjsRef<'a>,
+    pub sub_blocks: SubBlocks1Ref<'a>,
+    pub string_keys: StringKeysRef<'a>
+}
+
+#[make_endian]
+impl<'a> Block1Ref_XE_<'a> {
+    pub fn from_data(src: &'a [u8], pak_header: &PakHeader_XE_, bin: &BinRef_XE_<'a>) -> Result<Self> {
+        let t = std::time::Instant::now();
+        let sub_blocks = SubBlocks1Ref_XE_::from_data(
+            &src[pak_header.sub_blocks1_offset.conv()..]
+        )
+        .context("sub_blocks")?;
+        debug!("Block1 sub_blocks parsed in {}", t.elapsed().as_secs_f32());
+
+        let name = sub_blocks.level.level_name()?;
+
+        let t = std::time::Instant::now();
+        let infos = InfosRef_XE_::from_data(src, pak_header).context("infos")?;
+        let objs = ObjsRef_XE_::from_data(src, &infos, bin, name).context("objs")?;
+        debug!("Block1 objs parsed in {}", t.elapsed().as_secs_f32());
+
+        let t = std::time::Instant::now();
+        let string_keys =
+            StringKeysRef_XE_::from_data(&src[pak_header.string_keys_offset.conv()..])
+                .context("string_keys")?;
+        debug!("Block1 string_keys parsed in {}", t.elapsed().as_secs_f32());
+        Ok(Self {
+            infos,
+            objs,
+            sub_blocks,
+            string_keys,
+        })
+    }
+}
 
 #[make_endian]
 #[derive(Default)]

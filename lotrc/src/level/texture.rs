@@ -5,7 +5,7 @@ use log::warn;
 use lotrc_proc::{make_endian, derive_ordered_data};
 
 use crate::{
-    level::Version,
+    level::{Version, LevelFormat},
     types::{compress_segmented, DumpSlice, DumpCompressedData, CompressedData, Crc, hash_string, OrderedData, CompressedDataRef, get_default_ref, DumpData}
 };
 #[make_endian]
@@ -268,6 +268,118 @@ fn decomp_bc4(arr: &[u8], w: usize, h: usize) -> Vec<u8> {
         bcndecode::BcnDecoderFormat::LUM,
     )
     .unwrap()
+}
+
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct TextureRef<'a, L: LevelFormat> {
+    pub info: &'a L::TextureInfo,
+    pub data0: Option<&'a CompressedDataRef<'a>>,
+    pub data1: Option<&'a CompressedDataRef<'a>>
+}
+
+impl<'a, L: LevelFormat> TextureRef<'a, L> {
+    pub fn from_data(info: &'a L::TextureInfo, texture_data: &IndexMap<u32, &'a CompressedDataRef<'a>>) -> Result<Self> {
+        Ok(Self {
+            info,
+            data0: texture_data.get(&info.asset_key()).copied(),
+            data1: texture_data.get(&hash_string(b"*", Some(info.asset_key().get()))).copied()
+        })
+    }
+    fn parse(&self, version: Version) -> Result<Box<[&'a [u8]]>> {
+        let data0 = self.data0.map(|x| &x.data_decomp[..]).unwrap_or_default();
+        let data1 = self.data1.map(|x| &x.data_decomp[..]).unwrap_or_default();
+        Ok(match self.info.kind() {
+            0 | 7 | 8 => parse_texture::<L>(self.info, data0, data1, version).context("texture data")?,
+            1 | 9 => parse_cube::<L>(self.info, data0, data1, version).context("cube data")?,
+            _ => {
+                warn!(
+                    "Unsupported Texture Type {} for texture {:?}",
+                    self.info.kind(), self.info.key()
+                );
+                vec![data0, data1].into()
+            }
+        })
+    }
+}
+
+fn parse_texture<'a, L: LevelFormat>(info: &L::TextureInfo, data0: &'a [u8], data1: &'a [u8], version: Version) -> Result<Box<[&'a [u8]]>> {
+    let (s, d) = match get_stride_width(info.format()) {
+        Some((s, d)) => (s as usize, d as usize),
+        None => {
+            warn!("Unhandled Texture Format {}", info.format());
+            return Ok(Box::new([]));
+        }
+    };
+
+    let mut width = info.width() as usize;
+    let mut height = info.height() as usize;
+
+    let min_size = if version.is_xbox() && s != 1 { 128 / s } else { 1 };
+
+    let mut levels = Vec::with_capacity(info.levels() as usize);
+    if info.levels() == 1 {
+        let expected_size = (width / s).max(min_size) * (height / s).max(min_size) * d;
+        if data1.len() != expected_size {
+            return Err(anyhow!("expected texture data to be of size {} but got {}", expected_size, data1.len()));
+        }
+        levels.push(&data1[..]);
+    } else {
+        if !version.is_xbox() || (info.width() > 16 && info.height() > 16) {
+            let expected_size = (width / s).max(min_size) * (height / s).max(min_size) * d;
+            if data0.len() != expected_size {
+                return Err(anyhow!("expected texture data to be of size {} but got {}", expected_size, data0.len()));
+            }
+            levels.push(&data0[..]);
+        } else {
+            width = width * 2;
+            height = height * 2;
+        }
+        let mut offset = 0;
+        for _ in 1..info.levels() {
+            width /= 2;
+            height /= 2;
+            let size = (width / s).max(min_size) * (height / s).max(min_size) * d;
+            levels.push(&data1[offset..offset + size]);
+            offset += size;
+            if version.is_xbox() && (width == 16 || height == 16) {
+                break;
+            }
+        }
+        if offset != data1.len() {
+            return Err(anyhow!("expected texture data to be of size {} but got {}", offset, data0.len()));
+        }
+    }
+    Ok(levels.into())
+}
+
+fn parse_cube<'a, L: LevelFormat>(info: &L::TextureInfo, data0: &'a [u8], data1: &'a [u8], version: Version) -> Result<Box<[&'a [u8]]>> {
+    if info.levels() > 1 {
+        return Err(anyhow!("Cube Textures with > 1 level are unhanded"));
+    }
+    let (s, d) = match get_stride_width(info.format()) {
+        Some((s, d)) => (s as usize, d as usize),
+        None => {
+            warn!("Unhandled Cube Texture Format {}", info.format());
+            return Ok(Box::new([]));
+        }
+    };
+
+    let min_size = if version.is_xbox() { 128 / s } else { 1 };
+
+    let mut faces = Vec::with_capacity(6);
+
+    if data0.len() != 0 {
+        return Err(anyhow!("Cube Texture exepects first data to be empty but got {} bytes", data0.len()));
+    }
+
+    let data_size: usize = (info.width() as usize / s).max(min_size)
+        * (info.height() as usize / s).max(min_size)
+        * d;
+    for i in 0..6 {
+        faces.push(&data1[data_size * i..data_size * i + data_size]);
+    }
+    Ok(faces.into())
 }
 
 #[make_endian]

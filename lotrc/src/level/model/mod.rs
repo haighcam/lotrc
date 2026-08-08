@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use crate::{
     types::{Crc, DumpData, Matrix4x4, RefFromData, Vector3, DumpSlice, align_offset, OrderedData, ref_slice, CompressedDataRef, slice}, 
     level::{
+        LevelPc,
         model::data::ModelData,
         pak::block1::infos::InfoCounts,
     },
@@ -30,6 +31,26 @@ use lotrc_proc::{make_endian, derive_ordered_data};
 pub mod data;
 pub mod mat;
 pub mod shape;
+
+use data::DataTypes;
+use mat::MatTypes;
+use shape::ShapeTypes;
+
+pub trait ModelTypes: where Self: DataTypes + MatTypes + ShapeTypes {
+    type BoundingBox: PartialEq + RefFromData + DumpData + BoundingBoxTypeTrait;
+    type BlockHeader1: PartialEq + RefFromData + DumpData + BlockHeader1TypeTrait;
+    type BlockHeader2: PartialEq + RefFromData + DumpData + BlockHeader2TypeTrait;
+    type BlockValA: PartialEq + RefFromData + DumpData + BlockValATypeTrait;
+    type BlockValB: PartialEq + RefFromData + DumpData + BlockValBTypeTrait;
+}
+
+impl ModelTypes for LevelPc {
+    type BoundingBox = BoundingBoxLE;
+    type BlockHeader1 = BlockHeader1LE;
+    type BlockHeader2 = BlockHeader2LE;
+    type BlockValA = BlockValALE;
+    type BlockValB = BlockValBLE;
+}
 
 #[derive_ordered_data]
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -221,6 +242,38 @@ pub struct BlockValB_XE_ {
     pub unk_5: f32_XE_,
 }
 
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct BlockRef<'a, T: ModelTypes> {
+    info1: &'a T::BlockHeader1,
+    info2: &'a T::BlockHeader2,
+    vals_a: ref_slice<'a, T::BlockValA>,
+    vals_b: ref_slice<'a, T::BlockValA>,
+    vals_c: ref_slice<'a, T::BlockValB>,
+    pad: ref_slice<'a, u8>,
+}
+
+impl<'a, T: ModelTypes> BlockRef<'a, T> {
+    pub fn from_data(src: &'a [u8]) -> Result<Self> {
+        let mut offset = 0;
+        let info1 = T::BlockHeader1::from_data(&src[offset..]).context("info1")?;
+        offset += info1.size_of_val();
+        let vals_a = T::BlockValA::slice_from_data(&src[offset..], info1.a() as usize)
+            .context("vals_a")?;
+        offset += vals_a.size_of_val();
+        let vals_b = T::BlockValA::slice_from_data(&src[offset..], info1.b() as usize)
+            .context("vals_b")?;
+        offset += vals_b.size_of_val();
+        let info2 = T::BlockHeader2::from_data(&src[offset..]).context("info2")?;
+        offset += info2.size_of_val();
+        let vals_c = T::BlockValB::slice_from_data(&src[offset..], info2.n() as usize)
+            .context("vals_c")?;
+        offset += vals_c.size_of_val();
+        let pad = &src[offset..];
+        Ok(Self { info1, info2, vals_a, vals_b, vals_c, pad })
+    }
+}
+
 #[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
@@ -238,18 +291,18 @@ impl<'a> BlockRef_XE_<'a> {
     pub fn from_data(src: &'a [u8]) -> Result<Self> {
         let mut offset = 0;
         let info1 = BlockHeader1_XE_::from_data(&src[offset..]).context("info1")?;
-        offset += info1.size();
+        offset += info1.size_of_val();
         let vals_a = BlockValA_XE_::slice_from_data(&src[offset..], info1.a.conv())
             .context("vals_a")?;
-        offset += vals_a.size();
+        offset += vals_a.size_of_val();
         let vals_b = BlockValA_XE_::slice_from_data(&src[offset..], info1.b.conv())
             .context("vals_b")?;
-        offset += vals_b.size();
+        offset += vals_b.size_of_val();
         let info2 = BlockHeader2_XE_::from_data(&src[offset..]).context("info2")?;
-        offset += info2.size();
+        offset += info2.size_of_val();
         let vals_c = BlockValB_XE_::slice_from_data(&src[offset..], info2.n.conv())
             .context("vals_c")?;
-        offset += vals_c.size();
+        offset += vals_c.size_of_val();
         let pad = &src[offset..];
         Ok(Self { info1, info2, vals_a, vals_b, vals_c, pad })
     }
@@ -365,6 +418,50 @@ pub struct Key2_XE_ {
     pub val: u32_XE_,
 }
 
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct BonesRef<'a, T: ModelTypes> {
+    pub names:  ref_slice<'a, T::Crc>,
+    pub parents: ref_slice<'a, T::i32>,
+    pub transforms: ref_slice<'a, T::Matrix4x4>,
+    pub bounding_boxes: ref_slice<'a, T::BoundingBox>,
+}
+
+impl<'a, T: ModelTypes> BonesRef<'a, T> {
+    pub fn from_data(src: &'a [u8], info: &'a T::ModelInfo) -> Result<Self> {
+        let size = info.bones_num() as usize;
+        let parents = T::i32::slice_from_data(
+            &src[info.bone_parents_offset() as usize..],
+            size,
+        ).context("parents")?;
+        if parents[0].conv() != -1 {
+            return Err(anyhow!("first bone should be the root, but parent != -1"));
+        }
+        let names_off = info.bones_offset() as usize;
+        
+        let (names, bounding_boxes) = if names_off != 0 {
+            (
+                T::Crc::slice_from_data(&src[names_off..], size).context("names")?,
+                T::BoundingBox::slice_from_data(
+                    &src[info.bone_bounding_boxes_offset() as usize..],
+                    info.bones_num() as usize,
+                ).context("bounding_boxes")?
+            )
+        } else {
+            (&[] as _, &[] as _)
+        };
+        let transforms = T::Matrix4x4::slice_from_data(
+            &src[info.bone_transforms_offset() as usize..],
+            size,
+        ).context("transforms")?;
+        Ok(Self { names, parents, transforms, bounding_boxes })
+    }
+    #[inline(always)]
+    pub fn len(&self) -> usize {
+        self.transforms.len()
+    }
+}
+
 #[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
@@ -437,6 +534,197 @@ pub struct BonesDump_XE_<'a> {
     parents: &'a mut [i32_XE_],
     transforms: &'a mut [Matrix4x4_XE_],
     bounding_boxes: &'a mut [BoundingBox_XE_],
+}
+
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct ModelRef<'a, T: ModelTypes> {
+    pub info: &'a T::ModelInfo,
+    pub bones: BonesRef<'a, T>,
+    pub mat_order: ref_slice<'a, T::u32>,
+    pub mesh_order: ref_slice<'a, T::u32>,
+    pub mesh_bounding_boxes: ref_slice<'a, T::BoundingBox>,
+    pub skin_binds: ref_slice<'a, T::Matrix4x4>,
+    pub vals_j: ref_slice<'a, T::u32>,
+    pub val_k_header: ref_slice<'a, T::u16>,
+    pub vals_k: ref_slice<'a, T::u32>,
+    pub skin_order: ref_slice<'a, T::u32>,
+    pub slots: ref_slice<'a, T::Key2>,
+    pub slot_map: ref_slice<'a, T::u32>,
+    pub block_header: Option<&'a T::u32>,
+    pub block_offsets: ref_slice<'a, T::u32>,
+    pub blocks: slice<BlockRef<'a, T>>,
+    pub buffer_infos: ref_slice<'a, T::BufferInfo>,
+    pub vbuff_order: ref_slice<'a, T::u32>,
+    pub ibuff_order: ref_slice<'a, T::u32>,
+    pub vbuffs: IndexMap<u32, &'a T::VBuffInfo>,
+    pub ibuffs: IndexMap<u32, &'a T::IBuffInfo>,
+    pub mats: IndexMap<u32, mat::MatRef<'a, T>>,
+    pub hk_constraint: Option<shape::HkConstraintRef<'a, T>>, // stores bone transforms used for ragdoll
+    pub hk_constraint_datas: ref_slice<'a, T::HkConstraintData>,
+    pub shapes: slice<shape::ShapeRef<'a, T>>,
+    pub data: data::ModelDataRef<'a, T>,
+}
+
+impl<'a, T: ModelTypes> ModelRef<'a, T> {
+    pub fn from_data(src: &'a [u8], info: &'a T::ModelInfo, model_data: &IndexMap<u32, &'a CompressedDataRef<'a>>) -> Result<Self> {
+        let bones = BonesRef::from_data(src, info).context("bones")?;
+        let mat_order = T::u32::slice_from_data(
+            &src[info.mat_offset() as usize..],
+            info.mat_num() as usize,
+        )
+        .context("mat order")?;
+        let mesh_order = T::u32::slice_from_data(
+            &src[info.mesh_order_offset() as usize..],
+            info.lod3().breakable_end() as usize,
+        )
+        .context("mesh order")?;
+        let mesh_bounding_boxes = T::BoundingBox::slice_from_data(
+            &src[info.mesh_bounding_boxes_offset() as usize..],
+            info.lod3().breakable_end() as usize,
+        )
+        .context("mesh bounding boxes")?;
+        let skin_binds = T::Matrix4x4::slice_from_data(
+            &src[info.skin_binds_offset() as usize..],
+            info.skin_binds_num() as usize,
+        )
+        .context("skin binds")?;
+        let vals_j = T::u32::slice_from_data(
+            &src[info.vals_j_offset() as usize..],
+            info.vals_j_num() as usize,
+        )
+        .context("vals j")?;
+        let (val_k_header, vals_k) = if info.vals_k_offset() != 0 {
+            (
+                T::u16::slice_from_data(&src[info.vals_k_offset() as usize..], 2)
+                    .context("vals k header")?,
+                T::u32::slice_from_data(&src[info.vals_k_offset() as usize + 4..], 35)
+                    .context("vals k")?,
+            )
+        } else {
+            (&[] as _, &[] as _)
+        };
+        let skin_order = if info.skin_order_offset() != 0 {
+            T::u32::slice_from_data(
+                &src[info.skin_order_offset() as usize..],
+                info.skin_binds_num() as usize,
+            )
+            .context("skin order")?
+        } else {
+            &[] as _
+        };
+        let (slots, slot_map) = if info.slots_offset() != 0 {
+            if info.slot_map_offset() == 0 {
+                return Err(anyhow!("expected non zero slot_map_offset"));
+            }
+            let mut i = 0;
+            {
+                while {
+                    let val = T::u32::from_data(&src[info.slots_offset() as usize + i * 8..])
+                        .context("slot end")?;
+                    val.conv() != 0
+                } {
+                    i += 1;
+                }
+                i += 1;
+            }
+            let slots = T::Key2::slice_from_data(&src[info.slots_offset() as usize..], i)
+                .context("slot")?;
+            (
+                slots,
+                T::u32::slice_from_data(
+                    &src[info.slot_map_offset() as usize..],
+                    slots.last().unwrap().val() as usize,
+                )
+                .context("slot map")?,
+            )
+        } else {
+            (&[] as _, &[] as _)
+        };
+        let (block_header, block_offsets, blocks) = if info.block_offset() != 0 {
+            let block_header =
+                T::u32::from_data(&src[info.block_offset() as usize..]).context("block header")?;
+            let n = ((info.lod0().physics_end() - info.lod0().skinned_end()) as usize).max(0);
+            let block_offsets =
+                T::u32::slice_from_data(&src[info.block_offset() as usize + 4..], n + 1)
+                    .context("block offsets")?;
+            let mut blocks = Vec::with_capacity(n);
+            for i in 0..n {
+                let size = (block_offsets[i + 1].conv() - block_offsets[i].conv()) as usize;
+                let offset = (block_offsets[i].conv() + info.block_offset()) as usize;
+                let block = BlockRef::from_data(&src[offset..offset+size]).with_context(|| format!("block {}", i))?;
+                blocks.push(block);
+            }
+            (Some(block_header), block_offsets, blocks.into_boxed_slice())
+        } else {
+            (None, &[] as _, Box::default())
+        };
+        let hk_constraint = if info.hk_constraint_offset() != 0 {
+            Some(
+                shape::HkConstraintRef::from_data(src, info.hk_constraint_offset() as usize)
+                    .context("hk_constarint")?,
+            )
+        } else {
+            None
+        };
+        let hk_constraint_datas = T::HkConstraintData::slice_from_data(
+            &src[info.hk_constraint_data_offset() as usize..],
+            info.hk_constraint_data_num() as usize,
+        )
+        .context("hk_constraint_datas")?;
+        let shape_infos = T::ShapeInfo::slice_from_data(&src[info.shape_offset() as usize..], info.shape_num() as usize).context("shape_infos")?;
+        
+        let shapes = shape_infos.into_iter().enumerate()
+            .map(|(i, info)| {
+                shape::ShapeRef::from_data(src, info)
+                .with_context(|| format!("shape {}", i))
+            })
+            .collect::<Result<Vec<_>>>()?.into_boxed_slice();
+        let mats = mat_order
+            .iter()
+            .enumerate()
+            .map(|(i, x)| {
+                Ok((
+                    x.conv(),
+                    mat::MatRef::from_data(src, x.conv() as usize)
+                        .with_context(|| format!("mat {}", i))?,
+                ))
+            })
+            .collect::<Result<IndexMap<_, _>>>()?;
+        let buffer_infos = T::BufferInfo::slice_from_data(&src[info.buffer_info_offset() as usize..], info.mat_num() as usize).context("buffer infos")?;
+        let vbuff_order = T::u32::slice_from_data(&src[info.vbuff_offset() as usize..], info.vbuff_num() as usize).context("vbuff order")?;
+        let ibuff_order = T::u32::slice_from_data(&src[info.ibuff_offset() as usize..], info.ibuff_num() as usize).context("vbuff order")?;
+        let vbuffs = vbuff_order.iter().map(|x| Ok((x.conv(), T::VBuffInfo::from_data(&src[x.conv() as usize..]).with_context(|| format!("vbuff info {}", x.conv()))?))).collect::<Result<IndexMap<_, _>>>()?;
+        let ibuffs = ibuff_order.iter().map(|x| Ok((x.conv(), T::IBuffInfo::from_data(&src[x.conv() as usize..]).with_context(|| format!("ibuff info {}", x.conv()))?))).collect::<Result<IndexMap<_, _>>>()?;
+        let data = data::ModelDataRef::from_data(src, info, model_data).context("model data")?;
+        Ok(Self {
+            info: info,
+            bones,
+            mat_order: mat_order.into(),
+            mesh_order: mesh_order.into(),
+            mesh_bounding_boxes: mesh_bounding_boxes.into(),
+            skin_binds: skin_binds.into(),
+            vals_j: vals_j.into(),
+            val_k_header: val_k_header.into(),
+            vals_k: vals_k.into(),
+            skin_order: skin_order.into(),
+            slots: slots.into(),
+            slot_map: slot_map.into(),
+            block_header: block_header.into(),
+            block_offsets: block_offsets.into(),
+            blocks: blocks.into(),
+            mats: mats.into(),
+            buffer_infos: buffer_infos.into(),
+            vbuff_order: vbuff_order.into(),
+            ibuff_order: ibuff_order.into(),
+            vbuffs: vbuffs.into(),
+            ibuffs: ibuffs.into(),
+            hk_constraint: hk_constraint.into(),
+            hk_constraint_datas: hk_constraint_datas.into(),
+            shapes: shapes.into(),
+            data
+        })
+    }
 }
 
 #[make_endian]

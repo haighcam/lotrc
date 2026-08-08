@@ -4,8 +4,9 @@ use zerocopy::transmute_ref;
 use enum_dispatch::enum_dispatch;
 
 use crate::{
-    types::{Crc, DumpData, RefFromData, Vector3, Vector4, DumpSlice, align_offset, hash_string, OrderedData, get_default_ref, ref_slice, string, slice},
+    types::{Crc, DumpData, RefFromData, Vector3, Vector4, DumpSlice, align_offset, hash_string, OrderedData, get_default_ref, ref_slice, string, slice, EndianTypes},
     level::{
+        LevelPc,
         pak::block1::infos::InfoCounts,
         model::Key2
     }
@@ -19,6 +20,42 @@ use crate::{
     }
 };
 use lotrc_proc::{make_endian, derive_ordered_data};
+
+pub trait ShapeTypes: where Self: EndianTypes {
+    type ShapeInfo: PartialEq + RefFromData + DumpData + ShapeInfoTypeTrait;
+    type ShapeExtraInfo: PartialEq + RefFromData + DumpData + ShapeExtraInfoTypeTrait;
+
+    type HkShapeInfo: PartialEq + RefFromData + DumpData + HkShapeInfoTypeTrait;
+    type BoxShape: PartialEq + RefFromData + DumpData + BoxShapeTypeTrait;
+    type SphereShape: PartialEq + RefFromData + DumpData + SphereShapeTypeTrait;
+    type CapsuleShape: PartialEq + RefFromData + DumpData + CapsuleShapeTypeTrait;
+    type CylinderShape: PartialEq + RefFromData + DumpData + CylinderShapeTypeTrait;
+    type ConvexVerticesInfo: PartialEq + RefFromData + DumpData + ConvexVerticesInfoTypeTrait;
+    type BVTreeMeshInfo: PartialEq + RefFromData + DumpData + BVTreeMeshInfoTypeTrait;
+
+    type TRS: PartialEq + RefFromData + DumpData + TRSTypeTrait;
+    type HkConstraintInfo: PartialEq + RefFromData + DumpData + HkConstraintInfoTypeTrait;
+    type Key2: PartialEq + RefFromData + DumpData + super::Key2TypeTrait;
+    type HkConstraintData: PartialEq + RefFromData + DumpData + HkConstraintDataTypeTrait;
+}
+
+impl ShapeTypes for LevelPc {
+    type ShapeInfo = ShapeInfoLE;
+    type ShapeExtraInfo = ShapeExtraInfoLE;
+
+    type HkShapeInfo = HkShapeInfoLE;
+    type BoxShape = BoxShapeLE;
+    type SphereShape = SphereShapeLE;
+    type CapsuleShape = CapsuleShapeLE;
+    type CylinderShape = CylinderShapeLE;
+    type ConvexVerticesInfo = ConvexVerticesInfoLE;
+    type BVTreeMeshInfo = BVTreeMeshInfoLE;
+
+    type TRS = TRSLE;
+    type HkConstraintInfo = HkConstraintInfoLE;
+    type Key2 = super::Key2LE;
+    type HkConstraintData = HkConstraintDataLE;
+}
 
 #[derive_ordered_data]
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -63,6 +100,36 @@ pub struct ShapeExtraInfo_XE_ {
     pub b: f32_XE_,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "ffi", repr(C))]
+pub struct ShapeExtraRef<'a, T: ShapeTypes> {
+    info: &'a T::ShapeExtraInfo,
+    offs: ref_slice<'a, T::u32>,
+    data: ref_slice<'a, u8>,
+}
+
+impl<'a, T: ShapeTypes> ShapeExtraRef<'a, T> {
+    pub fn from_data(src: &'a [u8], info: &'a T::ShapeInfo) -> Result<Self> {
+        let mut offset = info.offset() as usize;
+        let info = T::ShapeExtraInfo::from_data(&src[offset..]).context("info")?;
+        offset += info.size_of_val();
+        let offs = T::u32::slice_from_data(&src[offset..], info.size() as usize)
+            .context("vals")?;
+        offset += offs.size_of_val();
+        let mut off = offset + offs.last().unwrap().conv() as usize;
+        // sketchy stuff to account for missing data
+        while (src[off] != 0) || (src[off + 1] != 0) {
+            off += 1;
+        }
+        let data = &src[offset..off];
+        Ok(Self {
+            info: info,
+            offs: offs.into(),
+            data: data.into(),
+        })
+    }
+}
+
 #[make_endian]
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "ffi", repr(C))]
@@ -77,10 +144,10 @@ impl<'a> ShapeExtraRef_XE_<'a> {
     pub fn from_data(src: &'a [u8], info: &'a ShapeInfo_XE_) -> Result<Self> {
         let mut offset = info.offset.conv();
         let info = ShapeExtraInfo_XE_::from_data(&src[offset..]).context("info")?;
-        offset += info.size();
+        offset += info.size_of_val();
         let offs = u32_XE_::slice_from_data(&src[offset..], info.size.conv())
             .context("vals")?;
-        offset += offs.size();
+        offset += offs.size_of_val();
         let mut off = offset + offs.last().unwrap().to_native() as usize;
         // sketchy stuff to account for missing data
         while (src[off] != 0) || (src[off + 1] != 0) {
@@ -91,6 +158,31 @@ impl<'a> ShapeExtraRef_XE_<'a> {
             info: info,
             offs: offs.into(),
             data: data.into(),
+        })
+    }
+}
+
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct ShapeRef<'a, T: ShapeTypes> {
+    info: &'a T::ShapeInfo,
+    extra: Option<ShapeExtraRef<'a, T>>,
+    hk_shapes: slice<HkShapeRef<'a, T>>
+}
+
+impl<'a, T: ShapeTypes> ShapeRef<'a, T> {
+    pub fn from_data(src: &'a [u8], info: &'a T::ShapeInfo) -> Result<Self> {
+        let extra = if info.kind() == 0 {
+            Some(ShapeExtraRef::from_data(src, info).context("extra")?)
+        } else {
+            None
+        };
+        let infos = T::HkShapeInfo::slice_from_data(&src[info.hk_shape_offset() as usize..], info.hk_shape_num() as usize).context("hk_shape infos")?;
+        let hk_shapes = infos.into_iter().enumerate().map(|(i, info)| HkShapeRef::from_data(src, info).with_context(|| format!("hk_shape {}", i))).collect::<Result<Vec<_>>>()?.into_boxed_slice();
+        Ok(Self {
+            info,
+            extra: extra.into(),
+            hk_shapes: hk_shapes.into(),
         })
     }
 }
@@ -448,6 +540,41 @@ pub struct BVTreeMeshInfo_XE_ {
     pub tri_num: u32_XE_,      // tri_num
     pub inds_offset: u32_XE_,  // vec3 u16 , inds offset
 }
+
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct ConvexVerticesRef<'a, T: ShapeTypes> {
+    pub info: &'a T::ConvexVerticesInfo,
+    pub norms: ref_slice<'a, T::Vector4>,
+    pub verts: ref_slice<'a, T::Vector3>,
+}
+
+impl<'a, T: ShapeTypes> ConvexVerticesRef<'a, T> {
+    pub fn from_data(src: &'a [u8], info: &'a T::HkShapeInfo) -> Result<Self> {
+        let info: &T::ConvexVerticesInfo = transmute_ref!(info);
+
+        let norms = T::Vector4::slice_from_data(
+            &src[info.norms_offset() as usize..],
+            info.norm_num() as usize,
+        )
+        .context("vals")?;
+        let mut vert_num = info.vert_num() as usize; // sketchy stuff to account for data that was not otherwise captured, is it needed?
+        while (info.verts_offset() as usize + vert_num * 12) % 16 != 0 {
+            vert_num += 1;
+        }
+        let verts = T::Vector3::slice_from_data(
+            &src[info.verts_offset() as usize..],
+            vert_num,
+        )
+        .context("vals")?;
+        Ok(Self {
+            info,
+            norms: norms.into(),
+            verts: verts.into(),
+        })
+    }
+}
+
 #[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
@@ -480,6 +607,44 @@ impl<'a> ConvexVerticesRef_XE_<'a> {
             info,
             norms: norms.into(),
             verts: verts.into(),
+        })
+    }
+}
+
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct BVTreeMeshRef<'a, T: ShapeTypes> {
+    info: &'a T::BVTreeMeshInfo,
+    tree: ref_slice<'a, u8>,
+    verts: ref_slice<'a, T::Vector3>,
+    inds: ref_slice<'a, T::u16>
+}
+
+impl<'a, T: ShapeTypes> BVTreeMeshRef<'a, T> {
+    pub fn from_data(src: &'a [u8], info: &'a T::HkShapeInfo) -> Result<Self> {
+        let info: &T::BVTreeMeshInfo = transmute_ref!(info);
+
+        let tree = u8::slice_from_data(
+            &src[info.tree_offset() as usize..],
+            info.tree_size() as usize,
+        )
+        .context("vals")?;
+        let verts = T::Vector3::slice_from_data(
+            &src[info.verts_offset() as usize..],
+            info.vert_num() as usize,
+        )
+        .context("vals")?;
+        let inds = T::u16::slice_from_data(
+            &src[info.inds_offset() as usize..],
+            info.tri_num() as usize * 3,
+        )
+        .context("vals")?;
+
+        Ok(Self {
+            info: info,
+            tree: tree.into(),
+            verts: verts.into(),
+            inds: inds.into(),
         })
     }
 }
@@ -520,6 +685,35 @@ impl<'a> BVTreeMeshRef_XE_<'a> {
             tree: tree.into(),
             verts: verts.into(),
             inds: inds.into(),
+        })
+    }
+}
+
+#[cfg_attr(feature = "ffi", repr(C, u8))]
+#[derive(PartialEq)]
+pub enum HkShapeRef<'a, T: ShapeTypes> {
+    Box(&'a T::BoxShape),
+    Sphere(&'a T::SphereShape),
+    Capsule(&'a T::CapsuleShape),
+    Cylinder(&'a T::CylinderShape),
+    ConvexVertices(ConvexVerticesRef<'a, T>),
+    BVTreeMesh(BVTreeMeshRef<'a, T>),
+    Unknown(&'a T::HkShapeInfo),
+}
+
+impl<'a, T: ShapeTypes> HkShapeRef<'a, T> {
+    pub fn from_data(src: &'a [u8], info: &'a T::HkShapeInfo) -> Result<Self> {
+        Ok(match info.kind() {
+            1 => Self::Box(transmute_ref!(info)),
+            2 => Self::Sphere(transmute_ref!(info)),
+            3 => Self::Capsule(transmute_ref!(info)),
+            4 => Self::Cylinder(transmute_ref!(info)),
+            5 => Self::ConvexVertices(ConvexVerticesRef::from_data(src, info)?),
+            6 => Self::BVTreeMesh(BVTreeMeshRef::from_data(src, info)?),
+            _ => {
+                warn!("Unknown & Unhandled HkShape type {}", info.kind());
+                Self::Unknown(info)
+            }
         })
     }
 }
@@ -862,6 +1056,96 @@ pub struct HkConstraintBoneRef_XE_<'a> {
     pub name: string<'a>,
     pub start: u32_XE_,
     pub val: u32_XE_
+}
+
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct HkConstraintBoneRef<'a, T: EndianTypes> {
+    pub name: string<'a>,
+    pub start: T::u32,
+    pub val: T::u32
+}
+
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct HkConstraintRef<'a, T: ShapeTypes> {
+    pub info: &'a T::HkConstraintInfo,
+    pub bone_parents: ref_slice<'a, T::i16>,
+    pub bone_names: slice<HkConstraintBoneRef<'a, T>>,
+    pub name_offsets: ref_slice<'a, T::u32>,
+    pub bone_transforms: ref_slice<'a, T::TRS>,
+    pub bones: ref_slice<'a, T::u32>,
+    pub bones_order: ref_slice<'a, T::Key2>,
+    pub vals2: ref_slice<'a, T::f32>,
+}
+
+impl<'a, T: ShapeTypes> HkConstraintRef<'a, T> {
+    pub fn from_data(src: &'a[u8], offset: usize) -> Result<Self> {
+        let info = T::HkConstraintInfo::from_data(&src[offset..]).context("info")?;
+        if info.kind ()!= 0 {
+            warn!("Unknown & Unhandled HkConstraint type {}", info.kind());
+        }
+
+        let bone_parents = T::i16::slice_from_data(
+            &src[info.bone_parents_offset() as usize..],
+            info.bone_parents_num() as usize,
+        )
+        .context("bone_parents")?;
+        assert!(bone_parents[0].conv() == -1, "first bone should be root node with no parent");
+
+        let name_offsets = T::u32::slice_from_data(
+            &src[info.bone_names_offset() as usize..],
+            info.bone_names_num() as usize,
+        )
+        .context("name_offsets")?;
+        let mut bone_names = Vec::with_capacity(name_offsets.len());
+        for offset_ in name_offsets.iter() {
+            let start = T::u32::from_data(&src[offset_.conv() as usize..]).context("start")?;
+            let val_ = T::u32::from_data(&src[offset_.conv() as usize + 4..]).context("val_")?;
+            let mut offset = start.conv() as usize;
+            while src[offset] != 0 {
+                offset += 1;
+            }
+            bone_names.push(HkConstraintBoneRef {
+                name: str::from_utf8(&src[start.conv() as usize..offset]).context("string")?.into(),
+                start: *start,
+                val: *val_,
+            });
+        }
+        let bone_transforms = T::TRS::slice_from_data(
+            &src[info.bone_transforms_offset() as usize..],
+            info.bone_transforms_num() as usize,
+        )
+        .context("bone_tranforms")?;
+        let bones = T::u32::slice_from_data(
+            &src[info.bones_offset() as usize..],
+            info.bones_num() as usize,
+        )
+        .context("bones")?;
+        let bones_order = T::Key2::slice_from_data(
+            &src[info.bone_order_offset() as usize..],
+            info.bone_order_num() as usize,
+        )
+        .context("bone_order")?;
+
+        // TODO should probably figure out what this data is
+        let vals2 = T::f32::slice_from_data(
+            &src[info.vals2_offset() as usize..],
+            info.vals2_num() as usize * 42, 
+        )
+        .context("vals2")?;
+
+        Ok(Self {
+            info: info,
+            bone_parents: bone_parents.into(),
+            bone_names: bone_names.into_boxed_slice().into(),
+            name_offsets: name_offsets.into(),
+            bone_transforms: bone_transforms.into(),
+            bones: bones.into(),
+            bones_order: bones_order.into(),
+            vals2: vals2.into(),
+        })
+    }
 }
 
 #[make_endian]

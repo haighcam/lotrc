@@ -1,8 +1,10 @@
 use crate::types::{get_str, hash_string, Crc, DumpData, DumpSlice, RefFromData, Vector4, OrderedData, align_offset, ref_slice, slice};
 #[make_endian]
 use crate::{
-    level::pak::block1::{
-        gameobjs::{DumpGameObjs_XE_, GameObjsRef_XE_, GameObjs_XE_},
+    level::pak::{
+        block1::{
+            gameobjs::{DumpGameObjs_XE_, GameObjsRef_XE_, GameObjs_XE_},
+        }
     },
     types::{
         Crc_XE_, u16_XE_, u32_XE_, f32_XE_, Vector4_XE_,
@@ -14,9 +16,14 @@ use crate::{
 };
 use anyhow::{anyhow, Context, Result};
 use crate::types::sub_blocks::{
-    Data,
+    Data, SubBlocksInfoRef, DataRef, StringKeysValTypeTrait , SubBlocksBlockHeaderTypeTrait, SubBlockTypes
 };
-use crate::level::pak::block1::gameobjs::TypeInfos;
+use crate::level::pak::{
+    PakTypes,
+    block1::gameobjs::{
+        TypeInfos, GameObjsRef, GameObjTypes
+    }
+};
 use indexmap::IndexMap;
 use log::warn;
 use lotrc_proc::{make_endian, derive_ordered_data};
@@ -39,6 +46,86 @@ pub mod keys {
     pub const KEY_SPRAY: u32 = hash_string("Spray".as_bytes(), None);
     pub const KEY_PFIELDS: u32 = hash_string("PFields".as_bytes(), None);
     pub const KEY_LEVEL: u32 = hash_string("Level".as_bytes(), None);
+}
+
+pub trait SubBlock1Types: SubBlockTypes + GameObjTypes {
+    type AtlasUVVal: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + AtlasUVValTypeTrait;
+    type SSAVal: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + SSAValTypeTrait;
+}
+
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct SubBlocks1Ref<'a, T: SubBlock1Types> {
+    pub info: SubBlocksInfoRef<'a, T>,
+    pub files: IndexMap<u32, DataRef<'a>>,
+    pub lua: IndexMap<u32, LuaRef<'a>>,
+    pub subtitles: IndexMap<u32, SSARef<'a, T>>,
+    pub atlas1: Option<AtlasUVRef<'a, T>>,
+    pub atlas2: Option<AtlasUVRef<'a, T>>,
+    pub level: GameObjsRef<'a, T>
+}
+
+impl<T: SubBlock1Types> Default for SubBlocks1Ref<'_, T> {
+    fn default() -> Self {
+        Self {
+            info: Default::default(),
+            files: IndexMap::default().into(),
+            lua: IndexMap::default().into(),
+            subtitles: IndexMap::default().into(),
+            atlas1: None.into(),
+            atlas2: None.into(),
+            level: Default::default()
+        }
+    }
+}
+
+impl<'a, T: SubBlock1Types> SubBlocks1Ref<'a, T> {
+    // TODO should use the pak string to get key names
+    pub fn from_data(src: &'a [u8]) -> Result<Self> {
+        use keys::*;
+        let info = SubBlocksInfoRef::<T>::from_data(src)?;
+        let mut files = IndexMap::new();
+        let mut lua = IndexMap::new();
+        let mut subtitles = IndexMap::new();
+        let mut atlas1 = None;
+        let mut atlas2 = None;
+        let mut level = None;
+        for info in info.block_headers.iter(){
+            let data = &src[info.offset() as usize.. (info.offset() + info.size()) as usize];
+            match info.key().get() {
+                KEY_LEVEL => {
+                    level.replace(GameObjsRef::from_data(data)?);
+                },
+                KEY_ATLAS1 => {
+                    atlas1.replace(AtlasUVRef::from_data(data)?);
+                },
+                KEY_ATLAS2 => {
+                    atlas2.replace(AtlasUVRef::from_data(data)?);
+                },
+                key => match get_str(&key) {
+                    Some(x) if x.ends_with(".lua") => {lua.insert(key, LuaRef::from_data(data));},
+                    Some(x) if x.ends_with(".ssa") => {subtitles.insert(key, SSARef::from_data(data)?);},
+                    Some(x) if x.ends_with(".csv") || x.ends_with(".txt") || x.ends_with(".dat") => {
+                        files.insert(key, DataRef::from_data(data));
+                    }
+                    x => {
+                        warn!("Unknown block type {:?}, {:?}", key, x.map(|x| x.to_string()).unwrap_or_default());
+                        files.insert(key, DataRef::from_data(data));
+                    }
+                }
+            }
+        }
+        let level = level.ok_or(anyhow!("sub_blocks1 missing level block"))?;
+        Ok(Self {
+            info,
+            files: files.into(),
+            lua: lua.into(),
+            subtitles: subtitles.into(),
+            atlas1: atlas1.into(),
+            atlas2: atlas2.into(),
+            level
+        })
+    }
 }
 
 #[make_endian]
@@ -315,6 +402,23 @@ pub struct AtlasUVVal_XE_ {
     pub vals: Vector4_XE_,
 }
 
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct AtlasUVRef<'a, T: SubBlock1Types> {
+    pub vals: ref_slice<'a, T::AtlasUVVal>
+}
+#[make_endian]
+impl<'a, T: SubBlock1Types> AtlasUVRef<'a, T> {
+    pub fn from_data(src: &'a [u8]) -> Result<Self> {
+        if src.len() % std::mem::size_of::<T::AtlasUVVal>() != 0 {
+            return Err(anyhow!("Invalid UV Atlas size {}", src.len()));
+        }
+        let num = src.len() / std::mem::size_of::<T::AtlasUVVal>();
+        let vals = T::AtlasUVVal::slice_from_data(&src, num).context("vals")?.into();
+        Ok(Self { vals })
+    }
+}
+
 #[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
@@ -403,6 +507,41 @@ pub struct SSAVal_XE_ {
     pub unk_2: u32_XE_,
     pub unk_3: u32_XE_,
     pub off: u32_XE_,
+}
+
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct SSARef<'a, T: SubBlock1Types> {
+    pub vals: ref_slice<'a, T::SSAVal>,
+    pub strings: slice<ref_slice<'a, T::u16>>,
+}
+
+#[make_endian]
+impl<'a, T: SubBlock1Types> SSARef<'a, T> {
+    pub fn from_data(src: &'a [u8]) -> Result<Self> {
+        let n = T::u32::from_data(src).context("n")?;
+        let vals = T::SSAVal::slice_from_data(&src[4..], n.conv() as usize).context("vals")?;
+        let strings = (0..n.conv() as usize)
+            .map(|i| {
+                let start = vals[i].off() as usize;
+                let end = if i == n.conv() as usize - 1 {
+                    src.len()
+                } else {
+                    vals[i + 1].off() as usize
+                };
+                Ok(
+                    T::u16::slice_from_data(&src[start..], (end - start) / 2)
+                        .with_context(|| format!("string {}", i))?
+                        .into(),
+                )
+            })
+            .collect::<Result<Vec<_>>>()?.into_boxed_slice();
+
+        Ok(Self {
+            vals: vals.into(),
+            strings: strings.into(),
+        })
+    }
 }
 
 #[make_endian]
@@ -547,6 +686,7 @@ impl DumpSSAImpl_XE_ for SSA {
 
 #[make_endian]
 pub type LuaRef_XE_<'a> = DataRef_XE_<'a>;
+pub type LuaRef<'a> = DataRef<'a>;
 pub type Lua = Data;
 #[make_endian]
 pub type Lua_XE_<'a> = Data_XE_<'a>;

@@ -5,7 +5,7 @@ use std::io::Read;
 use log::debug;
 
 use crate::{
-    types::{AlignedBuf, DumpSlice},
+    types::{AlignedBuf, DumpSlice, RefFromData, EndianTypes},
 };
 
 #[make_endian]
@@ -21,6 +21,76 @@ pub mod model;
 pub mod pak;
 pub mod radiosity;
 pub mod texture;
+
+pub trait LevelFormat: model::ModelTypes + pak::block1::gameobjs::GameObjTypes {
+    type PakHeader: RefFromData + pak::PakHeaderTypeTrait;
+    type BinHeader: RefFromData + bin::BinHeaderTypeTrait;
+    type AssetHandle: RefFromData + bin::AssetHandleTypeTrait;
+
+    type ObjA: PartialEq + RefFromData + pak::block1::objs::ObjATypeTrait;
+    type Obj0: PartialEq + RefFromData + pak::block1::objs::Obj0TypeTrait;
+    type TextureInfo: PartialEq + RefFromData + texture::TextureInfoTypeTrait;
+    type AnimationInfo: PartialEq + RefFromData + pak::animation::AnimationInfoTypeTrait;
+    type EffectInfo: PartialEq + RefFromData + pak::block1::objs::EffectInfoTypeTrait;
+    type PFieldInfo: PartialEq + RefFromData + pak::block1::objs::PFieldInfoTypeTrait;
+    type GFXBlockInfo: PartialEq + RefFromData + pak::block1::objs::GFXBlockInfoTypeTrait;
+    type AnimationBlockInfo: PartialEq + RefFromData + pak::animation::AnimationBlockInfoTypeTrait;
+    type FoliageInfo: PartialEq + RefFromData + pak::block1::objs::FoliageInfoTypeTrait;
+    type FoliageVal: PartialEq + RefFromData + pak::block1::objs::FoliageValTypeTrait;
+    type RadiosityValsInfo: PartialEq + RefFromData + radiosity::RadiosityValsInfoTypeTrait;
+    
+
+}
+
+pub struct LevelPc;
+
+impl EndianTypes for LevelPc {
+    type u16 = crate::types::u16LE;
+    type u32 = crate::types::u32LE;
+    type u64 = crate::types::u64LE;
+    type i16 = crate::types::i16LE;
+    type i32 = crate::types::i32LE;
+    type f32 = crate::types::f32LE;
+
+    // should be unaligned
+    type U16 = crate::types::U16LE;
+    type U32 = crate::types::U32LE;
+    type I32 = crate::types::I32LE;
+
+    type Crc = crate::types::CrcLE;
+    type Vector2 = crate::types::Vector2LE;
+    type Vector3 = crate::types::Vector3LE;
+    type Vector4 = crate::types::Vector4LE;
+    type Matrix4x4 = crate::types::Matrix4x4LE;
+}
+
+impl LevelFormat for LevelPc {
+    type PakHeader = pak::PakHeaderLE;
+    type BinHeader = bin::BinHeaderLE;
+    type AssetHandle = bin::AssetHandleLE;
+
+    type ObjA = pak::block1::objs::ObjALE;
+    type Obj0 = pak::block1::objs::Obj0LE;
+    type TextureInfo = texture::TextureInfoLE;
+    type AnimationInfo = pak::animation::AnimationInfoLE;
+    type EffectInfo = pak::block1::objs::EffectInfoLE;
+    type PFieldInfo = pak::block1::objs::PFieldInfoLE;
+    type GFXBlockInfo = pak::block1::objs::GFXBlockInfoLE;
+    type AnimationBlockInfo = pak::animation::AnimationBlockInfoLE;
+    type FoliageInfo = pak::block1::objs::FoliageInfoLE;
+    type FoliageVal = pak::block1::objs::FoliageValLE;
+    type RadiosityValsInfo = radiosity::RadiosityValsInfoLE;
+
+    /*
+    type List = pak::block1::gameobjs::ListLE; 
+    type Weight = crate::types::WeightLE;
+
+    type GameObjsHeader = pak::block1::gameobjs::GameObjsHeaderLE;
+    type TypeHeader = pak::block1::gameobjs::TypeHeaderLE;
+    type TypeField = pak::block1::gameobjs::TypeFieldLE;
+    type ObjHeader = pak::block1::gameobjs::ObjHeaderLE;
+    */
+}
 
 #[cfg_attr(feature = "ffi", repr(C))]
 pub struct LevelData {

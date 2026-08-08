@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use rayon::prelude::*;
 use log::debug;
 
-use crate::types::{OwnedCompressedData, CompressedData, DumpCompressedData, update_crc, Crc, RefFromData, OrderedData, slice, hash_string, ref_slice, get_default_ref, CompressedDataRef, DumpData, DumpSlice, align_offset};
+use crate::types::{OwnedCompressedData, CompressedData, DumpCompressedData, update_crc, Crc, RefFromData, OrderedData, slice, hash_string, ref_slice, get_default_ref, CompressedDataRef, DumpData, DumpSlice, align_offset, EndianTypes};
 use crate::level::pak::block1::infos::InfoCounts;
 #[make_endian]
 use crate::{
@@ -28,6 +28,10 @@ use lotrc_proc::{make_endian, derive_ordered_data};
 pub mod animation;
 pub mod block1;
 pub mod block2;
+
+pub trait PakTypes {
+    type PakHeader: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + PakHeaderTypeTrait;
+}
 
 #[derive(Debug, Default, Clone, lotrc_proc::FromConvImpl)]
 #[create_conv_trait]

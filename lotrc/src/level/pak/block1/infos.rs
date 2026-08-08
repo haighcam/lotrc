@@ -1,7 +1,10 @@
 use log::debug;
 use anyhow::{Context, Result};
 
-use crate::types::{CompressedData, OrderedData, DumpSlice, ref_slice, align_offset, mut_slice, DumpData, RefFromData};
+use crate::{
+    level::LevelFormat,
+    types::{CompressedData, OrderedData, DumpSlice, ref_slice, align_offset, mut_slice, DumpData, RefFromData}
+};
 
 use lotrc_proc::{make_endian};
 #[make_endian]
@@ -28,6 +31,180 @@ use crate::{
     },
     types::u32_XE_
 };
+
+#[derive(Default)]
+#[cfg_attr(feature = "ffi", repr(C))]
+pub struct InfosRef<'a, L: LevelFormat> {
+    pub objas: ref_slice<'a, L::ObjA>,
+    pub obj0s: ref_slice<'a, L::Obj0>,
+    pub models: ref_slice<'a, L::ModelInfo>,
+    pub buffers: ref_slice<'a, L::BufferInfo>,
+    pub mat1s: ref_slice<'a, L::Mat1>,
+    pub mat2s: ref_slice<'a, L::Mat2>,
+    pub mat3s: ref_slice<'a, L::Mat3>,
+    pub mat4s: ref_slice<'a, L::Mat4>,
+    pub mat_extras: ref_slice<'a, L::MatExtra>,
+    pub shapes: ref_slice<'a, L::ShapeInfo>,
+    pub hk_shapes: ref_slice<'a, L::HkShapeInfo>,
+    pub hk_constraint_datas: ref_slice<'a, L::HkConstraintData>,
+    pub vbuffs: ref_slice<'a, L::VBuffInfo>,
+    pub ibuffs: ref_slice<'a, L::IBuffInfo>,
+    pub textures: ref_slice<'a, L::TextureInfo>,
+    pub animations: ref_slice<'a, L::AnimationInfo>,
+    pub hk_constraints: ref_slice<'a, L::HkConstraintInfo>,
+    pub effects: ref_slice<'a, L::EffectInfo>,
+    pub pfields: ref_slice<'a, L::PFieldInfo>,
+    pub gfxs: ref_slice<'a, L::GFXBlockInfo>,
+    pub animation_blocks: ref_slice<'a, L::AnimationBlockInfo>,
+    pub foliages: ref_slice<'a, L::FoliageInfo>,
+    pub radiosity_vals: ref_slice<'a, L::RadiosityValsInfo>,
+}
+
+impl <'a, L: LevelFormat> InfosRef<'a, L> {
+    pub fn from_data(src: &'a [u8], pak_header: &L::PakHeader) -> Result<Self> {
+        use crate::level::pak::PakHeaderTypeTrait;
+        let objas = L::ObjA::slice_from_data(
+            &src[pak_header.obja_offset() as usize..],
+            pak_header.obja_num() as usize,
+        )
+        .context("objas")?;
+        let obj0s = L::Obj0::slice_from_data(
+            &src[pak_header.obj0_offset() as usize..],
+            pak_header.obj0_num() as usize,
+        )
+        .context("obj0s")?;
+        let models = L::ModelInfo::slice_from_data(
+            &src[pak_header.model_info_offset() as usize..],
+            pak_header.model_info_num() as usize,
+        )
+        .context("models")?;
+        let buffers = L::BufferInfo::slice_from_data(
+            &src[pak_header.buffer_info_offset() as usize..],
+            pak_header.buffer_info_num() as usize,
+        )
+        .context("buffers")?;
+        let mat1s = L::Mat1::slice_from_data(
+            &src[pak_header.mat1_offset() as usize..],
+            pak_header.mat1_num() as usize,
+        )
+        .context("mat1s")?;
+        let mat2s = L::Mat2::slice_from_data(
+            &src[pak_header.mat2_offset() as usize..],
+            pak_header.mat2_num() as usize,
+        )
+        .context("mat2s")?;
+        let mat3s = L::Mat3::slice_from_data(
+            &src[pak_header.mat3_offset() as usize..],
+            pak_header.mat3_num() as usize,
+        )
+        .context("mat3s")?;
+        let mat4s = L::Mat4::slice_from_data(
+            &src[pak_header.mat4_offset() as usize..],
+            pak_header.mat4_num() as usize,
+        )
+        .context("mat4s")?;
+        let mat_extras = L::MatExtra::slice_from_data(
+            &src[pak_header.mat_extra_offset() as usize..],
+            pak_header.mat_extra_num() as usize,
+        )
+        .context("mat_extras")?;
+        let shapes = L::ShapeInfo::slice_from_data(
+            &src[pak_header.shape_info_offset() as usize..],
+            pak_header.shape_info_num() as usize,
+        )
+        .context("shapes")?;
+        let hk_shapes = L::HkShapeInfo::slice_from_data(
+            &src[pak_header.hk_shape_info_offset() as usize..],
+            pak_header.hk_shape_info_num() as usize,
+        )
+        .context("hk_shapes")?;
+        let hk_constraint_datas = L::HkConstraintData::slice_from_data(
+            &src[pak_header.hk_constraint_data_offset() as usize..],
+            pak_header.hk_constraint_data_num() as usize,
+        )
+        .context("hk_constraint_datas")?;
+        let vbuffs = L::VBuffInfo::slice_from_data(
+            &src[pak_header.vbuff_info_offset() as usize..],
+            pak_header.vbuff_info_num() as usize,
+        )
+        .context("vbuffs")?;
+        let ibuffs = L::IBuffInfo::slice_from_data(
+            &src[pak_header.ibuff_info_offset() as usize..],
+            pak_header.ibuff_info_num() as usize,
+        )
+        .context("ibuffs")?;
+        let textures = L::TextureInfo::slice_from_data(
+            &src[pak_header.texture_info_offset() as usize..],
+            pak_header.texture_info_num() as usize,
+        )
+        .context("textures")?;
+        let animations = L::AnimationInfo::slice_from_data(
+            &src[pak_header.animation_info_offset() as usize..],
+            pak_header.animation_info_num() as usize,
+        )
+        .context("animations")?;
+        let hk_constraints = L::HkConstraintInfo::slice_from_data(
+            &src[pak_header.hk_constraint_info_offset() as usize..],
+            pak_header.hk_constraint_info_num() as usize,
+        )
+        .context("hk_constraints")?;
+        let effects = L::EffectInfo::slice_from_data(
+            &src[pak_header.effect_info_offset() as usize..],
+            pak_header.effect_info_num() as usize,
+        )
+        .context("effects")?;
+        let pfields = L::PFieldInfo::slice_from_data(
+            &src[pak_header.pfield_info_offset() as usize..],
+            pak_header.pfield_info_num() as usize,
+        )
+        .context("pfields")?;
+        let gfxs = L::GFXBlockInfo::slice_from_data(
+            &src[pak_header.gfx_block_info_offset() as usize..],
+            pak_header.gfx_block_info_num() as usize,
+        )
+        .context("gfxs")?;
+        let animation_blocks = L::AnimationBlockInfo::slice_from_data(
+            &src[pak_header.animation_block_info_offset() as usize..],
+            pak_header.animation_block_info_num() as usize,
+        )
+        .context("animation_blocks")?;
+        let foliages = L::FoliageInfo::slice_from_data(
+            &src[pak_header.foliage_info_offset() as usize..],
+            pak_header.foliage_info_num() as usize,
+        )
+        .context("foliages")?;
+        let radiosity_vals = L::RadiosityValsInfo::slice_from_data(
+            &src[pak_header.radiosity_vals_info_offset() as usize..],
+            pak_header.radiosity_vals_info_num() as usize,
+        )
+        .context("radiosity_vals")?;
+        Ok(Self {
+            objas,
+            obj0s,
+            models,
+            buffers,
+            mat1s,
+            mat2s,
+            mat3s,
+            mat4s,
+            mat_extras,
+            shapes,
+            hk_shapes,
+            hk_constraint_datas,
+            vbuffs,
+            ibuffs,
+            textures,
+            animations,
+            hk_constraints,
+            effects,
+            pfields,
+            gfxs,
+            animation_blocks,
+            foliages,
+            radiosity_vals,
+        })
+    }
+}
 
 #[make_endian]
 #[derive(Default)]
@@ -353,7 +530,7 @@ impl<'a, T: RefFromData> DumpInfo<'a, T> {
         } = std::mem::take(self);
         let (val, vals) = vals.split_first_mut().ok_or(anyhow::anyhow!("ran out of info"))?;
         ind += 1;
-        offset += val.size();
+        offset += val.size_of_val();
         *self = Self { vals, ind, offset };
         Ok(val)
     }
@@ -365,7 +542,7 @@ impl<'a, T: RefFromData> DumpInfo<'a, T> {
         } = std::mem::take(self);
         let (val, vals) = vals.split_at_mut(num);
         ind += 1;
-        offset += val.size();
+        offset += val.size_of_val();
         *self = Self { vals, ind, offset };
         val
     }

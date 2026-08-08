@@ -23,6 +23,7 @@ use crate::{
 };
 use crate::{
     level::{
+        LevelFormat,
         model::{
             shape::{HkConstraint, HkShape, Shape},
             Model,
@@ -140,6 +141,26 @@ pub struct FoliageVal_XE_ {
     pub slope_z: i16_XE_,
 }
 
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct FoliageRef<'a, L: LevelFormat> {
+    info: &'a L::FoliageInfo,
+    vals: ref_slice<'a, L::FoliageVal>
+}
+
+impl<'a, L: LevelFormat> FoliageRef<'a, L> {
+    pub fn from_data(src: &'a [u8], info: &'a L::FoliageInfo) -> Result<Self> {
+        let n =
+            ((info.ub_w() - info.lb_w()) * (info.ub_h() - info.lb_h())) as usize;
+        let vals = L::FoliageVal::slice_from_data(&src[info.offset() as usize..], n)
+            .context("vals")?;
+        Ok(Self {
+            info: info,
+            vals: vals.into(),
+        })
+    }
+}
+
 #[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
@@ -204,6 +225,22 @@ impl DumpFoliage_XE_ for FoliageRef_XE_<'_> {
     }
 }
 
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct EffectRef<'a, L: LevelFormat> {
+    info: &'a L::EffectInfo,
+    vals: super::gameobjs::GameObjsRef<'a, L>
+}
+
+impl<'a, L: LevelFormat> EffectRef<'a, L> {
+    pub fn from_data(src: &'a [u8], info: &'a L::EffectInfo) -> Result<Self> {
+        Ok(Self {
+            info,
+            vals: super::gameobjs::GameObjsRef::from_data(&src[info.offset() as usize..(info.offset() + info.size()) as usize])?
+        })
+    }
+}
+
 #[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
@@ -235,6 +272,73 @@ impl DumpEffect_XE_ for EffectRef_XE_<'_> {
     }
     fn gamemodemask(&self) -> i32_XE_ {
         self.info.gamemodemask
+    }
+}
+
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(Default, PartialEq)]
+pub struct ObjsRef<'a, L: LevelFormat> {
+    pub textures: IndexMap<u32, crate::level::texture::TextureRef<'a, L>>,
+    pub models: IndexMap<u32, crate::level::model::ModelRef<'a, L>>,
+    pub effects: IndexMap<u32, EffectRef<'a, L>>,
+    pub foliages: IndexMap<u32, slice<FoliageRef<'a, L>>>,
+    pub gfxs: IndexMap<u32, ref_slice<'a, u8>>,
+    pub radiosity: crate::level::radiosity::RadiosityRef<'a, L>
+}
+
+impl <'a, L: LevelFormat> ObjsRef<'a, L> {
+    pub fn from_data(src: &'a [u8], infos: &super::infos::InfosRef<'a, L>, bin: &crate::level::bin::BinRef<'a, L>, name: u32) -> Result<Self> {
+        use crate::level::texture::TextureInfoTypeTrait;
+        use crate::level::model::ModelInfoTypeTrait;
+        use crate::level::bin::AssetHandleTypeTrait;
+        let texture_data = &bin.texture_data;
+        let textures: IndexMap<_, _> = infos.textures.iter().enumerate()
+            .map(|(i, info)| Ok((
+                info.key().get(),
+                crate::level::texture::TextureRef::from_data(info, texture_data).with_context(|| format!("texture {}", i))?
+            )))
+            .collect::<Result<_>>()?;
+        let model_data = &bin.model_data;
+        let models: IndexMap<_, _> = infos.models.iter().enumerate()
+            .map(|(i, info)| Ok((
+                info.key().get(),
+                crate::level::model::ModelRef::from_data(src, info, model_data).with_context(|| format!("model {}", i))?
+            )))
+            .collect::<Result<_>>()?;
+        let effects: IndexMap<_, _> = infos.effects
+            .iter()
+            .map(|info| Ok((
+                info.key().get(),
+                EffectRef::from_data(src, info).with_context(|| format!("effect {}", info.key().get()))?
+            )))
+            .collect::<Result<_>>()?;
+        let gfxs: IndexMap<_, _> = infos.gfxs
+            .iter()
+            .map(|info| (
+                info.key().get(),
+                (&src[info.offset() as usize..(info.offset() + info.size()) as usize]).into(),
+            ))
+            .collect();
+        let mut foliages = IndexMap::<_, Vec<_>>::with_capacity(infos.foliages.len());
+        for (i, info) in infos.foliages.iter().enumerate() {
+            let foliage = FoliageRef::<L>::from_data(src, info).with_context(|| format!("foliage {}", i))?;
+            foliages.entry(foliage.info.key().get()).or_default().push(foliage);
+        }
+        let foliages: IndexMap<_, _> = foliages.into_iter().map(|(k, v)| (k, v.into_boxed_slice().into())).collect();
+        let radiosity_name = hash_string(b"_radiosity", Some(name));
+        let ind = model_data.get_index_of(&radiosity_name);
+        let data = ind.and_then(|x| model_data.get_index(x)).map(|(_, x)| x).copied();
+        let usage =  ind.map(|x| bin.model_handles()[x].kind()).unwrap_or_default();
+        
+        let radiosity = crate::level::radiosity::RadiosityRef::from_data(src, infos.radiosity_vals, data, usage).context("radiosity")?; 
+        Ok(Self {
+            textures,
+            models,
+            effects,
+            gfxs,
+            foliages,
+            radiosity,
+        })
     }
 }
 
@@ -458,8 +562,6 @@ pub trait DumpObjs_XE_ {
         for i in dump_infos.model_data.iter() {
             println!("{}, is_some: {}", i.key, i.data.is_some());
         }
-
-        // populate offsets
 
         Ok(rad_data)
     }

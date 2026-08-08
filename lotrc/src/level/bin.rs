@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use log::debug;
 
 use crate::{
-    level::Version,
+    level::{Version, LevelFormat},
     types::{update_crc, Crc, RefFromData, OrderedData, AlignedBuf, CompressedDataRef, get_default_ref, DumpCompressedData, align_offset, DumpData, DumpSlice, ref_slice}
 };
 #[make_endian]
@@ -91,6 +91,65 @@ impl Default for BinCompressedData<'_> {
             model_data: IndexMap::default().into(),
             texture_data: IndexMap::default().into()
         }
+    }
+}
+
+
+#[cfg_attr(feature = "ffi", repr(C))]
+pub struct BinRef<'a, L: LevelFormat> {
+    pub header: &'a L::BinHeader,
+    pub strings: crate::types::StringsRef<'a>,
+    pub asset_handles: ref_slice<'a, L::AssetHandle>,
+    pub model_data: IndexMap<u32, &'a CompressedDataRef<'a>>,
+    pub texture_data: IndexMap<u32, &'a CompressedDataRef<'a>>,
+}
+
+impl<'a, L: LevelFormat> BinRef<'a, L> {
+    pub fn from_data<'b: 'a, 'c: 'b>(src: &'c [u8], data: &'a mut BinCompressedData<'b>) -> Result<Self> {
+        let t = std::time::Instant::now();
+        let header = L::BinHeader::from_data(src).context("header")?;
+        let strings = crate::types::StringsRef::from_data::<L>(
+            &src[header.strings_offset() as usize..],
+            header.strings_num() as usize,
+        )
+        .context("strings")?;
+        update_crc(strings.strings());
+        let asset_handles = L::AssetHandle::slice_from_data(
+            &src[header.asset_handle_offset() as usize..],
+            header.asset_handle_num() as usize,
+        )
+        .context("asset_handles")?;
+        debug!("Bin headers in {}", t.elapsed().as_secs_f32());
+        
+        let t = std::time::Instant::now();
+        let split = header.vdata_num() as usize;
+        data.model_data = asset_handles.iter().take(split).map(|info| (
+            info.key().get(),
+            CompressedDataRef::from_data(&src[info.offset() as usize..], info.size_comp() as usize, info.size() as usize)
+        )).collect::<IndexMap<_, _>>().into();
+        data.texture_data = asset_handles.iter().skip(split).map(|info| (
+            info.key().get(),
+            CompressedDataRef::from_data(&src[info.offset() as usize..], info.size_comp() as usize, info.size() as usize)
+        )).collect::<IndexMap<_, _>>().into();
+
+        data.model_data.par_values_mut()
+            .chain(data.texture_data.par_values_mut())
+            .try_for_each(|data| data.decompress())
+            .context("compressed data")?;
+        debug!("Bin compressed data parsed in {}", t.elapsed().as_secs_f32());
+        Ok(Self {
+            header,
+            asset_handles: asset_handles.into(),
+            strings,
+            model_data: data.model_data.iter().map(|(k,v)| (*k, v)).collect::<IndexMap<_, _>>().into(),
+            texture_data: data.texture_data.iter().map(|(k,v)| (*k, v)).collect::<IndexMap<_, _>>().into(),
+        })
+    }
+    pub fn model_handles(&self) -> &[L::AssetHandle] {
+        &self.asset_handles[..self.header.vdata_num() as usize]
+    }
+    pub fn texture_handles(&self) -> &[L::AssetHandle] {
+        &self.asset_handles[self.header.vdata_num() as usize..]
     }
 }
 

@@ -2,7 +2,8 @@ use anyhow::{anyhow, Context, Result};
 use enum_dispatch::enum_dispatch;
 use indexmap::IndexMap;
 
-use crate::types::{OwnedCompressedData, CompressedData, hash_string, Color, RefFromData, OrderedData, CompressedDataRef, DumpSlice, DumpData, align_offset, ref_slice};
+use crate::types::{OwnedCompressedData, CompressedData, hash_string, Color, RefFromData, OrderedData, CompressedDataRef, DumpSlice, DumpData, align_offset, ref_slice, EndianTypes};
+use crate::level::LevelFormat;
 #[make_endian]
 use crate::{
     level::{
@@ -26,6 +27,25 @@ pub struct RadiosityValsInfo_XE_ {
     pub guid: u32_XE_,
     pub num: u32_XE_,
     pub offset: u32_XE_,
+}
+
+// list of ints pointing to the radiosity data
+// has a value for each mesh in the model
+// corresponding to the object pointed to by the guid
+// (value if offset to consecutive values in radiosity, one for each vertex of the mesh)
+// a value of -1 means no radiosity for that mesh
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct RadiosityValsRef<'a, L: LevelFormat> {
+    pub info: &'a L::RadiosityValsInfo,
+    pub offs: ref_slice<'a, L::i32>,
+}
+
+impl<'a, L: LevelFormat> RadiosityValsRef<'a, L> {
+    pub fn from_data(src: &'a [u8], info: &'a L::RadiosityValsInfo) -> Result<Self> {
+        let offs = L::i32::slice_from_data(&src[info.offset() as usize..], info.num() as usize).context("offs")?;
+        Ok(Self { info, offs: offs.into() })
+    }
 }
 
 // list of ints pointing to the radiosity data
@@ -73,6 +93,25 @@ impl DumpRadiosityVals_XE_ for RadiosityValsRef_XE_<'_> {
     }
     fn write_offs(&self, offs: &mut [i32_XE_]) -> Result<()> {
         offs.write_from(&self.offs[..])
+    }
+}
+
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq, Default)]
+pub struct RadiosityRef<'a, L: LevelFormat> {
+    pub data: Option<&'a CompressedDataRef<'a>>,
+    pub vals: IndexMap<u32, RadiosityValsRef<'a, L>>,
+    pub usage: u32,
+}
+
+impl<'a, L: LevelFormat> RadiosityRef<'a, L> {
+    pub fn from_data(src: &'a [u8], infos: &'a [L::RadiosityValsInfo], data: Option<&'a CompressedDataRef<'a>>, usage: u32) -> Result<Self> {
+        let vals = infos.into_iter().map(|info| Ok((info.guid(), RadiosityValsRef::from_data(src, info).with_context(|| format!("radiosity {}", info.guid()))?))).collect::<Result<IndexMap<_, _>>>()?;
+        Ok(Self {
+            data: data.into(),
+            vals: vals.into(),
+            usage
+        })
     }
 }
 
@@ -238,7 +277,7 @@ impl DumpRadiosity_XE_ for Radiosity {
                     RadiosityVal::NoRadiosity(val) => *dst = val.conv(),
                     RadiosityVal::Radiosity(val) => {
                         *dst = (data_len / 4).conv();
-                        data_len += val.size();
+                        data_len += val.size_of_val();
                     }
                 }
             }

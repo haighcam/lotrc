@@ -63,13 +63,17 @@ impl Parse for ConvTraitInput {
     }
 }
 
-fn get_conv_trait_name(name: &Ident) -> Ident {
-    format_ident!("{}ConvTraitFromMacro", name)
+fn get_conv_trait_name(name: &Ident) -> (Ident, Ident) {
+    (
+        format_ident!("{}TypeTrait", name),
+        format_ident!("{}TypeTraitTypesForMacro", name)
+    )
 }
 
 fn make_trait_impl<'a>(name: &Ident, fields: impl IntoIterator<Item=&'a Field>) -> proc_macro::TokenStream {
     let mut trait_recur = vec![];
     let mut ty_recur = vec![];
+    let (trait_name, mod_name) = get_conv_trait_name(&name);
     for Field { ident, ty, .. } in fields.into_iter() {
         let name = ident.clone().unwrap();
         let name_ref = format_ident!("{}_ref", name);
@@ -77,24 +81,23 @@ fn make_trait_impl<'a>(name: &Ident, fields: impl IntoIterator<Item=&'a Field>) 
         let name_ty = format_ident!("{}_type", name);
         trait_recur.push(quote_spanned! { name.span() =>
             #[inline(always)]
-            fn #name(&self) -> #name_ty { #name_ty::default() }
+            fn #name(&self) -> #mod_name::#name_ty { #mod_name::#name_ty::default() }
             #[inline(always)]
-            fn #name_ref(&self) -> Option<&#name_ty> { None }
+            fn #name_ref(&self) -> Option<&#mod_name::#name_ty> { None }
             #[inline(always)]
-            fn #name_mut(&mut self) -> Option<&mut #name_ty> { None }
+            fn #name_mut(&mut self) -> Option<&mut #mod_name::#name_ty> { None }
         });
         ty_recur.push(quote_spanned! { name.span() =>
             #[allow(non_camel_case_types)]
             pub type #name_ty = #ty;
         });
     }
-    let trait_name = get_conv_trait_name(&name);
     quote! {
-        pub(crate) mod #trait_name {
+        pub trait #trait_name {
+            #(#trait_recur)*
+        }
+        pub(crate) mod #mod_name {
             use super::*;
-            pub trait ConvTrait {
-                #(#trait_recur)*
-            }
             #(#ty_recur)*
         }
     }.into()
@@ -112,7 +115,7 @@ pub fn derive_from_conv_impl(input: proc_macro::TokenStream) -> proc_macro::Toke
     let add_impl = input.attrs.iter().find(|x| x.path().is_ident("create_conv_trait")).is_some();
     if let Data::Struct(DataStruct { fields: Fields::Named(fields), .. }) = input.data {
         let name = input.ident;
-        let trait_name = get_conv_trait_name(&name);
+        let (trait_name, mod_name) = get_conv_trait_name(&name);
         let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
         let trait_recurse = fields.named.iter().map(|f| {
             let name = f.ident.clone().unwrap();
@@ -121,26 +124,26 @@ pub fn derive_from_conv_impl(input: proc_macro::TokenStream) -> proc_macro::Toke
             let name_ty = format_ident!("{}_type", name);
             quote_spanned! { f.span() => 
                 #[inline(always)]
-                fn #name(&self) -> #trait_name::#name_ty { self.#name.clone() }
+                fn #name(&self) -> #mod_name::#name_ty { self.#name.clone() }
                 #[inline(always)]
-                fn #name_ref(&self) -> Option<&#trait_name::#name_ty> { Some(&self.#name) }
+                fn #name_ref(&self) -> Option<&#mod_name::#name_ty> { Some(&self.#name) }
                 #[inline(always)]
-                fn #name_mut(&mut self) -> Option<&mut #trait_name::#name_ty> { Some(&mut self.#name) }
+                fn #name_mut(&mut self) -> Option<&mut #mod_name::#name_ty> { Some(&mut self.#name) }
             }
         });
         let from_recurse = fields.named.iter().map(|f| {
             let name = f.ident.clone().unwrap();
             quote_spanned! { f.span() => 
-                #name: #trait_name::ConvTrait::#name(val)
+                #name: #trait_name::#name(val)
             }
         });
         let mut val: proc_macro::TokenStream = quote! {
-            impl #impl_generics #trait_name::ConvTrait for #name #ty_generics #where_clause {
+            impl #impl_generics #trait_name for #name #ty_generics #where_clause {
                 #(#trait_recurse)*
             }
             impl #impl_generics #name #ty_generics #where_clause {
                 #[inline(always)]
-                fn from_conv_impl(val: &impl #trait_name::ConvTrait) -> Self {
+                fn from_conv_impl(val: &impl #trait_name) -> Self {
                     Self {
                         #(#from_recurse),*
                     }
@@ -174,25 +177,25 @@ pub fn derive_into_conv_impl(input: proc_macro::TokenStream) -> proc_macro::Toke
         } else {
             quote! { #[lotrc_proc::make_endian] }
         };
-        let trait_name = get_conv_trait_name(&base_name);
+        let (trait_name, mod_name) = get_conv_trait_name(&base_name);
         let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
         let trait_recurse = fields.named.iter().map(|f| {
             let name = f.ident.clone().unwrap();
             let name_ty = format_ident!("{}_type", name);
             quote_spanned! { f.span() => 
                 #[inline(always)]
-                fn #name(&self) -> #trait_name::#name_ty { self.#name.conv() }
+                fn #name(&self) -> #mod_name::#name_ty { self.#name.conv() }
             }
         });
         let from_recurse = fields.named.iter().map(|f| {
             let name = f.ident.clone().unwrap();
             quote_spanned! { f.span() => 
-                #name: lotrc_wrappers::OrderedData::conv(&#trait_name::ConvTrait::#name(self))
+                #name: lotrc_wrappers::OrderedData::conv(&#trait_name::#name(self))
             }
         });
         quote! {
             #make_endian_impl
-            impl #impl_generics #trait_name::ConvTrait for #name #ty_generics #where_clause {
+            impl #impl_generics #trait_name for #name #ty_generics #where_clause {
                 #(#trait_recurse)*
             }
             #make_endian_impl

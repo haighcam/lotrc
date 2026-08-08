@@ -1,7 +1,7 @@
 use clap::Parser;
 //use lotrc::types::{get_str, hash_string};
 use std::path::PathBuf;
-use lotrc::level::DumpLevelPc;
+use lotrc::level::DumpLevelLE;
 use lotrc::types::{RefFromData, OrderedData, DumpData};
 
 #[derive(Parser, Debug)]
@@ -18,7 +18,7 @@ fn print_info<T>() {
     );
 }
 
-fn get_string(crc: &u32, level: &lotrc::level::LevelRefPc) -> String {
+fn get_string(crc: &u32, level: &lotrc::level::LevelRefLE) -> String {
     if let Ok(i) = level.pak.strings.strings.binary_search_by_key(crc, |s| lotrc::types::hash_string(s.as_bytes(), None) ) {
         level.pak.strings.strings[i].to_string()
     } else if let Ok(i) = level.bin.strings.strings.binary_search_by_key(crc, |s| lotrc::types::hash_string(s.as_bytes(), None) ) {
@@ -69,7 +69,7 @@ fn main() {
 
     let t = std::time::Instant::now();
     let mut level_compressed_data = lotrc::level::LevelCompressedData::default();
-    let level = lotrc::level::LevelRefPc::from_data(&level_data, &mut level_compressed_data).unwrap();
+    let level = lotrc::level::LevelRefLE::from_data(&level_data, &mut level_compressed_data).unwrap();
     println!("level parsed in {:?}", t.elapsed());
     if false {
         let mut offs = vec![0usize; level.pak.animation_data.len()];
@@ -85,7 +85,7 @@ fn main() {
                     (i, old_off)
                 }).collect::<Vec<_>>()
             ).collect::<Vec<_>>();
-        use lotrc::level::pak::animation::DumpAnimationPc;
+        use lotrc::level::pak::animation::DumpAnimationLE;
         for ((key, animation), offs) in level.pak.animations.animations.iter().zip(anim_off_map) {
             println!("testing key, {}", key);
             println!("offsets {:?}", offs);
@@ -93,14 +93,14 @@ fn main() {
             let mut data = lotrc::types::AlignedBuf::with_capacity(animation.size());
             println!("size {}, {}", data.len(), animation.info.size);
             let mut dst = lotrc::types::DumpSlice::from(&mut data[..]);
-            let mut info = lotrc::level::pak::animation::AnimationInfoPc::default();
+            let mut info = lotrc::level::pak::animation::AnimationInfoLE::default();
             animation.dump_into(&mut dst, &mut info).expect("dump animation");
             println!("curr offset {}", dst.offset);
             println!("{:#?}, {:#?}", info, animation.info);
             info.offset = animation.info.offset;
             assert!(info == *animation.info);
             assert!((data.len() as u32) == animation.info.size.to_native());
-            let anim_alt = lotrc::level::pak::animation::AnimationRefPc::from_data(&data[..], &info).expect("load animation");
+            let anim_alt = lotrc::level::pak::animation::AnimationRefLE::from_data(&data[..], &info).expect("load animation");
             if let Some((i, off)) = offs.first().cloned() {
                 let buf = level.pak.animation_data.get(i).unwrap().data_decomp.as_ref();
                 let old_data = &buf[off..off + info.size.to_native() as usize];
@@ -147,17 +147,17 @@ fn main() {
         println!("animations ok");
     }
     if false {
-        use lotrc::level::pak::animation::DumpAnimationsPc;
+        use lotrc::level::pak::animation::DumpAnimationsLE;
         let mut counts = lotrc::level::pak::block1::infos::InfoCounts::default();
         level.pak.animations.info_counts(&mut counts);
-        let mut info_data = lotrc::types::AlignedBuf::with_capacity(counts.size_pc(0));
+        let mut info_data = lotrc::types::AlignedBuf::with_capacity(counts.size_le(0));
         let mut dst = lotrc::types::DumpSlice::from(&mut info_data[..]);
-        let mut offsets: Vec<lotrc::types::u32Pc> = vec![0.into(); counts.offsets];
-        let mut infos = lotrc::level::pak::block1::infos::DumpInfosPc::from_data(&mut dst, &counts, &mut offsets).expect("infos dump");
+        let mut offsets: Vec<lotrc::types::u32LE> = vec![0.into(); counts.offsets];
+        let mut infos = lotrc::level::pak::block1::infos::DumpInfosLE::from_data(&mut dst, &counts, &mut offsets).expect("infos dump");
 
         let datas = level.pak.animations.dump(&mut infos).expect("anims dump");
-        let mut header = lotrc::level::pak::PakHeaderPc::default();
-        let dumped_infos = lotrc::level::pak::block1::infos::InfosRefPc::from_data(&info_data[..], &header).expect("dumped infos");
+        let mut header = lotrc::level::pak::PakHeaderLE::default();
+        let dumped_infos = lotrc::level::pak::block1::infos::InfosRefLE::from_data(&info_data[..], &header).expect("dumped infos");
         
         println!("dumped anims");
         for (info, dumped_info) in level.pak.block1.infos.animations.iter().zip(dumped_infos.animations) {
@@ -185,75 +185,73 @@ fn main() {
         println!("dumped animation data ok");
     }
     if false {
-        use lotrc::level::pak::block1::objs::DumpObjsPc;
+        use lotrc::level::pak::block1::objs::DumpObjsLE;
         let (models, terrain, occluder) = level.pak.block1.objs.group_models(&level.pak.block1.sub_blocks.level);
         for model in models {
-            use lotrc::level::model::DumpModelPc;
-            use lotrc::types::GetNative;
+            use lotrc::level::model::DumpModelLE;
             let mut counts = lotrc::level::pak::block1::infos::InfoCounts::default();
             let mut size = model.add_size(0, &mut counts);
             println!("estimated model size {}", size);
-            size += counts.size_pc(0);
+            size += counts.size_le(0);
             let mut data = lotrc::types::AlignedBuf::with_capacity(size);
             let mut dst = lotrc::types::DumpSlice::from(&mut data[..]);
-            let mut offsets: Vec<lotrc::types::u32Pc> = vec![0.into(); counts.offsets];
-            let mut infos = lotrc::level::pak::block1::infos::DumpInfosPc::from_data(&mut dst, &counts, &mut offsets).expect("infos dump");
-            let mut header = lotrc::level::pak::PakHeaderPc::default();
+            let mut offsets: Vec<lotrc::types::u32LE> = vec![0.into(); counts.offsets];
+            let mut infos = lotrc::level::pak::block1::infos::DumpInfosLE::from_data(&mut dst, &counts, &mut offsets).expect("infos dump");
+            let mut header = lotrc::level::pak::PakHeaderLE::default();
             infos.update_header(&mut header);
             model.dump_into(&mut dst, &mut infos).expect("model dump");
             let model_data = infos.model_data.iter().filter_map(|v| {
                 if let lotrc::types::CompressedData::Ref(val) = v.data {
-                    Some((v.key.get(), val))
+                    Some((v.key.to_native(), val))
                 } else {
                     None
                 }
             }).collect();
-            let dumped_infos = lotrc::level::pak::block1::infos::InfosRefPc::from_data(&data[..], &header).expect("dumped infos");
+            let dumped_infos = lotrc::level::pak::block1::infos::InfosRefLE::from_data(&data[..], &header).expect("dumped infos");
             println!("dumped infos model {}", dumped_infos.models.len());
-            let dumped_model = lotrc::level::model::ModelRefPc::from_data(&data[..], &dumped_infos.models[0], &model_data).expect("dumped model");
+            let dumped_model = lotrc::level::model::ModelRefLE::from_data(&data[..], &dumped_infos.models[0], &model_data).expect("dumped model");
         }
         println!("dumping terrain");
         for model in terrain {
-            use lotrc::level::model::DumpModelPc;
-            use lotrc::types::GetNative;
+            use lotrc::level::model::DumpModelLE;
             let mut counts = lotrc::level::pak::block1::infos::InfoCounts::default();
             let mut size = model.add_terrain_size(4, &mut counts);
             println!("estimated terrain size {} {}", model.key(), size);
-            size += counts.size_pc(0);
+            size += counts.size_le(0);
             let mut data = lotrc::types::AlignedBuf::with_capacity(size);
             let mut dst = lotrc::types::DumpSlice::from(&mut data[..]);
-            lotrc::types::i32Pc::from(-1).dump_into(&mut dst).unwrap();
-            let mut offsets: Vec<lotrc::types::u32Pc> = vec![0.into(); counts.offsets];
-            let mut infos = lotrc::level::pak::block1::infos::DumpInfosPc::from_data(&mut dst, &counts, &mut offsets).expect("infos dump");
-            let mut header = lotrc::level::pak::PakHeaderPc::default();
+            lotrc::types::i32LE::from(-1).dump_into(&mut dst).unwrap();
+            let mut offsets: Vec<lotrc::types::u32LE> = vec![0.into(); counts.offsets];
+            let mut infos = lotrc::level::pak::block1::infos::DumpInfosLE::from_data(&mut dst, &counts, &mut offsets).expect("infos dump");
+            let mut header = lotrc::level::pak::PakHeaderLE::default();
             infos.update_header(&mut header);
             //println!("{:#?}", model.info());
             model.dump_terrain_into(&mut dst, &mut infos, 0).expect("model dump");
             let model_data = infos.model_data.iter().filter_map(|v| {
                 if let lotrc::types::CompressedData::Ref(val) = v.data {
-                    Some((v.key.get(), val))
+                    Some((v.key.to_native(), val))
                 } else {
                     None
                 }
             }).collect();
-            let dumped_infos = lotrc::level::pak::block1::infos::InfosRefPc::from_data(&data[..], &header).expect("dumped infos");
+            let dumped_infos = lotrc::level::pak::block1::infos::InfosRefLE::from_data(&data[..], &header).expect("dumped infos");
             println!("dumped infos model {}", dumped_infos.models.len());
-            let dumped_model = lotrc::level::model::ModelRefPc::from_data(&data[..], &dumped_infos.models[0], &model_data).expect("dumped model");
+            let dumped_model = lotrc::level::model::ModelRefLE::from_data(&data[..], &dumped_infos.models[0], &model_data).expect("dumped model");
         }
     }
     if false {
         if let Some(crowd) = &level.pak.block2.sub_blocks.crowd {
             println!("Level has crowd");
-            use lotrc::level::pak::block2::DumpCrowdPc;
+            use lotrc::level::pak::block2::DumpCrowdLE;
             let mut data = lotrc::types::AlignedBuf::with_capacity(crowd.size());
             let mut dst = lotrc::types::DumpSlice::from(&mut data[..]);
             crowd.dump_into(&mut dst).unwrap();
             println!("AAAAA {:?}", crowd.header);
-            let crowd_alt = lotrc::level::pak::block2::CrowdRefPc::from_data(&data[..]).unwrap();
+            let crowd_alt = lotrc::level::pak::block2::CrowdRefLE::from_data(&data[..]).unwrap();
         }
     }
     if true {
-        let data = level.dump(lotrc::re_export::Compression::fast()).expect("dump");
+        let data = level.dump(lotrc::re_export::Compression::fast(), lotrc::level::Version::Pc).expect("dump");
         {
             use std::fs::File;
             use std::io::Write;
@@ -267,9 +265,9 @@ fn main() {
             out.write_all(&data.bin[..]).unwrap();
         }
         let mut compressed_data_dump = lotrc::level::LevelCompressedData::default();
-        let dumped_header = lotrc::level::pak::PakHeaderPc::from_data(&data.pak).unwrap();
+        let dumped_header = lotrc::level::pak::PakHeaderLE::from_data(&data.pak).unwrap();
         println!("original: {:#?}\ndumped: {:#?}", level.pak.header, dumped_header);
-        if let Some(dumped_level) = lotrc::level::LevelRefPc::from_data(&data, &mut compressed_data_dump).ok() {
+        if let Some(dumped_level) = lotrc::level::LevelRefLE::from_data(&data, &mut compressed_data_dump).ok() {
             println!("dumped level parsed");
 
             // validate offsets

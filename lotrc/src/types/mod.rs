@@ -10,6 +10,32 @@ use enum_dispatch::enum_dispatch;
 pub use lotrc_wrappers::*;
 pub mod sub_blocks;
 
+pub trait EndianTypes {
+    #[allow(non_camel_case_types)]
+    type u16: std::fmt::Debug + RefFromData + DumpData + OrderedData<u16> + Copy + Default + PartialEq + From<u16> + Into<u16>;
+    #[allow(non_camel_case_types)]
+    type u32: std::fmt::Debug + RefFromData + DumpData + OrderedData<u32> + Copy + Default + PartialEq;
+    #[allow(non_camel_case_types)]
+    type u64: std::fmt::Debug + RefFromData + DumpData + OrderedData<u64> + Copy + Default + PartialEq;
+    #[allow(non_camel_case_types)]
+    type i16: std::fmt::Debug + RefFromData + DumpData + OrderedData<i16> + Copy + Default + PartialEq;
+    #[allow(non_camel_case_types)]
+    type i32: std::fmt::Debug + RefFromData + DumpData + OrderedData<i32> + Copy + Default + PartialEq;
+    #[allow(non_camel_case_types)]
+    type f32: std::fmt::Debug + RefFromData + DumpData + OrderedData<f32> + Copy + Default + PartialEq;
+
+    // should be unaligned
+    type U16: std::fmt::Debug + RefFromData + DumpData + OrderedData<u16> + Copy + Default + PartialEq;
+    type U32: std::fmt::Debug + RefFromData + DumpData + OrderedData<u32> + Copy + Default + PartialEq;
+    type I32: std::fmt::Debug + RefFromData + DumpData + OrderedData<i32> + Copy + Default + PartialEq;
+
+    type Crc: std::fmt::Debug + PartialEq + RefFromData + DumpData + CrcTypeTrait + OrderedData<Crc>;
+    type Vector2: std::fmt::Debug + PartialEq + RefFromData + DumpData + Vector2TypeTrait;
+    type Vector3: std::fmt::Debug + PartialEq + RefFromData + DumpData + Vector3TypeTrait;
+    type Vector4: std::fmt::Debug + PartialEq + RefFromData + DumpData + Vector4TypeTrait;
+    type Matrix4x4: std::fmt::Debug + PartialEq + RefFromData + DumpData + Matrix4x4TypeTrait;
+}
+
 pub type AlignmentHelper = u32;
 
 const _: () = assert!(std::mem::align_of::<AlignmentHelper>() == 4);
@@ -102,12 +128,12 @@ pub trait DumpData {
     fn write_from(&mut self, val: &Self) -> Result<()>;
     fn dump_into(&self, dst: &mut DumpSlice) -> Result<()>;
     fn dump(&self) -> Result<Vec<u8>> {
-        let mut data = vec![0u8; self.size()];
+        let mut data = vec![0u8; self.size_of_val()];
         let mut slice = (&mut data).into();
         self.dump_into(&mut slice)?;
         Ok(data)
     }
-    fn size(&self) -> usize;
+    fn size_of_val(&self) -> usize;
 }
 
 impl<T: Sized + KnownLayout + Immutable + IntoBytes + FromBytes> DumpData for T {
@@ -121,7 +147,7 @@ impl<T: Sized + KnownLayout + Immutable + IntoBytes + FromBytes> DumpData for T 
         dst.split(std::mem::size_of::<T>())?;
         Ok(())
     }
-    fn size(&self) -> usize {
+    fn size_of_val(&self) -> usize {
         std::mem::size_of::<T>()
     }
 }
@@ -137,7 +163,7 @@ impl<T: Sized + KnownLayout + Immutable + IntoBytes + FromBytes> DumpData for [T
         dst.split(std::mem::size_of_val(self))?;
         Ok(())
     }
-    fn size(&self) -> usize {
+    fn size_of_val(&self) -> usize {
         std::mem::size_of_val(self)
     }
 }
@@ -191,6 +217,23 @@ pub struct Crc {
 }
 #[make_endian]
 pub type Crc_XE_ = u32_XE_;
+
+pub trait CrcTypeTrait {
+    fn get(&self) -> u32;
+}
+impl CrcTypeTrait for Crc {
+    #[inline(always)]
+    fn get(&self) -> u32 { 
+        self.val
+    }
+}
+#[make_endian]
+impl CrcTypeTrait for Crc_XE_ {
+    #[inline(always)]
+    fn get(&self) -> u32 { 
+        self.to_native()
+    }
+}
 
 impl Crc {
     pub const fn new(val: u32) -> Self {
@@ -545,6 +588,36 @@ pub const fn hash_string(string: &[u8], mask: Option<u32>) -> u32 {
     !h
 }
 
+#[derive(Default)]
+#[repr(transparent)]
+pub struct StringsRef<'a> {
+    pub strings: slice<string<'a>>
+}
+
+impl<'a> StringsRef<'a> {
+    pub fn from_data<T: EndianTypes>(src: &'a [u8], num: usize) -> Result<Self> {
+        let mut offset = 0;
+        let mut strings = Vec::with_capacity(num);
+        for i in 0..num {
+            let k = T::U32::from_data(&src[offset..]).context("size")?;
+            offset += 4;
+            strings.push(
+                std::str::from_utf8(&src[offset..offset + k.conv() as usize])
+                    .with_context(|| format!("string {} of size {}", i, k.conv()))?
+                    .into(),
+            );
+            offset += k.conv() as usize;
+        }
+        Ok(Self {
+            strings: strings.into_boxed_slice().into(),
+        })
+    }
+    pub fn strings(&self) -> impl IntoIterator<Item=&str> {
+        self.strings.iter().map(|x| x.as_ref())
+    }
+
+}
+
 #[make_endian]
 #[derive(Default)]
 #[repr(transparent)]
@@ -628,141 +701,10 @@ impl DumpStrings_XE_ for Strings {
     }
 }
 
-#[derive_ordered_data]
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct StringKeysHeader_XE_ {
-    pub num_a: u16_XE_,
-    pub num_b: u16_XE_,
-    pub z2: u32_XE_,
-    pub z3: u32_XE_,
-    pub z4: u32_XE_,
-    pub z5: u32_XE_,
-}
-
-#[derive_ordered_data]
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct StringKeysVal_XE_ {
-    pub key: Crc_XE_,
-    pub offset: u32_XE_,
-}
-
-#[make_endian]
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "ffi", repr(C))]
-pub struct StringKeysRef_XE_<'a> {
-    pub header: &'a StringKeysHeader_XE_,
-    pub vals: ref_slice<'a, StringKeysVal_XE_>,
-    pub pad: ref_slice<'a, u32_XE_>,
-}
-
-#[make_endian]
-impl Default for StringKeysRef_XE_<'_> {
-    fn default() -> Self {
-        Self {
-            header: get_default_ref(),
-            vals: ref_slice::default(),
-            pad: ref_slice::default()
-        }
-    }
-}
-
 const INIT_SIZE: usize = 1024;
 static INIT_BYTES: [u8; INIT_SIZE] = [0u8; INIT_SIZE];
 pub fn get_default_ref<'a, T: Sized + RefFromData>() -> &'a T {
     &unsafe { (&INIT_BYTES[..]).align_to::<T>() }.1[0]
-}
-
-#[make_endian]
-impl<'a> StringKeysRef_XE_<'a> {
-    pub fn from_data(src: &'a [u8]) -> Result<Self> {
-        let mut offset = 0;
-        let header = StringKeysHeader_XE_::from_data(&src[offset..]).context("header")?;
-        assert!(header.num_a == header.num_b, "Seems to be true");
-        offset += header.size();
-        let vals = StringKeysVal_XE_::slice_from_data(&src[offset..], header.num_a.conv())
-            .context("vals")?;
-        offset += vals.size();
-        let pad = u32_XE_::slice_from_data(&src[offset..], vals.len()).context("pad")?;
-        Ok(Self { header, vals: vals.into(), pad: pad.into() })
-    }
-}
-
-#[derive(Debug, Clone)]
-#[repr(transparent)]
-pub struct StringKeys {
-    pub vals: Vec<Crc>,
-}
-
-#[make_endian]
-impl From<&StringKeysRef_XE_<'_>> for StringKeys {
-    fn from(val: &StringKeysRef_XE_) -> Self {
-        Self {
-            vals: val.vals.iter().map(|x| x.key.conv()).collect(),
-        }
-    }
-}
-
-#[make_endian]
-pub trait DumpStringKeys_XE_ {
-    fn write_keys<'a>(&self, keys: impl Iterator<Item = &'a mut Crc_XE_>);
-    fn num(&self) -> usize;
-    fn size(&self) -> usize {
-        StringKeysHeader_XE_::size_of()
-            + self.num() * (u32_XE_::size_of() + StringKeysVal_XE_::size_of())
-    }
-    fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
-        let num = self.num();
-        let header = StringKeysHeader_XE_::mut_from_data(dst).context("header")?;
-        let vals = StringKeysVal_XE_::mut_slice_from_data(dst, num).context("vals")?;
-        u32_XE_::mut_slice_from_data(dst, num).context("pad")?;
-
-        header.num_a = num.conv();
-        header.num_b = num.conv();
-        let mut off = std::mem::size_of::<StringKeysHeader_XE_>() + num * std::mem::size_of::<StringKeysVal_XE_>();
-        self.write_keys(vals.iter_mut().map(|x| &mut x.key));
-        for val in vals {
-            val.offset = off.conv();
-            off += size_of::<u32_XE_>();
-        }
-        Ok(())
-    }
-}
-
-#[make_endian]
-impl DumpStringKeys_XE_ for StringKeysRef_XE_<'_> {
-    fn write_keys<'a>(&self, keys: impl Iterator<Item = &'a mut Crc_XE_>) {
-        for (key, val) in keys.zip(&self.vals[..]) {
-            *key = val.key;
-        }
-    }
-    fn num(&self) -> usize {
-        self.vals.len()
-    }
-}
-
-#[make_endian]
-impl DumpStringKeys_XE_ for [u32] {
-    fn write_keys<'a>(&self, keys: impl Iterator<Item = &'a mut Crc_XE_>) {
-        for (key, val) in keys.zip(self.iter()) {
-            *key = val.conv();
-        }
-    }
-    fn num(&self) -> usize {
-        self.len()
-    }
-    
-}
-
-#[make_endian]
-impl DumpStringKeys_XE_ for StringKeys {
-    fn write_keys<'a>(&self, keys: impl Iterator<Item = &'a mut Crc_XE_>) {
-        for (key, val) in keys.zip(&self.vals) {
-            *key = val.conv();
-        }
-    }
-    fn num(&self) -> usize {
-        self.vals.len()
-    }
 }
 
 #[cfg_attr(feature = "ffi", repr(C))]

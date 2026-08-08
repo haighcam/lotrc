@@ -1,7 +1,8 @@
 use crate::types::{
     get_default_ref, align_offset, get_str_debug, hash_string, Crc, DumpData, DumpSlice, Matrix4x4, RefFromData,
-    Vector2, Vector3, Vector4, Weight, OrderedData, ref_slice, slice, string 
+    Vector2, Vector3, Vector4, Weight, OrderedData, ref_slice, slice, string, EndianTypes 
 };
+use crate::level::LevelPc;
 #[make_endian]
 use crate::types::{
     Crc_XE_, Matrix4x4_XE_, Vector2_XE_, Vector3_XE_, Vector4_XE_, Weight_XE_, f32_XE_, i32_XE_, u32_XE_, u16_XE_, U32_XE_, U16_XE_ 
@@ -36,12 +37,208 @@ pub mod keys {
     pub const MATRIXLIST_KEY: u32 = hash_string("MatrixList".as_bytes(), None);
 }
 
-#[make_endian]
-#[derive(Debug, Default, Clone, zerocopy::Immutable, zerocopy::FromBytes, zerocopy::IntoBytes, zerocopy::KnownLayout, zerocopy::Unaligned)]
+pub trait GameObjTypes: EndianTypes {
+    type List: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + ListTypeTrait; 
+    type Weight: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + crate::types::WeightTypeTrait;
+
+    type GameObjsHeader: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + GameObjsHeaderTypeTrait;
+    type TypeHeader: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + TypeHeaderTypeTrait;
+    type TypeField: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + TypeFieldTypeTrait;
+    type ObjHeader: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + ObjHeaderTypeTrait;
+}
+
+impl GameObjTypes for LevelPc {
+    type List = ListLE; 
+    type Weight = crate::types::WeightLE;
+
+    type GameObjsHeader = GameObjsHeaderLE;
+    type TypeHeader = TypeHeaderLE;
+    type TypeField = TypeFieldLE;
+    type ObjHeader = ObjHeaderLE;
+}
+
+use u16 as U16;
+#[derive_ordered_data]
+#[derive(Debug, Default, Clone, PartialEq)]
 #[repr(C)]
-struct List_XE_ {
+pub struct List_XE_ {
     num: U16_XE_,
     offset: U16_XE_
+}
+
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "ffi", repr(C, u8))]
+pub enum BaseTypeRef<'a, T: GameObjTypes> {
+    Crc(&'a T::Crc),
+    GUID(&'a T::u32),
+    Color(&'a T::u32),
+    Vector2(&'a T::Vector2),
+    Vector3(&'a T::Vector3),
+    Vector4(&'a T::Vector4),
+    Matrix4x4(&'a T::Matrix4x4),
+    Float(&'a T::f32),
+    Int(&'a T::i32),
+    Bool(&'a T::u32),
+    String(string<'a>),
+    StringList(slice<string<'a>>),
+    ObjectList(ref_slice<'a, T::U32>),
+    NodeList(ref_slice<'a, T::Vector4>),
+    IntList(ref_slice<'a, T::i32>),
+    CrcList(ref_slice<'a, T::U32>),
+    WeightList(ref_slice<'a, T::Weight>),
+    MatrixList(ref_slice<'a, T::Matrix4x4>),
+}
+
+impl <'a, T: GameObjTypes> BaseTypeRef<'a, T> {
+    pub fn from_data(src: &'a [u8], kind: u32) -> Result<Self> {
+        Ok(match kind {
+            keys::CRC_KEY => {
+                Self::Crc(T::Crc::from_data(src).context("val")?.into())
+            }
+            keys::GUID_KEY => {
+                Self::GUID(T::u32::from_data(src).context("val")?.into())
+            }
+            keys::COLOR_KEY => {
+                Self::Color(T::u32::from_data(src).context("val")?.into())
+            }
+            keys::VECTOR2_KEY => Self::Vector2(
+                T::Vector2::from_data(src)
+                    .context("val")?
+                    .into(),
+            ),
+            keys::VECTOR3_KEY => Self::Vector3(
+                T::Vector3::from_data(src)
+                    .context("val")?
+                    .into(),
+            ),
+            keys::VECTOR4_KEY => Self::Vector4(
+                T::Vector4::from_data(src)
+                    .context("val")?
+                    .into(),
+            ),
+            keys::MATRIX4X4_KEY => Self::Matrix4x4(
+                T::Matrix4x4::from_data(src)
+                    .context("val")?
+                    .into(),
+            ),
+            keys::FLOAT_KEY => {
+                Self::Float(T::f32::from_data(src).context("val")?.into())
+            }
+            keys::INT_KEY => {
+                Self::Int(T::i32::from_data(src).context("val")?.into())
+            }
+            keys::BOOL_KEY => {
+                Self::Bool(T::u32::from_data(src).context("val")?.into())
+            }
+            keys::STRING_KEY => Self::String({
+                let val = T::List::from_data(src).context("val")?;
+                let off = val.offset() as usize + val.size_of_val();
+                core::str::from_utf8(&src[off..off + val.num() as usize])?
+                    .into()
+            }),
+            keys::STRINGLIST_KEY => Self::StringList({
+                let val = T::List::from_data(src).context("val")?;
+                let vals = T::List::slice_from_data(
+                    &src[val.offset() as usize + val.size_of_val()..],
+                    val.num() as usize,
+                )
+                .context("list info")?;
+                vals.iter()
+                    .enumerate()
+                    .map(|(i, v)| {
+                        Ok({
+                            let off =
+                                (val.offset() + v.offset()) as usize + val.size_of_val() * (i + 2);
+                            let s_data = &src[off..off + v.num() as usize];
+                            let s = std::str::from_utf8(s_data)
+                                .with_context(|| format!("string {}, {:?}", i, s_data))?;
+                            string::from(s)
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()?
+                    .into_boxed_slice()
+                    .into()
+            }),
+            keys::OBJECTLIST_KEY => Self::ObjectList({
+                let val = T::List::from_data(src).context("val")?;
+                T::U32::slice_from_data(
+                    &src[val.offset() as usize + val.size_of_val()..],
+                    val.num() as usize,
+                )
+                .context("vals")?
+                .into()
+            }),
+            keys::NODELIST_KEY => Self::NodeList({
+                let val = T::List::from_data(src).context("val")?;
+                T::Vector4::slice_from_data(
+                    &src[val.offset() as usize + val.size_of_val()..],
+                    val.num() as usize,
+                )
+                .context("vals")?
+                .into()
+            }),
+            keys::INTLIST_KEY => Self::IntList({
+                let val = T::List::from_data(src).context("val")?;
+                T::i32::slice_from_data(
+                    &src[val.offset() as usize + val.size_of_val()..],
+                    val.num() as usize,
+                )
+                .context("vals")?
+                .into()
+            }),
+            keys::CRCLIST_KEY => Self::CrcList({
+                let val = T::List::from_data(src).context("val")?;
+                T::U32::slice_from_data(
+                    &src[val.offset() as usize + val.size_of_val()..],
+                    val.num() as usize,
+                )
+                .context("vals")?
+                .into()
+            }),
+            keys::WEIGHTLIST_KEY => Self::WeightList({
+                let val = T::List::from_data(src).context("val")?;
+                T::Weight::slice_from_data(
+                    &src[val.offset() as usize + val.size_of_val()..],
+                    val.num() as usize,
+                )
+                .context("vals")?
+                .into()
+            }),
+            keys::MATRIXLIST_KEY => Self::MatrixList({
+                let val = T::List::from_data(src).context("val")?;
+                T::Matrix4x4::slice_from_data(
+                    &src[val.offset() as usize + val.size_of_val()..],
+                    val.num() as usize,
+                )
+                .context("vals")?
+                .into()
+            }),
+            _ => return Err(anyhow!("Unkown Type {:?}", kind)),
+        })
+    }
+    pub fn size(kind: u32) -> usize {
+        match kind {
+            keys::CRC_KEY => T::u32::size_of(),
+            keys::GUID_KEY => T::u32::size_of(),
+            keys::COLOR_KEY => T::u32::size_of(),
+            keys::VECTOR2_KEY => T::Vector2::size_of(),
+            keys::VECTOR3_KEY => T::Vector3::size_of(),
+            keys::VECTOR4_KEY => T::Vector4::size_of(),
+            keys::MATRIX4X4_KEY => T::Matrix4x4::size_of(),
+            keys::FLOAT_KEY => T::f32::size_of(),
+            keys::INT_KEY => T::u32::size_of(),
+            keys::BOOL_KEY => T::u32::size_of(),
+            keys::STRING_KEY => T::List::size_of(),
+            keys::STRINGLIST_KEY => T::List::size_of(),
+            keys::OBJECTLIST_KEY => T::List::size_of(),
+            keys::NODELIST_KEY => T::List::size_of(),
+            keys::INTLIST_KEY => T::List::size_of(),
+            keys::CRCLIST_KEY => T::List::size_of(),
+            keys::WEIGHTLIST_KEY => T::List::size_of(),
+            keys::MATRIXLIST_KEY => T::List::size_of(),
+            _ => 0,
+        }
+    }
 }
 
 #[make_endian]
@@ -112,14 +309,14 @@ impl<'a> BaseTypeRef_XE_<'a> {
             }
             keys::STRING_KEY => Self::String({
                 let val = List_XE_::from_data(src).context("val")?;
-                let off = val.offset.get() as usize + val.size();
+                let off = val.offset.get() as usize + val.size_of_val();
                 core::str::from_utf8(&src[off..off + val.num.get() as usize])?
                     .into()
             }),
             keys::STRINGLIST_KEY => Self::StringList({
                 let val = List_XE_::from_data(src).context("val")?;
                 let vals = List_XE_::slice_from_data(
-                    &src[val.offset.get() as usize + val.size()..],
+                    &src[val.offset.get() as usize + val.size_of_val()..],
                     val.num.get() as usize,
                 )
                 .context("list info")?;
@@ -128,7 +325,7 @@ impl<'a> BaseTypeRef_XE_<'a> {
                     .map(|(i, v)| {
                         Ok({
                             let off =
-                                (val.offset.get() + v.offset.get()) as usize + val.size() * (i + 2);
+                                (val.offset.get() + v.offset.get()) as usize + val.size_of_val() * (i + 2);
                             let s_data = &src[off..off + v.num.get() as usize];
                             let s = std::str::from_utf8(s_data)
                                 .with_context(|| format!("string {}, {:?}", i, s_data))?;
@@ -142,7 +339,7 @@ impl<'a> BaseTypeRef_XE_<'a> {
             keys::OBJECTLIST_KEY => Self::ObjectList({
                 let val = List_XE_::from_data(src).context("val")?;
                 U32_XE_::slice_from_data(
-                    &src[val.offset.get() as usize + val.size()..],
+                    &src[val.offset.get() as usize + val.size_of_val()..],
                     val.num.get() as usize,
                 )
                 .context("vals")?
@@ -151,7 +348,7 @@ impl<'a> BaseTypeRef_XE_<'a> {
             keys::NODELIST_KEY => Self::NodeList({
                 let val = List_XE_::from_data(src).context("val")?;
                 Vector4_XE_::slice_from_data(
-                    &src[val.offset.get() as usize + val.size()..],
+                    &src[val.offset.get() as usize + val.size_of_val()..],
                     val.num.get() as usize,
                 )
                 .context("vals")?
@@ -160,7 +357,7 @@ impl<'a> BaseTypeRef_XE_<'a> {
             keys::INTLIST_KEY => Self::IntList({
                 let val = List_XE_::from_data(src).context("val")?;
                 i32_XE_::slice_from_data(
-                    &src[val.offset.get() as usize + val.size()..],
+                    &src[val.offset.get() as usize + val.size_of_val()..],
                     val.num.get() as usize,
                 )
                 .context("vals")?
@@ -169,7 +366,7 @@ impl<'a> BaseTypeRef_XE_<'a> {
             keys::CRCLIST_KEY => Self::CrcList({
                 let val = List_XE_::from_data(src).context("val")?;
                 U32_XE_::slice_from_data(
-                    &src[val.offset.get() as usize + val.size()..],
+                    &src[val.offset.get() as usize + val.size_of_val()..],
                     val.num.get() as usize,
                 )
                 .context("vals")?
@@ -178,7 +375,7 @@ impl<'a> BaseTypeRef_XE_<'a> {
             keys::WEIGHTLIST_KEY => Self::WeightList({
                 let val = List_XE_::from_data(src).context("val")?;
                 Weight_XE_::slice_from_data(
-                    &src[val.offset.get() as usize + val.size()..],
+                    &src[val.offset.get() as usize + val.size_of_val()..],
                     val.num.get() as usize,
                 )
                 .context("vals")?
@@ -187,7 +384,7 @@ impl<'a> BaseTypeRef_XE_<'a> {
             keys::MATRIXLIST_KEY => Self::MatrixList({
                 let val = List_XE_::from_data(src).context("val")?;
                 Matrix4x4_XE_::slice_from_data(
-                    &src[val.offset.get() as usize + val.size()..],
+                    &src[val.offset.get() as usize + val.size_of_val()..],
                     val.num.get() as usize,
                 )
                 .context("vals")?
@@ -486,12 +683,12 @@ impl DumpBaseTypeImpl_XE_ for BaseTypeRef_XE_<'_> {
                 }
                 s
             }
-            Self::ObjectList(vals) => vals.size(),
-            Self::NodeList(vals) => vals.size(),
-            Self::IntList(vals) => vals.size(),
-            Self::CrcList(vals) => vals.size(),
-            Self::WeightList(vals) => vals.size(),
-            Self::MatrixList(vals) => vals.size(),
+            Self::ObjectList(vals) => vals.size_of_val(),
+            Self::NodeList(vals) => vals.size_of_val(),
+            Self::IntList(vals) => vals.size_of_val(),
+            Self::CrcList(vals) => vals.size_of_val(),
+            Self::WeightList(vals) => vals.size_of_val(),
+            Self::MatrixList(vals) => vals.size_of_val(),
             _ => 0,
         }
     }
@@ -688,6 +885,25 @@ impl TypeFieldDump for TypeField {
     }
 }
 
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeRef<'a, T: GameObjTypes> {
+    pub header: &'a T::TypeHeader,
+    pub fields: ref_slice<'a, T::TypeField>,
+}
+
+impl<'a, T: GameObjTypes> TypeRef<'a, T> {
+    pub fn from_data(src: &'a [u8]) -> Result<Self> {
+        let header = T::TypeHeader::from_data(src).context("header")?;
+        let fields = T::TypeField::slice_from_data(&src[header.size_of_val()..], header.size() as usize)
+            .context("fields")?.into();
+        Ok(Self { header, fields })
+    }
+    fn size(&self) -> usize {
+        T::TypeHeader::size_of() + self.fields.len() * T::TypeField::size_of()
+    }
+}
+
 #[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(Debug, Clone, PartialEq)]
@@ -710,7 +926,7 @@ impl Default for TypeRef_XE_<'_> {
 impl<'a> TypeRef_XE_<'a> {
     pub fn from_data(src: &'a [u8]) -> Result<Self> {
         let header = TypeHeader_XE_::from_data(src).context("header")?;
-        let fields = TypeField_XE_::slice_from_data(&src[header.size()..], header.size.conv())
+        let fields = TypeField_XE_::slice_from_data(&src[header.size_of_val()..], header.size.conv())
             .context("fields")?.into();
         Ok(Self { header, fields })
     }
@@ -822,6 +1038,52 @@ pub struct ObjHeader_XE_ {
     pub z4: u32_XE_,
 }
 
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct ObjRef<'a, T: GameObjTypes> {
+    pub header: &'a T::ObjHeader,
+    pub fields: IndexMap<u32, BaseTypeRef<'a, T>>,
+}
+
+impl<'a, T: GameObjTypes> ObjRef<'a, T> {
+    pub fn from_data(src: &'a [u8], types: &IndexMap<u32, TypeRef<'a, T>>) -> Result<Self> {
+        let mut offset = 0;
+        let header = T::ObjHeader::from_data(&src[offset..]).context("header")?;
+        offset += header.size_of_val();
+        let ts = &types
+            .get(&header.key())
+            .ok_or(anyhow!("Missing Key {:?}", header.key()))?
+            .fields;
+        let mut fields = IndexMap::with_capacity(ts.len());
+        for t in ts.iter() {
+            fields.insert(
+                t.key().get(),
+                BaseTypeRef::<T>::from_data(&src[offset + t.offset() as usize..], t.kind().get())
+                    .with_context(|| {
+                        format!(
+                            "{}field {}",
+                            if let Some(BaseTypeRef::GUID(o)) =
+                                fields.get(&hash_string(b"guid", None))
+                            {
+                                format!("guid {}, ", OrderedData::<u32>::conv(*o))
+                            } else {
+                                String::new()
+                            },
+                            get_str_debug(&t.key().get())
+                        )
+                    })?,
+            );
+        }
+        Ok(Self {
+            header: header.into(),
+            fields: fields.into(),
+        })
+    }
+    pub fn size(&self) -> usize {
+        self.header.size_of_val() + self.header.size() as usize
+    }
+}
+
 #[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
@@ -845,7 +1107,7 @@ impl<'a> ObjRef_XE_<'a> {
     pub fn from_data(src: &'a [u8], types: &IndexMap<u32, TypeRef_XE_<'_>>) -> Result<Self> {
         let mut offset = 0;
         let header = ObjHeader_XE_::from_data(&src[offset..]).context("header")?;
-        offset += header.size();
+        offset += header.size_of_val();
         let ts = &types
             .get(&header.key.to_native())
             .ok_or(anyhow!("Missing Key {:?}", header.key.to_native()))?
@@ -876,7 +1138,7 @@ impl<'a> ObjRef_XE_<'a> {
         })
     }
     pub fn size(&self) -> usize {
-        self.header.size() + self.header.size.to_native() as usize
+        self.header.size_of_val() + self.header.size.to_native() as usize
     }
 }
 
@@ -1009,6 +1271,58 @@ impl DumpObjImpl_XE_ for Obj {
     }
     fn fields(&self) -> impl Iterator<Item=&impl DumpBaseType_XE_> {
         self.fields.values()
+    }
+}
+
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct GameObjsRef<'a, T: GameObjTypes> {
+    pub header: &'a T::GameObjsHeader,
+    pub types: IndexMap<u32, TypeRef<'a, T>>,
+    pub objs: IndexMap<u32, ObjRef<'a, T>>
+}
+
+impl<T: GameObjTypes> Default for GameObjsRef<'_, T> {
+    fn default() -> Self {
+        Self {
+            header: get_default_ref(),
+            types: IndexMap::default().into(),
+            objs: IndexMap::default().into()
+        }
+    }
+}
+
+impl<'a, T: GameObjTypes> GameObjsRef<'a, T> {
+    pub fn from_data(src: &'a [u8]) -> Result<Self> {
+        let header = T::GameObjsHeader::from_data(src).context("header")?;
+        if header.const_() != 1296123652 {
+            log::error!("Invalid gameobj block");
+        }
+        let mut offset = header.types_offset() as usize;
+        let mut types = IndexMap::with_capacity(header.types_num() as usize);
+        for i in 0..header.types_num() {
+            let t = TypeRef::<T>::from_data(&src[offset..]).with_context(|| format!("ty {}", i))?;
+            offset += t.size();
+            types.insert(t.header.key().get(), t);
+        }
+
+        offset = header.obj_offset() as usize;
+        let mut objs = IndexMap::with_capacity(header.obj_num() as usize);
+        for i in 0..header.obj_num() {
+            let o =
+                ObjRef::from_data(&src[offset..], &types).with_context(|| format!("obj {}", i))?;
+            offset += o.size();
+            if let BaseTypeRef::GUID(guid) = o
+                .fields
+                .get(&hash_string(b"guid", None))
+                .ok_or(anyhow!("obj missing guid"))?
+            {
+                objs.insert(guid.conv(), o);
+            } else {
+                return Err(anyhow!("obj incorrect guid type"));
+            }
+        }
+        Ok(Self { header, objs: objs.into(), types: types.into() })
     }
 }
 

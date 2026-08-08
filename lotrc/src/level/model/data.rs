@@ -1,9 +1,15 @@
 use anyhow::{anyhow, Context, Result};
 use indexmap::IndexMap;
 
-use crate::types::{CompressedData, Color, RefFromData, Vector2, Vector3, Vector4, OrderedData, DumpSlice, CompressedDataRef, DumpData, ref_slice};
-use crate::level::pak::block1::gameobjs::keys::{INT_KEY, COLOR_KEY, VECTOR2_KEY, VECTOR3_KEY, VECTOR4_KEY};
-use crate::level::pak::block1::infos::InfoCounts;
+use crate::types::{CompressedData, Color, RefFromData, Vector2, Vector3, Vector4, OrderedData, DumpSlice, CompressedDataRef, DumpData, ref_slice, EndianTypes};
+use crate::level::{
+    pak::block1::{
+        gameobjs::keys::{INT_KEY, COLOR_KEY, VECTOR2_KEY, VECTOR3_KEY, VECTOR4_KEY},
+        infos::InfoCounts
+    },
+    LevelPc
+};
+use super::ModelInfoTypeTrait;
 
 use lotrc_proc::{make_endian, derive_ordered_data};
 #[make_endian]
@@ -14,6 +20,20 @@ use crate::{
     },
     types::{Color_XE_, Vector2_XE_, Vector3_XE_, Vector4_XE_, u16_XE_, u32_XE_},
 };
+
+pub trait DataTypes: where Self: EndianTypes {
+    type BufferInfo:  std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + BufferInfoTypeTrait;
+    type VBuffInfo:  std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + VBuffInfoTypeTrait;
+    type IBuffInfo:  std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + IBuffInfoTypeTrait;
+    type ModelInfo:  std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + ModelInfoTypeTrait;
+}
+
+impl DataTypes for LevelPc {
+    type BufferInfo = BufferInfoLE;
+    type VBuffInfo = VBuffInfoLE;
+    type IBuffInfo = IBuffInfoLE;
+    type ModelInfo = ModelInfoLE;
+}
 
 #[make_endian]
 #[derive(Debug, Default, Clone)]
@@ -328,6 +348,13 @@ impl VertexUsage {
     }
 }
 
+pub enum VertexVal<T: DataTypes> {
+    Int(T::u32),
+    Color(T::u32),
+    Vector2(T::Vector2),
+    Vector3(T::Vector3),
+    Vector4(T::Vector4),
+}
 
 #[make_endian]
 pub enum VertexVal_XE_ {
@@ -614,6 +641,35 @@ fn parse_fmt(fmt1: u32, fmt2: u32) -> (usize, IndexMap<VertexUsage, VertexDataIn
     (s, vals)
 }
 
+
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct VertexBufferRef<'a, T: DataTypes> {
+    pub info: &'a T::VBuffInfo,
+    pub offsets: IndexMap<VertexUsage, VertexDataIndex>,
+    pub size: usize,
+    data: ref_slice<'a, u8>
+}
+
+impl<'a, T: DataTypes> VertexBufferRef<'a, T> {
+    pub fn from_data(src: &'a [u8], info: &'a T::VBuffInfo) -> Result<Self> {
+        let (size, offsets) = parse_fmt(info.fmt1(), info.fmt2());
+        Ok(Self {
+            info,
+            size,
+            offsets,
+            data: (&src[info.offset() as usize..(info.offset() + info.size()) as usize]).into(),
+        })
+    }
+    pub fn iter(&self) -> VertexDataIter<'_> {
+        VertexDataIter {
+            data: &self.data[..],
+            size: self.size,
+            offsets: &self.offsets
+        }
+    }
+}
+
 #[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
@@ -708,6 +764,32 @@ impl From<&VertexBufferRef_XE_<'_>> for VertexBuffer {
             info: val.info.conv(),
             vals,
         }
+    }
+}
+
+#[cfg_attr(feature = "ffi", repr(C, u8))]
+#[derive(PartialEq)]
+pub enum IndexBufferValsRef<'a, T: DataTypes> {
+    U16(ref_slice<'a, T::u16>),
+    U32(ref_slice<'a, T::u32>),
+}
+
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct IndexBufferRef<'a, T: DataTypes> {
+    pub info: &'a T::IBuffInfo,
+    pub vals: IndexBufferValsRef<'a, T>
+}
+
+impl<'a, T: DataTypes> IndexBufferRef<'a, T> {
+    pub fn from_data(src: &'a [u8], info: &'a T::IBuffInfo) -> Result<Self> {
+        Ok(Self {
+            info,
+            vals: match info.format() {
+                0x10 => IndexBufferValsRef::U16(T::u16::slice_from_data(&src[info.offset() as usize..], info.size() as usize/2).context("vals u16")?.into()),
+                _ => IndexBufferValsRef::U32(T::u32::slice_from_data(&src[info.offset() as usize..], info.size() as usize/4).context("vals u32")?.into()),
+            }
+        })
     }
 }
 
@@ -866,6 +948,57 @@ impl<'a> VertexValRef<'a> {
     #[make_endian]
     pub fn get_vec4_xe_(&'a self, ind: &VertexDataIndex) -> Result<&'a Vector4_XE_> {
         Vector4_XE_::from_data(&self.data[ind.offset..])
+    }
+}
+
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct ModelDataRef<'a, T: DataTypes> {
+    pub infos: ref_slice<'a, T::BufferInfo>,
+    pub vbuff_order: ref_slice<'a, T::u32>,
+    pub ibuff_order: ref_slice<'a, T::u32>,
+    pub vertex: IndexMap<u32, VertexBufferRef<'a, T>>,
+    pub index: IndexMap<u32, IndexBufferRef<'a, T>>,
+    pub data: Option<&'a CompressedDataRef<'a>>
+}
+
+impl<T: DataTypes> Default for ModelDataRef<'_, T> {
+    fn default() -> Self {
+        Self {
+            infos: ref_slice::default(),
+            vbuff_order: ref_slice::default(),
+            ibuff_order: ref_slice::default(),
+            vertex: IndexMap::default().into(),
+            index: IndexMap::default().into(),
+            data: None
+        }
+    }
+}
+
+impl<'a, T: DataTypes> ModelDataRef<'a, T> {
+    pub fn from_data(src: &'a [u8], info: &'a T::ModelInfo, model_data: &IndexMap<u32, &'a CompressedDataRef<'a>>) -> Result<Self> {
+        if let Some(model_data) = model_data.get(&info.asset_key()) {
+            let data = model_data.get();
+            let infos = T::BufferInfo::slice_from_data(&src[info.buffer_info_offset() as usize..], info.mat_num() as usize).context("buffer infos")?;
+            let vbuff_order = T::u32::slice_from_data(&src[info.vbuff_offset() as usize..], info.vbuff_num() as usize).context("vbuff order")?;
+            let ibuff_order = T::u32::slice_from_data(&src[info.ibuff_offset() as usize..], info.ibuff_num() as usize).context("vbuff order")?;
+            let vbuffs = vbuff_order.iter().map(|x| Ok((x.conv(), T::VBuffInfo::from_data(&src[x.conv() as usize..]).with_context(|| format!("vbuff info {}", x.conv()))?))).collect::<Result<IndexMap<_, _>>>()?;
+            let ibuffs = ibuff_order.iter().map(|x| Ok((x.conv(), T::IBuffInfo::from_data(&src[x.conv() as usize..]).with_context(|| format!("ibuff info {}", x.conv()))?))).collect::<Result<IndexMap<_, _>>>()?;
+            let vertex = vbuffs.iter().map(|(k,info)| Ok((*k, VertexBufferRef::from_data(data, *info).with_context(|| format!("vertex data {}", k))?))).collect::<Result<IndexMap<_,_>>>()?;
+            let index = ibuffs.iter().map(|(k,info)| Ok((*k, IndexBufferRef::from_data(data, *info).with_context(|| format!("index data {}", k))?))).collect::<Result<IndexMap<_,_>>>()?;
+            Ok(Self {
+                infos,
+                vbuff_order,
+                ibuff_order,
+                vertex,
+                index,
+                data: Some(model_data)
+            })
+        } else if info.mat_num() == 0 && info.vbuff_num() == 0 && info.ibuff_num() == 0 {
+            Ok(Self::default())
+        } else {
+            Err(anyhow!("missing mesh data {}", info.asset_key().get()))
+        }
     }
 }
 

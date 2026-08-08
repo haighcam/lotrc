@@ -1,4 +1,12 @@
-use crate::types::{get_str, hash_string, Crc, DumpData, DumpSlice, RefFromData, Vector3, OrderedData, align_offset, ref_slice, slice};
+use crate::{
+    level::pak::{PakTypes, PakHeaderTypeTrait},
+    types::{
+        get_str, hash_string, Crc, DumpData, DumpSlice, RefFromData, Vector3, OrderedData, align_offset, ref_slice, slice, EndianTypes, 
+        sub_blocks::{
+            DataRef, SubBlockTypes, StringKeysRef, SubBlocksInfoRef, StringKeysValTypeTrait , SubBlocksBlockHeaderTypeTrait
+        }
+    }
+};
 #[make_endian]
 use crate::{
     level::pak::{
@@ -8,9 +16,9 @@ use crate::{
         }
     },
     types::{
-        Crc_XE_, u16_XE_, u32_XE_, f32_XE_, Vector3_XE_, StringKeysRef_XE_,
+        Crc_XE_, u16_XE_, u32_XE_, f32_XE_, Vector3_XE_,
         sub_blocks::{
-            SubBlocksInfoRef_XE_, DataRef_XE_, DumpData_XE_, DumpString_XE_,
+            SubBlocksInfoRef_XE_, DataRef_XE_, DumpData_XE_, DumpString_XE_, StringKeysRef_XE_
         },
     },
 };
@@ -38,6 +46,45 @@ pub mod keys {
     pub const KEY_SPRAY: u32 = hash_string("Spray".as_bytes(), None);
     pub const KEY_PFIELDS: u32 = hash_string("PFields".as_bytes(), None);
     pub const KEY_LEVEL: u32 = hash_string("Level".as_bytes(), None);
+}
+
+pub trait Block2Types: SubBlockTypes {
+    type SprayInstance: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + SprayInstanceTypeTrait;
+    type SprayVal: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + SprayValTypeTrait;
+    type CrowdItemHeader: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + CrowdItemHeaderTypeTrait;
+    type CrowdVal: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + CrowdValTypeTrait;
+    type CrowdHeader: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + CrowdHeaderTypeTrait;
+}
+
+#[derive(Default)]
+#[cfg_attr(feature = "ffi", repr(C))]
+pub struct Block2Ref<'a, T: Block2Types> {
+    pub sub_blocks: SubBlocks2Ref<'a, T>,
+    pub offsets: ref_slice<'a, T::u32>
+}
+
+impl<'a, T: Block2Types + PakTypes> Block2Ref<'a, T> {
+    pub fn from_data(src: &'a [u8], pak_header: &T::PakHeader, string_keys: &StringKeysRef<'a, T>) -> Result<Self> {
+        let t = std::time::Instant::now();
+        let sub_blocks = SubBlocks2Ref::from_data(
+            &src[pak_header.sub_blocks2_offset() as usize..],
+            string_keys
+        )
+        .context("sub_blocks")?;
+        debug!("Block2 sub_blocks parsed in {}", t.elapsed().as_secs_f32());
+        let t = std::time::Instant::now();
+        let offsets = T::u32::slice_from_data(
+            &src[pak_header.block2_offsets_offset() as usize..],
+            pak_header.block2_offsets_num() as usize,
+        )
+        .context("offsets")?;
+        debug!("Block2 offsets parsed in {}", t.elapsed().as_secs_f32());
+        debug!("Block2 offsets len {}", offsets.len());
+        Ok(Self {
+            sub_blocks,
+            offsets: offsets.into(),
+        })
+    }
 }
 
 #[make_endian]
@@ -90,6 +137,68 @@ pub trait DumpBlock2_XE_ {
 impl DumpBlock2_XE_ for Block2Ref_XE_<'_> {
     fn sub_blocks(&self) -> &impl DumpSubBlocks2_XE_ {
         &self.sub_blocks
+    }
+}
+
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct SubBlocks2Ref<'a, T: Block2Types> {
+    pub info: SubBlocksInfoRef<'a, T>,
+    pub spray: Option<SprayRef<'a, T>>,
+    pub crowd: Option<CrowdRef<'a, T>>,
+    pub pfields: Option<PFieldsRef<'a>>,
+    pub langs: IndexMap<u32, LangStringsRef<'a, T>>,
+    pub files: IndexMap<u32, DataRef<'a>>
+}
+
+impl<T: Block2Types> Default for SubBlocks2Ref<'_, T> {
+    fn default() -> Self {
+        Self {
+            info: Default::default(),
+            spray: None.into(),
+            crowd: None.into(),
+            pfields: None.into(),
+            langs: IndexMap::default().into(),
+            files: IndexMap::default().into()
+        }
+    }
+}
+
+impl<'a, T: Block2Types> SubBlocks2Ref<'a, T> {
+    // TODO should use the pak string to get key names
+    // TODO add ref to pfeild infos in pfields struct
+    pub fn from_data(src: &'a [u8], string_keys: &StringKeysRef<'a, T>) -> Result<Self> {
+        use keys::*;
+        let info = SubBlocksInfoRef::<T>::from_data(src)?;
+        let mut spray = None;
+        let mut crowd = None;
+        let mut pfields = None;
+        let mut langs = IndexMap::new();
+        let mut files = IndexMap::new();
+        for info in info.block_headers.iter() {
+            let data = &src[info.offset() as usize.. (info.offset() + info.size()) as usize];
+            match info.key().get() {
+                KEY_POLISH | KEY_GERMAN | KEY_FRENCH | KEY_SPANISH | KEY_RUSSIAN | KEY_SWEDISH
+                | KEY_ENGLISH | KEY_ITALIAN | KEY_NORWEGIAN => {
+                    langs.insert(info.key().get(), LangStringsRef::from_data(data, string_keys)?);
+                }
+                KEY_SPRAY => {spray.replace(SprayRef::from_data(data)?);},
+                KEY_CROWD => {crowd.replace(CrowdRef::from_data(data)?);},
+                KEY_PFIELDS => {pfields.replace(PFieldsRef::from_data(data));},
+                key => {
+                    warn!("Unknown block type {:?}, {:?}", key, get_str(&key).map(|x| x.to_string()).unwrap_or_default());
+                    files.insert(key, DataRef::from_data(data));
+                }
+            }
+        }
+        Ok(Self {
+            info,
+            spray: spray.into(),
+            crowd: crowd.into(),
+            pfields: pfields.into(),
+            langs: langs.into(),
+            files: files.into()
+        })
     }
 }
 
@@ -298,6 +407,32 @@ impl DumpSubBlocks2_XE_ for SubBlocks2Ref_XE_<'_> {
 	}
 }
 
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct LangStringsRef<'a, T: SubBlockTypes> {
+    pub strings: IndexMap<u32, ref_slice<'a, T::u16>>,
+}
+
+impl<'a, T: SubBlockTypes> LangStringsRef<'a, T> {
+    pub fn from_data(src: &'a [u8], string_keys: &StringKeysRef<'a, T>) -> Result<Self> {
+        let mut offset = 0;
+        let mut strings = IndexMap::with_capacity(string_keys.vals.len());
+        for key in string_keys.vals.iter() {
+            let start = offset;
+            while src[offset] != 0 || src[offset + 1] != 0 {
+                offset += 2;
+            }
+            let s = T::u16::slice_from_data(&src[start..offset], (offset - start) / 2)
+                .with_context(|| format!("string {}", strings.len()))?;
+            strings.insert(key.key().get(), s.into());
+            offset += 2;
+        }
+        Ok(Self {
+            strings: strings.into(),
+        })
+    }
+}
+
 #[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
@@ -449,6 +584,33 @@ pub struct SprayVal_XE_ {
     pub rotation: u16_XE_,
 }
 
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct SprayRef<'a, T: Block2Types> {
+    pub instances: ref_slice<'a, T::SprayInstance>,
+    pub vals: ref_slice<'a, T::SprayVal>,
+}
+
+#[make_endian]
+impl<'a, T: Block2Types> SprayRef<'a, T> {
+    pub fn from_data(src: &'a [u8]) -> Result<Self> {
+        let mut offset = 0;
+        let n = T::u32::from_data(&src[offset..]).context("n1")?;
+        offset += n.size_of_val();
+        let instances = T::SprayInstance::slice_from_data(&src[offset..], n.conv() as usize)
+            .context("instances")?;
+        offset += instances.size_of_val();
+        let n = T::u32::from_data(&src[offset..]).context("n2")?;
+        offset += n.size_of_val();
+        let vals = T::SprayVal::slice_from_data(&src[offset..], n.conv() as usize).context("vals")?;
+
+        Ok(Self {
+            instances: instances.into(),
+            vals: vals.into(),
+        })
+    }
+}
+
 #[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
@@ -462,12 +624,12 @@ impl<'a> SprayRef_XE_<'a> {
     pub fn from_data(src: &'a [u8]) -> Result<Self> {
         let mut offset = 0;
         let n = u32_XE_::from_data(&src[offset..]).context("n1")?;
-        offset += n.size();
+        offset += n.size_of_val();
         let instances = SprayInstance_XE_::slice_from_data(&src[offset..], n.conv())
             .context("instances")?;
-        offset += instances.size();
+        offset += instances.size_of_val();
         let n = u32_XE_::from_data(&src[offset..]).context("n2")?;
-        offset += n.size();
+        offset += n.size_of_val();
         let vals =
             SprayVal_XE_::slice_from_data(&src[offset..], n.conv()).context("vals")?;
 
@@ -587,6 +749,34 @@ pub struct CrowdVal_XE_ {
     pub lod: f32_XE_,
 }
 
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct CrowdItemRef<'a, T: Block2Types> {
+    pub header: &'a T::CrowdItemHeader,
+    pub animations: ref_slice<'a, T::Crc>,
+    pub instances: ref_slice<'a, T::CrowdVal>
+}
+
+impl<'a, T: Block2Types> CrowdItemRef<'a, T> {
+    pub fn from_data(src: &'a [u8]) -> Result<Self> {
+        let mut offset = 0;
+        let header = T::CrowdItemHeader::from_data(&src[offset..]).context("header")?;
+        offset += header.size_of_val();
+        let animations =
+            T::Crc::slice_from_data(&src[offset..], header.animation_num() as usize)
+                .context("animations")?;
+        offset += animations.size_of_val();
+        let instances =
+            T::CrowdVal::slice_from_data(&src[offset..], header.instance_num() as usize)
+                .context("instances")?;
+        Ok(Self {
+            header: header,
+            animations: animations.into(),
+            instances: instances.into(),
+        })
+    }
+}
+
 #[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
@@ -601,11 +791,11 @@ impl<'a> CrowdItemRef_XE_<'a> {
     pub fn from_data(src: &'a [u8]) -> Result<Self> {
         let mut offset = 0;
         let header = CrowdItemHeader_XE_::from_data(&src[offset..]).context("header")?;
-        offset += header.size();
+        offset += header.size_of_val();
         let animations =
             Crc_XE_::slice_from_data(&src[offset..], header.animation_num.conv())
                 .context("animations")?;
-        offset += animations.size();
+        offset += animations.size_of_val();
         let instances =
             CrowdVal_XE_::slice_from_data(&src[offset..], header.instance_num.conv())
                 .context("instances")?;
@@ -725,6 +915,39 @@ pub struct CrowdHeader_XE_ {
     pub n: u32_XE_,
 }
 
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(PartialEq)]
+pub struct CrowdRef<'a, T: Block2Types>{
+    pub header: &'a T::CrowdHeader,
+    pub offs: ref_slice<'a, T::u32>,
+    pub vals: slice<CrowdItemRef<'a, T>>
+}
+
+impl<'a, T: Block2Types> CrowdRef<'a, T> {
+    pub fn from_data(src: &'a [u8]) -> Result<Self> {
+        let header = T::CrowdHeader::from_data(src).context("header")?;
+        if header.const0x65() != 0x65 {
+            return Err(anyhow!("Invalid Block Data for Crowd Block"));
+        }
+        let offs = T::u32::slice_from_data(&src[header.size_of_val()..], header.n() as usize)
+            .context("offs")?;
+        let vals = offs
+            .into_iter()
+            .enumerate()
+            .map(|(i, off)| {
+                CrowdItemRef::from_data(&src[off.conv() as usize..])
+                    .with_context(|| format!("item {}", i))
+            })
+            .collect::<Result<Vec<_>>>()?.into_boxed_slice();
+
+        Ok(Self {
+            header,
+            offs: offs.into(),
+            vals: vals.into(),
+        })
+    }
+}
+
 #[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
@@ -741,7 +964,7 @@ impl<'a> CrowdRef_XE_<'a> {
         if header.const0x65 != 0x65 {
             return Err(anyhow!("Invalid Block Data for Crowd Block"));
         }
-        let offs = u32_XE_::slice_from_data(&src[header.size()..], header.n.conv())
+        let offs = u32_XE_::slice_from_data(&src[header.size_of_val()..], header.n.conv())
             .context("offs")?;
         let vals = offs
             .into_iter()
@@ -863,6 +1086,7 @@ impl DumpCrowdImpl_XE_ for CrowdImpl_XE_<'_> {
 
 #[make_endian]
 pub type PFieldsRef_XE_<'a> = DataRef_XE_<'a>;
+pub type PFieldsRef<'a> = DataRef<'a>;
 
 #[derive(Debug, Default, Clone)]
 pub struct PField {
@@ -899,7 +1123,7 @@ impl DumpData_XE_ for PFields {
         self.vals
             .values()
             .flat_map(|x| x.vals.iter())
-            .map(|(_, vals)| vals.size())
+            .map(|(_, vals)| vals.size_of_val())
             .sum::<usize>()
     }
 }

@@ -4,7 +4,7 @@ use crate::{
     level::pak::block1::infos::DumpInfos_XE_,
 };
 use crate::{
-    types::{Crc, RefFromData, align_offset, DumpData, DumpSlice, OrderedData, CompressedDataRef, ref_slice, slice, OwnedCompressedData, CompressedData},
+    types::{Crc, RefFromData, align_offset, DumpData, DumpSlice, OrderedData, CompressedDataRef, ref_slice, slice, OwnedCompressedData, CompressedData, EndianTypes},
     level::pak::block1::infos::InfoCounts
 };
 use anyhow::{anyhow, Context, Result};
@@ -13,6 +13,71 @@ use lotrc_proc::{make_endian, derive_ordered_data};
 use indexmap::IndexMap;
 use std::ptr::NonNull;
 use enum_dispatch::enum_dispatch;
+
+pub trait AnimationTypes: EndianTypes {
+    type AnimationInfo: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + AnimationInfoTypeTrait; 
+    type AnimationBlockInfo: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + AnimationBlockInfoTypeTrait; 
+    type RotationPolar32: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + RotationPolar32TypeTrait; 
+    type RotationThreeComp48: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + RotationThreeComp48TypeTrait; 
+    type RotationUncompressed: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + RotationUncompressedTypeTrait; 
+    type Obj5Header: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + Obj5HeaderTypeTrait; 
+    type Obj5Val: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + Obj5ValTypeTrait; 
+    type Obj3: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + Obj3TypeTrait; 
+}
+
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "ffi", repr(C, u8))]
+pub enum AnimVals1Ref<'a, T: EndianTypes> {
+    Type1(ref_slice<'a, u8>),
+    Type2(ref_slice<'a, T::u16>),
+    Type3(ref_slice<'a, T::u16>),
+    Type4(ref_slice<'a, T::u16>),
+}
+
+impl<'a, T: EndianTypes> AnimVals1Ref<'a, T> {
+    pub fn from_data(src: &'a [u8], num: usize, kind: u8) -> Result<Self> {
+        Ok(match kind {
+            0 => Self::Type1(u8::slice_from_data(src, num).context("type1")?.into()),
+            1 => Self::Type2(T::u16::slice_from_data(src, num).context("type2")?.into()),
+            2 => Self::Type3(T::u16::slice_from_data(src, num).context("type3")?.into()),
+            3 => Self::Type4(T::u16::slice_from_data(src, num).context("type4")?.into()),
+            _ => return Err(anyhow!("Illegal Type {} for spline data", kind)),
+        })
+    }
+    pub fn empty(kind: u8) -> Result<Self> {
+        Ok(match kind {
+            0 => Self::Type1(Default::default()),
+            1 => Self::Type2(Default::default()),
+            2 => Self::Type3(Default::default()),
+            3 => Self::Type4(Default::default()),
+            _ => return Err(anyhow!("Illegal Type {} for spline data", kind)),
+        })
+    }
+    pub fn kind(&self) -> u8 {
+        match self {
+            Self::Type1(_) => 0,
+            Self::Type2(_) => 1,
+            Self::Type3(_) => 2,
+            Self::Type4(_) => 3,
+        }
+    }
+    pub fn size(&self) -> usize {
+        match self {
+            Self::Type1(vals) => vals.len() * u8::size_of(),
+            Self::Type2(vals) => vals.len() * T::u16::size_of(),
+            Self::Type3(vals) => vals.len() * T::u16::size_of(),
+            Self::Type4(vals) => vals.len() * T::u16::size_of(),
+        }
+    }
+    pub fn len(&self) -> usize {
+        match self {
+            Self::Type1(vals) => vals.len(),
+            Self::Type2(vals) => vals.len(),
+            Self::Type3(vals) => vals.len(),
+            Self::Type4(vals) => vals.len(),
+        }
+    }
+}
 
 #[make_endian]
 #[derive(Debug, Clone, PartialEq)]
@@ -134,6 +199,66 @@ impl<'a> AnimVals1Dump_XE_<'a> {
     }
 }
 
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(Debug, PartialEq)]
+pub struct Obj1Ref<'a, T: EndianTypes> {
+    pub flags: u8,
+    pub s2: u8,
+    pub s1: T::u16,
+    pub data: ref_slice<'a, u8>,
+    pub vals_a: ref_slice<'a, T::f32>,
+    pub vals: AnimVals1Ref<'a, T>,
+    pub size: usize,
+}
+
+#[make_endian]
+impl<'a, T: EndianTypes> Obj1Ref<'a, T> {
+    const COUNTS: [usize; 8] = [0, 1, 1, 2, 1, 2, 2, 3];
+    pub fn from_data(src: &'a [u8], flags: u8, kind: u8) -> Result<Self> {
+        let mut offset = 0;
+        let start = offset;
+        let (s1, s2, data) = if flags & 0xf0 != 0 {
+            let s1 = T::u16::from_data(&src[offset..]).context("s1")?;
+            offset += s1.size_of_val();
+            let s2 = u8::from_data(&src[offset..]).context("s2")?;
+            offset += s2.size_of_val();
+            let data = u8::slice_from_data(&src[offset..], s1.conv() as usize + *s2 as usize + 2).context("data")?;
+            offset += data.size_of_val();
+            (*s1, *s2, data.into())
+        } else {
+            (0u16.into(), 0, ref_slice::default())       
+        };
+        let vals_a = if flags != 0 {
+            offset = align_offset(offset, 4);
+            let num = Self::COUNTS[(flags & 7) as usize]
+                + 2 * Self::COUNTS[(((flags >> 4) & !flags) & 7) as usize];
+            let vals_a = T::f32::slice_from_data(&src[offset..], num).context("vals_a")?;
+            offset += vals_a.size_of_val();
+            vals_a.into()
+        } else {
+            ref_slice::default() 
+        };
+        let vals = if flags & 0xf0 != 0 {
+            offset = align_offset(offset, 2);
+            let num = Self::COUNTS[((flags >> 4) & 7) as usize] * (s1.conv() as usize + 1);
+            let vals = AnimVals1Ref::from_data(&src[offset..], num, kind).context("vals")?;
+            offset += vals.size();
+            vals
+        } else {
+           AnimVals1Ref::empty(kind).context("vals")?
+        };
+        Ok(Self {
+            flags,
+            data,
+            s1,
+            s2,
+            vals_a,
+            vals,
+            size: offset - start
+        })
+    }
+}
+
 #[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(Debug, PartialEq)]
@@ -155,11 +280,11 @@ impl<'a> Obj1Ref_XE_<'a> {
         let start = offset;
         let (s1, s2, data) = if flags & 0xf0 != 0 {
             let s1 = u16_XE_::from_data(&src[offset..]).context("s1")?;
-            offset += s1.size();
+            offset += s1.size_of_val();
             let s2 = u8::from_data(&src[offset..]).context("s2")?;
-            offset += s2.size();
+            offset += s2.size_of_val();
             let data = u8::slice_from_data(&src[offset..], s1.to_native() as usize + *s2 as usize + 2).context("data")?;
-            offset += data.size();
+            offset += data.size_of_val();
             (*s1, *s2, data.into())
         } else {
             (u16_XE_::from(0), 0, ref_slice::default())       
@@ -169,7 +294,7 @@ impl<'a> Obj1Ref_XE_<'a> {
             let num = Self::COUNTS[(flags & 7) as usize]
                 + 2 * Self::COUNTS[(((flags >> 4) & !flags) & 7) as usize];
             let vals_a = f32_XE_::slice_from_data(&src[offset..], num).context("vals_a")?;
-            offset += vals_a.size();
+            offset += vals_a.size_of_val();
             vals_a.into()
         } else {
             ref_slice::default() 
@@ -379,10 +504,9 @@ pub struct RotationPolar32_XE_ {
     a: u32_XE_,
 }
 
-#[derive_ordered_data]
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq, zerocopy::KnownLayout, zerocopy::Immutable, zerocopy::IntoBytes, zerocopy::FromBytes)]
 // should be (u8, u8, u8, u16) but for xbox conv it is (u8, u8, u8, u8, u8)
-pub struct RotationThreeComp40_XE_ {
+pub struct RotationThreeComp40 {
     a: u8,
     b: u8,
     c: u8,
@@ -398,17 +522,15 @@ pub struct RotationThreeComp48_XE_ {
     c: u16_XE_,
 }
 
-#[derive_ordered_data]
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct RotationThreeComp24_XE_ {
+#[derive(Debug, Default, Clone, PartialEq, zerocopy::KnownLayout, zerocopy::Immutable, zerocopy::IntoBytes, zerocopy::FromBytes)]
+pub struct RotationThreeComp24 {
     a: u8,
     b: u8,
     c: u8,
 }
 
-#[derive_ordered_data]
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct RotationStraight16_XE_ {
+#[derive(Debug, Default, Clone, PartialEq, zerocopy::KnownLayout, zerocopy::Immutable, zerocopy::IntoBytes, zerocopy::FromBytes)]
+pub struct RotationStraight16 {
     a: u8,
     b: u8,
 }
@@ -422,15 +544,93 @@ pub struct RotationUncompressed_XE_ {
     d: f32_XE_,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "ffi", repr(C, u8))]
+pub enum RotationQuantizationRef<'a, T: AnimationTypes> {
+    Polar32(ref_slice<'a, T::RotationPolar32>),
+    ThreeComp40(ref_slice<'a, RotationThreeComp40>),
+    ThreeComp48(ref_slice<'a, T::RotationThreeComp48>),
+    ThreeComp24(ref_slice<'a, RotationThreeComp24>),
+    Straight16(ref_slice<'a, RotationStraight16>),
+    Uncompressed(ref_slice<'a, T::RotationUncompressed>),
+}
+
+#[make_endian]
+impl<'a, T: AnimationTypes> RotationQuantizationRef<'a, T> {
+    pub fn from_data(src: &'a [u8], num: usize, kind: u8) -> Result<Self> {
+        Ok(match kind {
+            0 => Self::Polar32(T::RotationPolar32::slice_from_data(src, num).context("Polar32")?.into()),
+            1 => Self::ThreeComp40(RotationThreeComp40::slice_from_data(src, num).context("ThreeComp40")?.into()),
+            2 => Self::ThreeComp48(T::RotationThreeComp48::slice_from_data(src, num).context("ThreeComp48")?.into()),
+            3 => Self::ThreeComp24(RotationThreeComp24::slice_from_data(src, num).context("ThreeComp24")?.into()),
+            4 => Self::Straight16(RotationStraight16::slice_from_data(src, num).context("Straight16")?.into()),
+            5 => Self::Uncompressed(T::RotationUncompressed::slice_from_data(src, num).context("Uncompressed")?.into()),
+            _ => return Err(anyhow!("Invalid Rotation Compression method {}", kind))?,
+        })
+    }
+    pub fn empty(kind: u8) -> Result<Self> {
+        Ok(match kind {
+            0 => Self::Polar32(Default::default()),
+            1 => Self::ThreeComp40(Default::default()),
+            2 => Self::ThreeComp48(Default::default()),
+            3 => Self::ThreeComp24(Default::default()),
+            4 => Self::Straight16(Default::default()),
+            5 => Self::Uncompressed(Default::default()),
+            _ => return Err(anyhow!("Invalid Rotation Compression method {}", kind))?,
+        })
+    }
+    pub fn align(kind: u8) -> usize {
+        match kind {
+            0 => 4,
+            1 => 1,
+            2 => 2,
+            3 => 1,
+            4 => 2,
+            5 => 4,
+            _ => 0,
+        }
+    }
+    pub fn kind(&self) -> u8 {
+        match self{
+            Self::Polar32(_) => 0,
+            Self::ThreeComp40(_) => 1,
+            Self::ThreeComp48(_) => 2,
+            Self::ThreeComp24(_) => 3,
+            Self::Straight16(_) => 4,
+            Self::Uncompressed(_) => 5,
+        }
+    }
+    pub fn size(&self) -> usize {
+        match self{
+            Self::Polar32(vals) => vals.len() * T::RotationPolar32::size_of(),
+            Self::ThreeComp40(vals) => vals.len() * RotationThreeComp40::size_of(),
+            Self::ThreeComp48(vals) => vals.len() * T::RotationThreeComp48::size_of(),
+            Self::ThreeComp24(vals) => vals.len() * RotationThreeComp24::size_of(),
+            Self::Straight16(vals) => vals.len() * RotationStraight16::size_of(),
+            Self::Uncompressed(vals) => vals.len() * T::RotationUncompressed::size_of(),
+        }
+    }
+    pub fn len(&self) -> usize {
+        match self{
+            Self::Polar32(vals) => vals.len(),
+            Self::ThreeComp40(vals) => vals.len(),
+            Self::ThreeComp48(vals) => vals.len(),
+            Self::ThreeComp24(vals) => vals.len(),
+            Self::Straight16(vals) => vals.len(),
+            Self::Uncompressed(vals) => vals.len(),
+        }
+    }
+}
+
 #[make_endian]
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "ffi", repr(C, u8))]
 pub enum RotationQuantizationRef_XE_<'a> {
     Polar32(ref_slice<'a, RotationPolar32_XE_>),
-    ThreeComp40(ref_slice<'a, RotationThreeComp40_XE_>),
+    ThreeComp40(ref_slice<'a, RotationThreeComp40>),
     ThreeComp48(ref_slice<'a, RotationThreeComp48_XE_>),
-    ThreeComp24(ref_slice<'a, RotationThreeComp24_XE_>),
-    Straight16(ref_slice<'a, RotationStraight16_XE_>),
+    ThreeComp24(ref_slice<'a, RotationThreeComp24>),
+    Straight16(ref_slice<'a, RotationStraight16>),
     Uncompressed(ref_slice<'a, RotationUncompressed_XE_>),
 }
 
@@ -439,10 +639,10 @@ impl<'a> RotationQuantizationRef_XE_<'a> {
     pub fn from_data(src: &'a [u8], num: usize, kind: u8) -> Result<Self> {
         Ok(match kind {
             0 => Self::Polar32(RotationPolar32_XE_::slice_from_data(src, num).context("Polar32")?.into()),
-            1 => Self::ThreeComp40(RotationThreeComp40_XE_::slice_from_data(src, num).context("ThreeComp40")?.into()),
+            1 => Self::ThreeComp40(RotationThreeComp40::slice_from_data(src, num).context("ThreeComp40")?.into()),
             2 => Self::ThreeComp48(RotationThreeComp48_XE_::slice_from_data(src, num).context("ThreeComp48")?.into()),
-            3 => Self::ThreeComp24(RotationThreeComp24_XE_::slice_from_data(src, num).context("ThreeComp24")?.into()),
-            4 => Self::Straight16(RotationStraight16_XE_::slice_from_data(src, num).context("Straight16")?.into()),
+            3 => Self::ThreeComp24(RotationThreeComp24::slice_from_data(src, num).context("ThreeComp24")?.into()),
+            4 => Self::Straight16(RotationStraight16::slice_from_data(src, num).context("Straight16")?.into()),
             5 => Self::Uncompressed(RotationUncompressed_XE_::slice_from_data(src, num).context("Uncompressed")?.into()),
             _ => return Err(anyhow!("Invalid Rotation Compression method {}", kind))?,
         })
@@ -482,10 +682,10 @@ impl<'a> RotationQuantizationRef_XE_<'a> {
     pub fn size(&self) -> usize {
         match self{
             Self::Polar32(vals) => vals.len() * RotationPolar32_XE_::size_of(),
-            Self::ThreeComp40(vals) => vals.len() * RotationThreeComp40_XE_::size_of(),
+            Self::ThreeComp40(vals) => vals.len() * RotationThreeComp40::size_of(),
             Self::ThreeComp48(vals) => vals.len() * RotationThreeComp48_XE_::size_of(),
-            Self::ThreeComp24(vals) => vals.len() * RotationThreeComp24_XE_::size_of(),
-            Self::Straight16(vals) => vals.len() * RotationStraight16_XE_::size_of(),
+            Self::ThreeComp24(vals) => vals.len() * RotationThreeComp24::size_of(),
+            Self::Straight16(vals) => vals.len() * RotationStraight16::size_of(),
             Self::Uncompressed(vals) => vals.len() * RotationUncompressed_XE_::size_of(),
         }
     }
@@ -499,7 +699,6 @@ impl<'a> RotationQuantizationRef_XE_<'a> {
             Self::Uncompressed(vals) => vals.len(),
         }
     }
-
 }
 
 #[derive(Debug, Clone)]
@@ -540,10 +739,10 @@ impl From<&RotationQuantizationRef_XE_<'_>> for RotationQuantization {
     fn from(val: &RotationQuantizationRef_XE_) -> Self {
         match val {
             RotationQuantizationRef_XE_::Polar32(vals) => Self::Polar32(vals.iter().map(|x| OrderedData::<RotationPolar32>::conv(x)).collect()),
-            RotationQuantizationRef_XE_::ThreeComp40(vals) => Self::ThreeComp40(vals.iter().map(|x| OrderedData::<RotationThreeComp40>::conv(x)).collect()),
+            RotationQuantizationRef_XE_::ThreeComp40(vals) => Self::ThreeComp40(vals.iter().map(|x| x.clone()).collect()),
             RotationQuantizationRef_XE_::ThreeComp48(vals) => Self::ThreeComp48(vals.iter().map(|x| OrderedData::<RotationThreeComp48>::conv(x)).collect()),
-            RotationQuantizationRef_XE_::ThreeComp24(vals) => Self::ThreeComp24(vals.iter().map(|x| OrderedData::<RotationThreeComp24>::conv(x)).collect()),
-            RotationQuantizationRef_XE_::Straight16(vals) => Self::Straight16(vals.iter().map(|x| OrderedData::<RotationStraight16>::conv(x)).collect()),
+            RotationQuantizationRef_XE_::ThreeComp24(vals) => Self::ThreeComp24(vals.iter().map(|x| x.clone()).collect()),
+            RotationQuantizationRef_XE_::Straight16(vals) => Self::Straight16(vals.iter().map(|x| x.clone()).collect()),
             RotationQuantizationRef_XE_::Uncompressed(vals) => Self::Uncompressed(vals.iter().map(|x| OrderedData::<RotationUncompressed>::conv(x)).collect()),
         }
     }
@@ -553,10 +752,10 @@ impl From<&RotationQuantizationRef_XE_<'_>> for RotationQuantization {
 #[derive(Debug)]
 pub enum RotationQuantizationDump_XE_<'a> {
     Polar32(&'a mut [RotationPolar32_XE_]),
-    ThreeComp40(&'a mut [RotationThreeComp40_XE_]),
+    ThreeComp40(&'a mut [RotationThreeComp40]),
     ThreeComp48(&'a mut [RotationThreeComp48_XE_]),
-    ThreeComp24(&'a mut [RotationThreeComp24_XE_]),
-    Straight16(&'a mut [RotationStraight16_XE_]),
+    ThreeComp24(&'a mut [RotationThreeComp24]),
+    Straight16(&'a mut [RotationStraight16]),
     Uncompressed(&'a mut [RotationUncompressed_XE_]),
 }
 
@@ -579,6 +778,53 @@ impl<'a> RotationQuantizationDump_XE_<'a> {
     }
 }
 
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(Debug, PartialEq)]
+pub struct Obj2Ref<'a, T: AnimationTypes> {
+    pub flags: u8,
+    pub s2: u8,
+    pub s1: T::u16,
+    pub data: ref_slice<'a, u8>,
+    pub vals: RotationQuantizationRef<'a, T>,
+    pub size: usize
+}
+
+#[make_endian]
+impl<'a, T: AnimationTypes> Obj2Ref<'a, T> {
+    pub fn from_data(src: &'a [u8], flags: u8, kind: u8) -> Result<Self> {
+        let mut offset = 0;
+        let start = offset;
+        let (s1, s2, data) = if flags & 0xf0 != 0 {
+            let s1 = T::u16::from_data(&src[offset..]).context("s1")?;
+            offset += s1.size_of_val();
+            let s2 = u8::from_data(&src[offset..]).context("s2")?;
+            offset += s2.size_of_val();
+            let data = u8::slice_from_data(&src[offset..], s1.conv() as usize + *s2 as usize + 2).context("data")?;
+            offset += data.size_of_val();
+            (*s1, *s2, data.into())
+        } else {
+            (0u16.into(), 0, ref_slice::default())
+        };
+        let vals = if flags != 0 {
+            let align = RotationQuantizationRef::<T>::align(kind);
+            offset = ((offset + align - 1) & !(align - 1)) as usize;
+            let vals = RotationQuantizationRef::from_data(&src[offset..], s1.conv() as usize + 1, kind).context("vals")?;
+            offset += vals.size();
+            vals
+        } else {
+            RotationQuantizationRef::empty(kind).context("vals")?
+        };
+        Ok(Self {
+            flags,
+            s1,
+            s2,
+            data,
+            vals,
+            size: offset - start 
+        })
+    }
+}
+
 #[make_endian]
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(Debug, PartialEq)]
@@ -598,11 +844,11 @@ impl<'a> Obj2Ref_XE_<'a> {
         let start = offset;
         let (s1, s2, data) = if flags & 0xf0 != 0 {
             let s1 = u16_XE_::from_data(&src[offset..]).context("s1")?;
-            offset += s1.size();
+            offset += s1.size_of_val();
             let s2 = u8::from_data(&src[offset..]).context("s2")?;
-            offset += s2.size();
+            offset += s2.size_of_val();
             let data = u8::slice_from_data(&src[offset..], s1.to_native() as usize + *s2 as usize + 2).context("data")?;
-            offset += data.size();
+            offset += data.size_of_val();
             (*s1, *s2, data.into())
         } else {
             (u16_XE_::from(0), 0, ref_slice::default())
@@ -662,10 +908,10 @@ pub trait DumpObj2_XE_ {
     fn vals_size(&self) -> usize {
         match self.vals_kind() {
             0 => self.vals_len() * RotationPolar32_XE_::size_of(),
-            1 => self.vals_len() * RotationThreeComp40_XE_::size_of(),
+            1 => self.vals_len() * RotationThreeComp40::size_of(),
             2 => self.vals_len() * RotationThreeComp48_XE_::size_of(),
-            3 => self.vals_len() * RotationThreeComp24_XE_::size_of(),
-            4 => self.vals_len() * RotationStraight16_XE_::size_of(),
+            3 => self.vals_len() * RotationThreeComp24::size_of(),
+            4 => self.vals_len() * RotationStraight16::size_of(),
             5 => self.vals_len() * RotationUncompressed_XE_::size_of(),
             _ => panic!("Invalid vals kind")
         }
@@ -770,23 +1016,92 @@ impl DumpObj2_XE_ for Obj2 {
     fn write_vals(&self, vals: RotationQuantizationDump_XE_) -> Result<()> {
         match (&self.vals, vals) {
             (RotationQuantization::Polar32(src), RotationQuantizationDump_XE_::Polar32(dst)) => Ok(for (src, dst) in src.iter().zip(dst) { *dst = src.conv() }),
-            (RotationQuantization::ThreeComp40(src), RotationQuantizationDump_XE_::ThreeComp40(dst)) => Ok(for (src, dst) in src.iter().zip(dst) { *dst = src.conv() }),
+            (RotationQuantization::ThreeComp40(src), RotationQuantizationDump_XE_::ThreeComp40(dst)) => Ok(for (src, dst) in src.iter().zip(dst) { *dst = src.clone() }),
             (RotationQuantization::ThreeComp48(src), RotationQuantizationDump_XE_::ThreeComp48(dst)) => Ok(for (src, dst) in src.iter().zip(dst) { *dst = src.conv() }),
-            (RotationQuantization::ThreeComp24(src), RotationQuantizationDump_XE_::ThreeComp24(dst)) => Ok(for (src, dst) in src.iter().zip(dst) { *dst = src.conv() }),
-            (RotationQuantization::Straight16(src), RotationQuantizationDump_XE_::Straight16(dst)) => Ok(for (src, dst) in src.iter().zip(dst) { *dst = src.conv() }),
+            (RotationQuantization::ThreeComp24(src), RotationQuantizationDump_XE_::ThreeComp24(dst)) => Ok(for (src, dst) in src.iter().zip(dst) { *dst = src.clone() }),
+            (RotationQuantization::Straight16(src), RotationQuantizationDump_XE_::Straight16(dst)) => Ok(for (src, dst) in src.iter().zip(dst) { *dst = src.clone() }),
             (RotationQuantization::Uncompressed(src), RotationQuantizationDump_XE_::Uncompressed(dst)) => Ok(for (src, dst) in src.iter().zip(dst) { *dst = src.conv() }),
             _ => Err(anyhow!("missmatched rotation quantization and dump rotation quantization"))
         }
     }
 }
 
-#[derive_ordered_data]
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct Flags_XE_ {
+#[derive(Debug, Default, Clone, PartialEq, zerocopy::KnownLayout, zerocopy::Immutable, zerocopy::IntoBytes, zerocopy::FromBytes)]
+pub struct Flags {
     pub f: u8,
     pub a: u8,
     pub b: u8,
     pub c: u8,
+}
+
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(Debug, PartialEq)]
+pub struct BlockValARef<'a, T: AnimationTypes> {
+    pub a: Obj1Ref<'a, T>,
+    pub b: Obj2Ref<'a, T>,
+    pub c: Obj1Ref<'a, T>,
+}
+
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(Debug, PartialEq)]
+pub struct BlockValRef<'a, T: AnimationTypes> {
+    pub vals_a: slice<BlockValARef<'a, T>>,
+    pub vals_b: slice<Obj1Ref<'a, T>>
+}
+
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(Debug, PartialEq)]
+pub struct BlocksRef<'a, T: AnimationTypes> {
+    pub block_starts: ref_slice<'a, T::u32>,
+    pub block_starts2: ref_slice<'a, T::u32>,
+    pub obj_c3: ref_slice<'a, T::u32>,
+    pub obj_c4: ref_slice<'a, T::u32>,
+    pub blocks: slice<BlockValRef<'a, T>>
+}
+
+impl<'a, T: AnimationTypes> BlocksRef<'a, T> {
+    pub fn from_data(src: &'a [u8], info: &T::AnimationInfo) -> Result<Self> {
+        let block_starts = T::u32::slice_from_data(&src[info.block_starts_offset() as usize..], info.block_starts_num() as usize).context("block_starts")?;
+        let block_starts2 = T::u32::slice_from_data(&src[info.block_starts2_offset() as usize..], info.block_starts2_num() as usize).context("block_starts2")?;
+        let obj_c3 = T::u32::slice_from_data(&src[info.obj_c3_offset() as usize..], info.obj_c3_num() as usize).context("obj_c3")?;
+        let obj_c4 = T::u32::slice_from_data(&src[info.obj_c4_offset() as usize..], info.obj_c4_num() as usize).context("obj_c4")?;
+        let mut blocks = Vec::with_capacity(block_starts.len());
+        for (start, start2) in block_starts.iter().zip(block_starts2) {
+            let off = (start.conv() + info.block_offset()) as usize;
+            let flags = Flags::slice_from_data(&src[off..], info.vals_num() as usize).context("flags")?;
+            let flags2 = u8::slice_from_data(&src[off + flags.size_of_val()..], info.vals2_num() as usize).context("flags2")?; 
+            let mut off =
+                (info.block_offset() + start.conv() + info.data_offset()) as usize;
+            let mut vals_a = Vec::with_capacity(flags.len());
+            let mut vals_b = Vec::with_capacity(flags2.len());
+            for flag in flags {
+                let a = Obj1Ref::from_data(&src[off..], flag.a, flag.f & 3)?;
+                off = align_offset(off + a.size, 4);
+                let b = Obj2Ref::from_data(&src[off..], flag.b, (flag.f >> 2) & 0xf)?;
+                off = align_offset(off + b.size, 4);
+                let c = Obj1Ref::from_data(&src[off..], flag.c, (flag.f >> 6) & 3)?;
+                off = align_offset(off + c.size, 4);
+                vals_a.push(BlockValARef { a, b, c });
+            }
+            off = (info.block_offset() + start.conv() + start2.conv()) as usize;
+            for flag in flags2 {
+                let d = Obj1Ref::from_data(&src[off..], flag & 0xf9, (flag >> 1) & 3)?;
+                off = align_offset(off + d.size, 4);
+                vals_b.push(d);
+            }
+            blocks.push(BlockValRef {
+                vals_a: vals_a.into_boxed_slice().into(),
+                vals_b: vals_b.into_boxed_slice().into()
+            });
+        }
+        Ok(Self {
+            block_starts: block_starts.into(),
+            block_starts2: block_starts2.into(),
+            obj_c3: obj_c3.into(),
+            obj_c4: obj_c4.into(),
+            blocks: blocks.into_boxed_slice().into(),
+        })
+    }
 }
 
 #[make_endian]
@@ -827,8 +1142,8 @@ impl<'a> BlocksRef_XE_<'a> {
         let mut blocks = Vec::with_capacity(block_starts.len());
         for (start, start2) in block_starts.iter().zip(block_starts2) {
             let off = (start.to_native() + info.block_offset.to_native()) as usize;
-            let flags = Flags_XE_::slice_from_data(&src[off..], info.vals_num.conv()).context("flags")?;
-            let flags2 = u8::slice_from_data(&src[off + flags.size()..], info.vals2_num.conv()).context("flags2")?; 
+            let flags = Flags::slice_from_data(&src[off..], info.vals_num.conv()).context("flags")?;
+            let flags2 = u8::slice_from_data(&src[off + flags.size_of_val()..], info.vals2_num.conv()).context("flags2")?; 
             let mut off =
                 (info.block_offset.to_native() + start.to_native() + info.data_offset.to_native()) as usize;
             let mut vals_a = Vec::with_capacity(flags.len());
@@ -922,7 +1237,7 @@ pub trait DumpBlocks_XE_ {
     ) -> Result<()> {
         info.vals_num = self.block1_len().conv();
         info.vals2_num = self.block2_len().conv();
-        info.data_offset = (self.block1_len() * Flags_XE_::size_of() + self.block2_len()).conv();
+        info.data_offset = (self.block1_len() * Flags::size_of() + self.block2_len()).conv();
 
         info.block_starts_offset = (dst.offset - start).conv();
         let block_starts = u32_XE_::mut_slice_from_data(dst, self.blocks_len()).context("block_starts")?;
@@ -952,7 +1267,7 @@ pub trait DumpBlocks_XE_ {
             let start = (dst.offset - start_off);
             *block_start = start.conv();
 
-            let flags = Flags_XE_::mut_slice_from_data(dst, self.block1_len()).with_context(|| format!("block {} flags", i))?;
+            let flags = Flags::mut_slice_from_data(dst, self.block1_len()).with_context(|| format!("block {} flags", i))?;
 
             let flags2 = u8::mut_slice_from_data(dst, self.block2_len()).with_context(|| format!("block {} flags2", i))?;
 
@@ -988,7 +1303,7 @@ pub trait DumpBlocks_XE_ {
         size += u32_XE_::size_of() * (self.obj_c3_len() + self.obj_c4_len());
         let mut blocks_size = 0;
         for (vals, vals2) in self.blocks() {
-            blocks_size += Flags_XE_::size_of() * self.block1_len();
+            blocks_size += Flags::size_of() * self.block1_len();
             blocks_size += u8::size_of() * self.block2_len();
             blocks_size = align_offset(blocks_size, 4);
             for (a, b, c) in vals {
@@ -1164,6 +1479,72 @@ pub struct AnimationInfo_XE_ {
     pub obj2_offset: u32_XE_,
     pub obj2_num: u32_XE_,
     pub obj5_offset: u32_XE_, // to some object that contains offsets in pos 1 and 2 and a value in pos 0
+}
+
+#[cfg_attr(feature = "ffi", repr(C))]
+#[derive(Debug, PartialEq)]
+pub struct AnimationRef<'a, T: AnimationTypes> {
+    pub info: &'a T::AnimationInfo,
+    pub obj1: ref_slice<'a, T::u32>,
+    pub obj2: ref_slice<'a, T::u32>,
+    pub obj3: ref_slice<'a, T::Obj3>,
+    pub bones: ref_slice<'a, T::Crc>,
+    pub obj5_header: Option<&'a T::Obj5Header>,
+    pub obj5_a: ref_slice<'a, T::Obj5Val>,
+    pub obj5_b: ref_slice<'a, T::Obj5Val>,
+    pub blocks: Option<BlocksRef<'a, T>>,
+    pub size: usize
+}
+
+impl<'a, T: AnimationTypes> AnimationRef<'a, T> {
+    pub fn from_data(src: &'a [u8], info: &'a T::AnimationInfo) -> Result<Self> {
+        let obj1 = T::u32::slice_from_data(&src[info.obj1_offset() as usize..],
+            info.obj1_num() as usize * 2)
+            .context("obj1")?;
+        let obj2 = T::u32::slice_from_data(&src[info.obj2_offset() as usize..],
+            info.obj2_num() as usize * 4)
+            .context("obj2")?;
+        let obj3 = T::Obj3::slice_from_data(&src[info.obj3_offset() as usize..],
+            info.obj3_num() as usize)
+            .context("Obj3")?;
+        let bones = T::Crc::slice_from_data(&src[info.bones_offset() as usize..],
+            (info.vals_num() + info.obj1_num()) as usize)
+            .context("bones")?;
+        let (obj5_header, obj5_a, obj5_b) = if info.obj5_offset() != 0 {
+            let obj5_header = T::Obj5Header::from_data(&src[info.obj5_offset() as usize..])
+                .context("obj5_header")?;
+            let obj5_a = T::Obj5Val::slice_from_data(&src[obj5_header.obj_a_offset() as usize..],
+                obj5_header.obj_a_num() as usize)
+                .context("obj5_a")?;
+            let obj5_b = T::Obj5Val::slice_from_data(&src[obj5_header.obj_b_offset() as usize..],
+                obj5_header.obj_b_num() as usize)
+                .context("obj5_b")?;
+            (Some(obj5_header.into()), obj5_a, obj5_b)
+        } else {
+            (None, &[] as &_, &[] as &_)
+        };
+        let blocks = if info.kind() == 3 {
+            Some(BlocksRef::from_data(src, info).context("blocks")?)
+        } else if info.kind() < 3 {
+            warn!("Unhandled animation type {}", info.kind());
+            None
+        } else {
+            warn!("Unknown animation type {}", info.kind());
+            None
+        };
+        Ok(Self {
+            info,
+            obj1: obj1.into(),
+            obj2: obj2.into(),
+            obj3: obj3.into(),
+            bones: bones.into(),
+            obj5_header,
+            obj5_a: obj5_a.into(),
+            obj5_b: obj5_b.into(),
+            blocks: blocks.into(),
+            size: info.size() as usize
+        })
+    }
 }
 
 #[make_endian]
@@ -1548,6 +1929,43 @@ impl DumpAnimationImpl_XE_ for Animation {
     fn write_info(&self, info: &mut AnimationInfo_XE_) -> Result<()> {
         *info = self.info.conv();
         Ok(())
+    }
+}
+
+#[cfg_attr(feature = "ffi", repr(C))]
+pub struct AnimationsRef<'a, T: AnimationTypes> {
+    pub animations: IndexMap<u32, AnimationRef<'a, T>>,
+    pub block_infos: ref_slice<'a, T::AnimationBlockInfo>,
+}
+
+impl<T: AnimationTypes> Default for AnimationsRef<'_, T> {
+    fn default() -> Self {
+        Self {
+            animations: IndexMap::default().into(),
+            block_infos: ref_slice::default()
+        }
+    }
+}
+
+impl<'a, T: AnimationTypes> AnimationsRef<'a, T> {
+    pub fn from_data(anim_infos: &'a [T::AnimationInfo], blocks: &'a [CompressedDataRef<'_>], block_infos: &'a [T::AnimationBlockInfo]) -> Result<Self> {
+        let mut offsets = vec![0; blocks.len()];
+        let mut animations = IndexMap::with_capacity(anim_infos.len());
+        for info in anim_infos {
+            for (i, (data, offset)) in blocks.iter().zip(offsets.iter()).enumerate() {
+                if info.gamemodemask() >> i & 1 != 0 {
+                    let val = AnimationRef::from_data(&data.get()[*offset..], info).with_context(|| format!("animation {}", i))?;
+                    animations.insert(info.key().get(), val);
+                    break;
+                }
+            }
+            for (i, offset) in offsets.iter_mut().enumerate() {
+                if info.gamemodemask() >> i & 1 != 0 {
+                    *offset += animations.last().unwrap().1.size;
+                }
+            }
+        }
+        Ok(Self { animations: animations.into(), block_infos: block_infos.into() })
     }
 }
 

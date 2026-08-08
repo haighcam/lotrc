@@ -11,6 +11,7 @@ ffi = []
 lotrc_proc = { path = "../lotrc_proc" }
 lotrc_wrappers = { path = "../lotrc_wrappers" }
 zerocopy = { workspace = true, features = ["derive", "alloc"] }
+bytemuck = { workspace = true, features = ["derive"] }
 anyhow = { workspace = true }
 log = { workspace = true }
 indexmap = { workspace = true, features = ["serde", "rayon"] }

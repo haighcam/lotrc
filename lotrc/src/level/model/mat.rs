@@ -7,8 +7,33 @@ use crate::{
 };
 
 use crate::types::{Crc, RefFromData, OrderedData, DumpData};
-use crate::level::pak::block1::infos::InfoCounts;
+use crate::level::{
+    LevelPc,
+    pak::block1::infos::InfoCounts
+};
 use lotrc_proc::{make_endian, derive_ordered_data};
+
+pub trait MatTypes {
+    type Mat1: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + Mat1TypeTrait;
+    type Mat2Extra: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + Mat2ExtraTypeTrait;
+    type Mat2: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + Mat2TypeTrait;
+    type Mat3Extra: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + Mat3ExtraTypeTrait;
+    type Mat3: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + Mat3TypeTrait;
+    type Mat4Extra: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + Mat4ExtraTypeTrait;
+    type Mat4: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + Mat4TypeTrait;
+    type MatExtra: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + MatExtraTypeTrait;
+}
+
+impl MatTypes for LevelPc {
+    type Mat1 = Mat1LE;
+    type Mat2Extra = Mat2ExtraLE;
+    type Mat2 = Mat2LE;
+    type Mat3Extra = Mat3ExtraLE;
+    type Mat3 = Mat3LE;
+    type Mat4Extra = Mat4ExtraLE;
+    type Mat4 = Mat4LE;
+    type MatExtra = MatExtraLE;
+}
 
 #[make_endian]
 #[derive(Debug, Default, Clone)]
@@ -476,6 +501,73 @@ pub struct Mat3Ref_XE_<'a> {
 pub struct Mat4Ref_XE_<'a> {
     pub info: &'a Mat4_XE_,
     pub extra: Option<&'a MatExtra_XE_>
+}
+
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "ffi", repr(C))]
+pub struct Mat1Ref<'a, T: MatTypes> {
+    pub info: &'a T::Mat1,
+    pub extra: Option<&'a T::MatExtra>
+}
+
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "ffi", repr(C))]
+pub struct Mat2Ref<'a, T: MatTypes> {
+    pub info: &'a T::Mat2,
+    pub extra: Option<&'a T::MatExtra>
+}
+
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "ffi", repr(C))]
+pub struct Mat3Ref<'a, T: MatTypes> {
+    pub info: &'a T::Mat3,
+    pub extra: Option<&'a T::MatExtra>
+}
+
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "ffi", repr(C))]
+pub struct Mat4Ref<'a, T: MatTypes> {
+    pub info: &'a T::Mat4,
+    pub extra: Option<&'a T::MatExtra>
+}
+
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "ffi", repr(C, u8))]
+pub enum MatRef<'a, T: MatTypes> {
+    Mat1(Mat1Ref<'a, T>),
+    Mat2(Mat2Ref<'a, T>),
+    Mat3(Mat3Ref<'a, T>),
+    Mat4(Mat4Ref<'a, T>),
+}
+
+impl<'a, T: MatTypes> MatRef<'a, T> {
+    pub fn from_data(src: &'a [u8], offset: usize) -> Result<Self> {
+        let base = T::Mat1::from_data(&src[offset..]).context("base")?;
+        let extra = if base.mat_extra_offset() != 0 {
+            Some(T::MatExtra::from_data(&src[base.mat_extra_offset() as usize..]).context("extra")?)
+        } else {
+            None
+        };
+        Ok(match base.kind() {
+            0 => Self::Mat1(Mat1Ref {
+                info: T::Mat1::from_data(&src[offset..]).context("mat1")?,
+                extra,
+            }),
+            1 => Self::Mat4(Mat4Ref {
+                info: T::Mat4::from_data(&src[offset..]).context("mat4")?,
+                extra,
+            }),
+            2 => Self::Mat2(Mat2Ref {
+                info: T::Mat2::from_data(&src[offset..]).context("mat2")?,
+                extra,
+            }),
+            3 => Self::Mat3(Mat3Ref {
+                info: T::Mat3::from_data(&src[offset..]).context("mat3")?,
+                extra,
+            }),
+            _ => return Err(anyhow::anyhow!("Unknown Mat Type {}", base.kind())),
+        })
+    }
 }
 
 #[make_endian]
