@@ -241,3 +241,134 @@ pub fn derive_ordered_data(
         #item
     }.into() 
 }
+
+const POD_DERIVES: [&str; 6] = [
+    "bytemuck::Zeroable",
+    "Copy",
+    "Clone",
+    "Debug",
+    "Default",
+    "PartialEq"
+];
+
+
+fn to_ne_impl(item: &ItemStruct) -> TokenStream {
+    use std::str::FromStr;
+    let mut generics = item.generics.clone();
+    let mut ty_tokens_le = Punctuated::<TokenStream, Token![,]>::new();
+    let mut ty_tokens_be = Punctuated::<TokenStream, Token![,]>::new();
+    let mut impl_tokens = Punctuated::<TokenStream, Token![,]>::new();
+    let mut has_t = false;
+    for g in &mut generics.params {
+        match g {
+            syn::GenericParam::Type(g) => {
+                if g.ident == "T" {
+                    ty_tokens_le.push(TokenStream::from_str("lotrc_wrappers::LE").unwrap());
+                    ty_tokens_be.push(TokenStream::from_str("lotrc_wrappers::BE").unwrap());
+                    has_t = true;
+                } else {
+                   ty_tokens_le.push(g.ident.to_token_stream());
+                   ty_tokens_be.push(g.ident.to_token_stream());
+                   impl_tokens.push(g.to_token_stream());
+                }
+            },
+            syn::GenericParam::Lifetime(g) => {
+                ty_tokens_le.push(g.lifetime.to_token_stream());
+                ty_tokens_be.push(g.lifetime.to_token_stream());
+                impl_tokens.push(g.to_token_stream());
+            }
+            _ => ()
+        }
+    }
+    if !has_t {
+        return quote !{};
+    }
+    let where_clause = &generics.where_clause;
+    let impl_generics = if impl_tokens.is_empty() {
+        quote! {}
+    } else {
+        quote! { <#impl_tokens> }
+    };
+    let ty_generics_le = if ty_tokens_le.is_empty() {
+        quote! {}
+    } else {
+        quote! { <#ty_tokens_le> }
+    };
+    let ty_generics_be = if ty_tokens_be.is_empty() {
+        quote! {}
+    } else {
+        quote! { <#ty_tokens_be> }
+    };
+
+    let name = item.ident.clone();
+    let from_recurse = item.fields.iter().map(|f| {
+        let name = f.ident.clone().unwrap();
+        quote_spanned! { f.span() => 
+            #name: val.#name.into() 
+        }
+    });
+    let from_impl = quote ! {
+        Self {
+            #(#from_recurse),*
+        }
+    };
+    quote! {
+        impl #impl_generics From<#name #ty_generics_le> for #name #ty_generics_be #where_clause {
+            fn from(val: #name #ty_generics_le) -> Self {
+                #from_impl
+            }
+        } 
+        impl #impl_generics From<#name #ty_generics_be> for #name #ty_generics_le #where_clause {
+            fn from(val: #name #ty_generics_be) -> Self {
+                #from_impl
+            }
+        } 
+    }
+}
+
+#[proc_macro_attribute]
+pub fn derive_pod(
+    _attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let item_ = item.clone();
+    let mut item_struct = parse_macro_input!(item_ as ItemStruct);
+    
+    let derive_attr = match {
+        if let Some((i, _)) = item_struct.attrs
+            .iter()
+            .enumerate()
+            .find(|(_, attr)| attr.path().is_ident("derive"))
+        {
+            &mut item_struct.attrs[i]
+        } else {
+             item_struct.attrs.push_mut(syn::Attribute { 
+                pound_token: syn::token::Pound::default(),
+                style: syn::AttrStyle::Outer,
+                bracket_token: syn::token::Bracket::default(),
+                meta: syn::Meta::List(syn::MetaList {
+                    path: format_ident!("derive").into(),
+                    delimiter: syn::MacroDelimiter::Paren(syn::token::Paren::default()),
+                    tokens: TokenStream::new()
+                })
+            })
+        } 
+    } {
+        syn::Attribute { meta: syn::Meta::List(val), .. } => val,
+        _ => panic!("derive is not a MetaList"),
+    };
+    let mut derives = Punctuated::<syn::Path, Token![,]>::parse_terminated.parse(derive_attr.tokens.clone().into()).unwrap();
+    Extend::<syn::Path>::extend(&mut derives, POD_DERIVES.iter().map(|x| syn::parse_str(x).unwrap()));
+    derive_attr.tokens = derives.to_token_stream();
+
+    let (impl_generics, ty_generics, where_clause) = item_struct.generics.split_for_impl();
+    let name = item_struct.ident.clone();
+    let ne_impl = to_ne_impl(&item_struct);
+    quote! {
+        #[repr(C)]
+        #item_struct
+        unsafe impl #impl_generics bytemuck::Pod for #name #ty_generics #where_clause {}
+
+        #ne_impl
+    }.into()
+}

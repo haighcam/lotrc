@@ -1,8 +1,9 @@
 use clap::Parser;
 //use lotrc::types::{get_str, hash_string};
 use std::path::PathBuf;
-use lotrc::level::DumpLevelLE;
-use lotrc::types::{RefFromData, OrderedData, DumpData};
+use lotrc::level::DumpLevel;
+use lotrc::types::{ReadData, BaseTypes, LE};
+use tracing_subscriber::prelude::*;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -18,7 +19,7 @@ fn print_info<T>() {
     );
 }
 
-fn get_string(crc: &u32, level: &lotrc::level::LevelRefLE) -> String {
+fn get_string<T: BaseTypes>(crc: &u32, level: &lotrc::level::LevelRef<'_, T>) -> String {
     if let Ok(i) = level.pak.strings.strings.binary_search_by_key(crc, |s| lotrc::types::hash_string(s.as_bytes(), None) ) {
         level.pak.strings.strings[i].to_string()
     } else if let Ok(i) = level.bin.strings.strings.binary_search_by_key(crc, |s| lotrc::types::hash_string(s.as_bytes(), None) ) {
@@ -29,6 +30,35 @@ fn get_string(crc: &u32, level: &lotrc::level::LevelRefLE) -> String {
 }
 
 fn main() {
+    let std_out_log = tracing_subscriber::fmt::layer()
+        .pretty()
+        .without_time()
+        .with_target(false)
+        .with_level(false)
+        .with_line_number(false)
+        .with_file(false)
+        .with_filter(tracing_subscriber::filter::LevelFilter::DEBUG);
+        //.with_filter(tracing_subscriber::filter::Targets::new().with_target("_file", tracing_subscriber::filter::LevelFilter::OFF));
+    let file_log = tracing_subscriber::fmt::layer()
+        .with_ansi(false)
+        .without_time()
+        .with_target(false)
+        .with_level(false)
+        .with_writer(
+            std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open("log1.txt")
+                .unwrap()
+        )
+        .with_filter(tracing_subscriber::filter::Targets::new().with_target("_file", tracing_subscriber::filter::LevelFilter::INFO));
+    tracing_subscriber::registry()
+        .with(std_out_log)
+        .with(file_log)
+        .init();
+
+    /*
     let filter_level = log::LevelFilter::Info;
     let filter_level = log::LevelFilter::Debug;
     let logger = pretty_env_logger::formatted_builder()
@@ -49,12 +79,14 @@ fn main() {
         })
         .build();
 
+
     let level = logger.filter();
     let multi = indicatif::MultiProgress::new();
     indicatif_log_bridge::LogWrapper::new(multi.clone(), logger)
         .try_init()
         .unwrap();
     log::set_max_level(level);
+    */
 
     print_info::<Vec<u32>>();
 
@@ -69,8 +101,60 @@ fn main() {
 
     let t = std::time::Instant::now();
     let mut level_compressed_data = lotrc::level::LevelCompressedData::default();
-    let level = lotrc::level::LevelRefLE::from_data(&level_data, &mut level_compressed_data).unwrap();
+    let level = lotrc::level::LevelRef::<LE>::from_data(&level_data, &mut level_compressed_data).unwrap();
     println!("level parsed in {:?}", t.elapsed());
+    if false {
+        use lotrc::level::pak::block1::gameobjs::{DumpGameObjs, DumpType, DumpObj, ObjHeader, DumpBaseType, DumpBaseTypeImpl};
+        let gameobjs = &level.pak.block1.sub_blocks.level;
+        let (size, types) = gameobjs.size();
+        let mut buf = lotrc::types::AlignedBuf::with_capacity(size);
+        let mut dump_slice = lotrc::types::DumpSlice::from(&mut buf[..]);
+        for (&key, ty) in &gameobjs.types {
+            let start = dump_slice.offset;
+            println!("dumpin ty {}", key);
+            let s = ty.size();
+            ty.dump_into(&mut dump_slice, key).unwrap();
+            assert!(s == dump_slice.offset - start);
+        }
+        dump_slice.align(16).unwrap();
+        for (key, obj) in &gameobjs.objs {
+            let start = dump_slice.offset;
+            println!("dumpin obj {}", key);
+            let s = obj.size();
+            let (off, info) = types.get(&obj.header.key.val).unwrap();
+            if *key == 59001427 {
+                let dst = &mut dump_slice;
+                let val_offset = *off;
+                let fields = info;
+                println!("i will fail {}", size);
+                let header = ObjHeader::<LE>::mut_from_data(dst).expect("header");
+                let start = dst.offset;
+                let mut obj_dst = dst.split(val_offset).expect("obj data split");
+                dst.align(16).unwrap();
+                let mut i = 0;
+                for (f, (key, kind, offset)) in obj.fields.values().zip(fields) {
+                    let mut obj_dst = obj_dst.view(*offset as usize);
+                    println!("{} {} {} off {} rel_off {} list_len {} off_size {}", i, get_string(key, &level), get_string(kind, &level), dst.offset, offset, f.list_len(), DumpBaseType::off_size(f));
+                    f.dump_into(&mut obj_dst, dst, *kind).unwrap();
+                    i += 1;
+                }
+                dst.align(16).unwrap();
+            } else {
+                obj.dump_into(&mut dump_slice, *off, info).unwrap();
+            }
+            if s != dump_slice.offset - start {
+                println!("s {}, dumped {}", s, dump_slice.offset - start);
+            }
+            assert!(s == dump_slice.offset - start);
+        }
+    }
+    if false {
+        use lotrc::level::pak::block1::gameobjs::DumpGameObjs;
+        let (level_size, types) = level.pak.block1.sub_blocks.level.size();
+        let mut level_buf = lotrc::types::AlignedBuf::with_capacity(level_size);
+        let mut dump_slice = lotrc::types::DumpSlice::from(&mut level_buf[..]);
+        level.pak.block1.sub_blocks.level.dump_into(&mut dump_slice, &types).unwrap();
+    }
     if false {
         let mut offs = vec![0usize; level.pak.animation_data.len()];
         let anim_off_map = level.pak.block1.infos.animations
@@ -78,14 +162,14 @@ fn main() {
             .map(|info| offs
                 .iter_mut()
                 .enumerate()
-                .filter(|(i, _)| *i & info.gamemodemask.to_native() as usize != 0)
+                .filter(|(i, _)| *i & info.gamemodemask as usize != 0)
                 .map(|(i, off)| {
                     let old_off = *off;
-                    *off += info.size.to_native() as usize;
+                    *off += info.size as usize;
                     (i, old_off)
                 }).collect::<Vec<_>>()
             ).collect::<Vec<_>>();
-        use lotrc::level::pak::animation::DumpAnimationLE;
+        use lotrc::level::pak::animation::DumpAnimation;
         for ((key, animation), offs) in level.pak.animations.animations.iter().zip(anim_off_map) {
             println!("testing key, {}", key);
             println!("offsets {:?}", offs);
@@ -93,17 +177,17 @@ fn main() {
             let mut data = lotrc::types::AlignedBuf::with_capacity(animation.size());
             println!("size {}, {}", data.len(), animation.info.size);
             let mut dst = lotrc::types::DumpSlice::from(&mut data[..]);
-            let mut info = lotrc::level::pak::animation::AnimationInfoLE::default();
+            let mut info = lotrc::level::pak::animation::AnimationInfo::default();
             animation.dump_into(&mut dst, &mut info).expect("dump animation");
             println!("curr offset {}", dst.offset);
             println!("{:#?}, {:#?}", info, animation.info);
             info.offset = animation.info.offset;
             assert!(info == *animation.info);
-            assert!((data.len() as u32) == animation.info.size.to_native());
-            let anim_alt = lotrc::level::pak::animation::AnimationRefLE::from_data(&data[..], &info).expect("load animation");
+            assert!((data.len() as u32) == animation.info.size);
+            let anim_alt = lotrc::level::pak::animation::AnimationRef::from_data(&data[..], &info).expect("load animation");
             if let Some((i, off)) = offs.first().cloned() {
                 let buf = level.pak.animation_data.get(i).unwrap().data_decomp.as_ref();
-                let old_data = &buf[off..off + info.size.to_native() as usize];
+                let old_data = &buf[off..off + info.size as usize];
                 if old_data != data.as_ref() {
                     println!("anims data differ");
                     let differering_vals = old_data.iter()
@@ -147,17 +231,17 @@ fn main() {
         println!("animations ok");
     }
     if false {
-        use lotrc::level::pak::animation::DumpAnimationsLE;
+        use lotrc::level::pak::animation::DumpAnimations;
         let mut counts = lotrc::level::pak::block1::infos::InfoCounts::default();
         level.pak.animations.info_counts(&mut counts);
-        let mut info_data = lotrc::types::AlignedBuf::with_capacity(counts.size_le(0));
+        let mut info_data = lotrc::types::AlignedBuf::with_capacity(counts.size::<LE>(0));
         let mut dst = lotrc::types::DumpSlice::from(&mut info_data[..]);
-        let mut offsets: Vec<lotrc::types::u32LE> = vec![0.into(); counts.offsets];
-        let mut infos = lotrc::level::pak::block1::infos::DumpInfosLE::from_data(&mut dst, &counts, &mut offsets).expect("infos dump");
+        let mut offsets: Vec<u32> = vec![0; counts.offsets];
+        let mut infos = lotrc::level::pak::block1::infos::DumpInfos::from_data(&mut dst, &counts, &mut offsets).expect("infos dump");
 
         let datas = level.pak.animations.dump(&mut infos).expect("anims dump");
-        let mut header = lotrc::level::pak::PakHeaderLE::default();
-        let dumped_infos = lotrc::level::pak::block1::infos::InfosRefLE::from_data(&info_data[..], &header).expect("dumped infos");
+        let mut header = lotrc::level::pak::PakHeader::default();
+        let dumped_infos = lotrc::level::pak::block1::infos::InfosRef::from_data(&info_data[..], &header).expect("dumped infos");
         
         println!("dumped anims");
         for (info, dumped_info) in level.pak.block1.infos.animations.iter().zip(dumped_infos.animations) {
@@ -185,69 +269,69 @@ fn main() {
         println!("dumped animation data ok");
     }
     if false {
-        use lotrc::level::pak::block1::objs::DumpObjsLE;
+        use lotrc::level::pak::block1::objs::DumpObjs;
         let (models, terrain, occluder) = level.pak.block1.objs.group_models(&level.pak.block1.sub_blocks.level);
         for model in models {
-            use lotrc::level::model::DumpModelLE;
+            use lotrc::level::model::DumpModel;
             let mut counts = lotrc::level::pak::block1::infos::InfoCounts::default();
             let mut size = model.add_size(0, &mut counts);
             println!("estimated model size {}", size);
-            size += counts.size_le(0);
+            size += counts.size::<LE>(0);
             let mut data = lotrc::types::AlignedBuf::with_capacity(size);
             let mut dst = lotrc::types::DumpSlice::from(&mut data[..]);
-            let mut offsets: Vec<lotrc::types::u32LE> = vec![0.into(); counts.offsets];
-            let mut infos = lotrc::level::pak::block1::infos::DumpInfosLE::from_data(&mut dst, &counts, &mut offsets).expect("infos dump");
-            let mut header = lotrc::level::pak::PakHeaderLE::default();
+            let mut offsets: Vec<u32> = vec![0; counts.offsets];
+            let mut infos = lotrc::level::pak::block1::infos::DumpInfos::from_data(&mut dst, &counts, &mut offsets).expect("infos dump");
+            let mut header = lotrc::level::pak::PakHeader::default();
             infos.update_header(&mut header);
             model.dump_into(&mut dst, &mut infos).expect("model dump");
             let model_data = infos.model_data.iter().filter_map(|v| {
                 if let lotrc::types::CompressedData::Ref(val) = v.data {
-                    Some((v.key.to_native(), val))
+                    Some((v.key.into(), val))
                 } else {
                     None
                 }
             }).collect();
-            let dumped_infos = lotrc::level::pak::block1::infos::InfosRefLE::from_data(&data[..], &header).expect("dumped infos");
-            println!("dumped infos model {}", dumped_infos.models.len());
-            let dumped_model = lotrc::level::model::ModelRefLE::from_data(&data[..], &dumped_infos.models[0], &model_data).expect("dumped model");
+            let dumped_infos = lotrc::level::pak::block1::infos::InfosRef::from_data(&data[..], &header).expect("dumped infos");
+            println!("{:#?}\n{:#?}", dumped_infos.models[0], model.info());
+            let dumped_model = lotrc::level::model::ModelRef::from_data(&data[..], &dumped_infos.models[0], &model_data).expect("dumped model");
         }
         println!("dumping terrain");
         for model in terrain {
-            use lotrc::level::model::DumpModelLE;
+            use lotrc::level::model::DumpModel;
             let mut counts = lotrc::level::pak::block1::infos::InfoCounts::default();
             let mut size = model.add_terrain_size(4, &mut counts);
             println!("estimated terrain size {} {}", model.key(), size);
-            size += counts.size_le(0);
+            size += counts.size::<LE>(0);
             let mut data = lotrc::types::AlignedBuf::with_capacity(size);
             let mut dst = lotrc::types::DumpSlice::from(&mut data[..]);
-            lotrc::types::i32LE::from(-1).dump_into(&mut dst).unwrap();
-            let mut offsets: Vec<lotrc::types::u32LE> = vec![0.into(); counts.offsets];
-            let mut infos = lotrc::level::pak::block1::infos::DumpInfosLE::from_data(&mut dst, &counts, &mut offsets).expect("infos dump");
-            let mut header = lotrc::level::pak::PakHeaderLE::default();
+            *i32::mut_from_data(&mut dst).unwrap() = -1;
+            let mut offsets: Vec<u32> = vec![0; counts.offsets];
+            let mut infos = lotrc::level::pak::block1::infos::DumpInfos::from_data(&mut dst, &counts, &mut offsets).expect("infos dump");
+            let mut header = lotrc::level::pak::PakHeader::default();
             infos.update_header(&mut header);
             //println!("{:#?}", model.info());
             model.dump_terrain_into(&mut dst, &mut infos, 0).expect("model dump");
             let model_data = infos.model_data.iter().filter_map(|v| {
                 if let lotrc::types::CompressedData::Ref(val) = v.data {
-                    Some((v.key.to_native(), val))
+                    Some((v.key.into(), val))
                 } else {
                     None
                 }
             }).collect();
-            let dumped_infos = lotrc::level::pak::block1::infos::InfosRefLE::from_data(&data[..], &header).expect("dumped infos");
+            let dumped_infos = lotrc::level::pak::block1::infos::InfosRef::from_data(&data[..], &header).expect("dumped infos");
             println!("dumped infos model {}", dumped_infos.models.len());
-            let dumped_model = lotrc::level::model::ModelRefLE::from_data(&data[..], &dumped_infos.models[0], &model_data).expect("dumped model");
+            let dumped_model = lotrc::level::model::ModelRef::from_data(&data[..], &dumped_infos.models[0], &model_data).expect("dumped model");
         }
     }
     if false {
         if let Some(crowd) = &level.pak.block2.sub_blocks.crowd {
             println!("Level has crowd");
-            use lotrc::level::pak::block2::DumpCrowdLE;
+            use lotrc::level::pak::block2::DumpCrowd;
             let mut data = lotrc::types::AlignedBuf::with_capacity(crowd.size());
             let mut dst = lotrc::types::DumpSlice::from(&mut data[..]);
             crowd.dump_into(&mut dst).unwrap();
             println!("AAAAA {:?}", crowd.header);
-            let crowd_alt = lotrc::level::pak::block2::CrowdRefLE::from_data(&data[..]).unwrap();
+            let crowd_alt = lotrc::level::pak::block2::CrowdRef::<LE>::from_data(&data[..]).unwrap();
         }
     }
     if true {
@@ -265,131 +349,156 @@ fn main() {
             out.write_all(&data.bin[..]).unwrap();
         }
         let mut compressed_data_dump = lotrc::level::LevelCompressedData::default();
-        let dumped_header = lotrc::level::pak::PakHeaderLE::from_data(&data.pak).unwrap();
+        let dumped_header = lotrc::level::pak::PakHeader::<LE>::from_data(&data.pak).unwrap();
         println!("original: {:#?}\ndumped: {:#?}", level.pak.header, dumped_header);
-        if let Some(dumped_level) = lotrc::level::LevelRefLE::from_data(&data, &mut compressed_data_dump).ok() {
-            println!("dumped level parsed");
+        match lotrc::level::LevelRef::from_data(&data, &mut compressed_data_dump) {
+            Ok(dumped_level) => {
+                println!("dumped level parsed");
 
-            // validate offsets
-            assert!(level.pak.block2.offsets.len() == dumped_level.pak.block2.offsets.len());
-            if level.pak.block2.sub_blocks != dumped_level.pak.block2.sub_blocks {
-                println!("sub_blocks2 differ");
-                let a = &level.pak.block2.sub_blocks;
-                let b = &dumped_level.pak.block2.sub_blocks;
-                if a.info != b.info {
-                    if a.info.header != b.info.header { println!("header differs"); }
-                    for (a, b) in a.info.block_headers.iter().zip(b.info.block_headers.iter()) {
-                        if a != b {
-                            println!("block {} {} {} {} {} differs", get_string(&a.key.to_native(), &level), a.offset, b.offset, a.size, b.size);
+                // validate offsets
+                assert!(level.pak.block2.offsets.len() == dumped_level.pak.block2.offsets.len());
+                if level.pak.block2.sub_blocks != dumped_level.pak.block2.sub_blocks {
+                    println!("sub_blocks2 differ");
+                    let a = &level.pak.block2.sub_blocks;
+                    let b = &dumped_level.pak.block2.sub_blocks;
+                    if a.info != b.info {
+                        if a.info.header != b.info.header { println!("header differs"); }
+                        for (a, b) in a.info.block_headers.iter().zip(b.info.block_headers.iter()) {
+                            if a != b {
+                                println!("block {} {} {} {} {} differs", get_string(&a.key.val.into(), &level), a.offset, b.offset, a.size, b.size);
+                            }
                         }
                     }
+                    if a.spray != b.spray { println!("spray differs") }
+                    if a.crowd != b.crowd { println!("crowd differs") }
+                    if a.pfields != b.pfields { println!("pfields differs") }
+                    if a.langs != b.langs { println!("langs differs") }
+                    if a.files != b.files { println!("files differs") }
+                    
                 }
-                if a.spray != b.spray { println!("spray differs") }
-                if a.crowd != b.crowd { println!("crowd differs") }
-                if a.pfields != b.pfields { println!("pfields differs") }
-                if a.langs != b.langs { println!("langs differs") }
-                if a.files != b.files { println!("files differs") }
-                
-            }
-            if level.pak.block1.sub_blocks != dumped_level.pak.block1.sub_blocks {
-                println!("sub_blocks1 differ");
-                let a = &level.pak.block1.sub_blocks;
-                let b = &dumped_level.pak.block1.sub_blocks;
-                if a.info != b.info {
-                    if a.info.header != b.info.header { println!("header differs"); }
-                    for (a, b) in a.info.block_headers.iter().zip(b.info.block_headers.iter()) {
-                        if a != b {
-                            println!("block {} {} {} {} {} differs", get_string(&a.key.to_native(), &level), a.offset, b.offset, a.size, b.size);
-                        }
-                    }
-                }
-            }
-            if level.pak.block1.string_keys != dumped_level.pak.block1.string_keys {
-                println!("string keys differ");
-                let a = &level.pak.block1.string_keys;
-                let b = &dumped_level.pak.block1.string_keys;
-                if a.header != b.header { println!("{:?}\n{:?}", a.header, b.header); }
-                if a.pad != b.pad { println!("string keys pad differs"); }
-                if a.vals != b.vals {
-                    println!("string keys vals differs");
-                    for (a, b) in a.vals.iter().zip(b.vals.iter()) {
-                        if a != b { println!("{:?}, {:?}", a, b); }
-                    }
-                }
-            }
-            if level.pak.block1.objs != dumped_level.pak.block1.objs {
-                println!("objs differ");
-                let a = &level.pak.block1.objs;
-                let b = &dumped_level.pak.block1.objs;
-                if a.textures != b.textures { println!("textures differs"); }
-                if a.models != b.models {
-                    println!("models differs {}, {}", a.models.len(), b.models.len());
-                    for (a, b) in a.models.values().zip(b.models.values()) {
-                        if a == b { continue; }
-                        println!("{} {}, {}", get_string(&a.info.key.to_native(), &level), get_string(&b.info.key.to_native(), &dumped_level), a.info.key); 
-                        if a.info != b.info {
-                            println!("{:#?}\n{:#?}", a.info, b.info);
-                        }
-                        if a.bones != b.bones { println!("model bones differ"); }
-                        if a.mat_order != b.mat_order { println!("model mat_order differ"); }
-                        if a.mesh_order != b.mesh_order { println!("model mesh_order differ"); }
-                        if a.mesh_bounding_boxes != b.mesh_bounding_boxes { println!("model mesh_bounding_boxes differ"); }
-                        if a.skin_binds != b.skin_binds { println!("model skin_binds differ"); }
-                        if a.skin_order != b.skin_order { println!("model skin_order differ"); }
-                        if a.vals_j != b.vals_j { println!("model vals_j differ"); }
-                        if a.val_k_header != b.val_k_header { println!("model val_k_header differ"); }
-                        if a.slots != b.slots { println!("model slots differ"); }
-                        if a.slot_map != b.slot_map { println!("model slot_map differ"); }
-                        if a.block_header != b.block_header { println!("model block_header differ"); }
-                        if a.block_offsets != b.block_offsets { println!("model block_offsets differ"); }
-                        if a.blocks != b.blocks { println!("model blocks differ"); }
-                        if a.buffer_infos != b.buffer_infos { println!("model buffer_infos differ"); }
-                        if a.vbuff_order != b.vbuff_order { println!("model vbuff_order differ"); }
-                        if a.ibuff_order != b.ibuff_order { println!("model ibuff_order differ"); }
-                        if a.vbuffs != b.vbuffs { println!("model vbuffs differ"); }
-                        if a.ibuffs != b.ibuffs { println!("model ibuffs differ"); }
-                        if a.mats != b.mats { println!("model mats differ"); }
-                        if a.hk_constraint != b.hk_constraint { println!("model hk_constraint differ"); }
-                        if a.hk_constraint_datas != b.hk_constraint_datas { println!("model hk_constraint_datas differ"); }
-                        if a.shapes != b.shapes { println!("model shapes differ"); }
-                        if a.data != b.data {
-                            println!("model data differ"); 
-                            if a.data.infos != b.data.infos { println!("model data infos differ"); }
-                            if a.data.vbuff_order != b.data.vbuff_order { println!("model vbuff_order infos differ"); }
-                            if a.data.ibuff_order != b.data.ibuff_order { println!("model ibuff_order infos differ"); }
-                            if a.data.vertex != b.data.vertex { println!("model data vertex differ"); }
-                            if a.data.index != b.data.index { println!("model data index differ"); }
-                            if a.data.data != b.data.data { 
-                                println!("model data data differ");
-                                if let Some(data) = a.data.data {
-                                    println!("{:?}", &data.data_decomp[..]);
-                                } else {
-                                    println!("None");
-                                }
-                                if let Some(data) = b.data.data {
-                                    println!("{:?}", &data.data_decomp[..]);
-                                } else {
-                                    println!("None");
-                                }
+                if level.pak.block1.sub_blocks != dumped_level.pak.block1.sub_blocks {
+                    println!("sub_blocks1 differ");
+                    let a = &level.pak.block1.sub_blocks;
+                    let b = &dumped_level.pak.block1.sub_blocks;
+                    if a.info != b.info {
+                        if a.info.header != b.info.header { println!("header differs"); }
+                        for (a, b) in a.info.block_headers.iter().zip(b.info.block_headers.iter()) {
+                            if a != b {
+                                println!("block {} {} {} {} {} differs", get_string(&a.key.val.into(), &level), a.offset, b.offset, a.size, b.size);
                             }
                         }
                     }
                 }
-                if a.effects != b.effects { println!("effects differs"); }
-                if a.gfxs != b.gfxs {
-                    println!("gfxs differs {} {}", a.gfxs.len(), b.gfxs.len());
-                    for ((k1, v1), (k2, v2)) in a.gfxs.iter().zip(b.gfxs.iter()) {
-                        //if (v1 != v2) { println!("{:?}\n{:?}", v1, v2); }
-                        if k1 != k2 { println!("{} {}", k1, k2); }
+                if level.pak.block1.string_keys != dumped_level.pak.block1.string_keys {
+                    println!("string keys differ");
+                    let a = &level.pak.block1.string_keys;
+                    let b = &dumped_level.pak.block1.string_keys;
+                    if a.header != b.header { println!("{:?}\n{:?}", a.header, b.header); }
+                    if a.pad != b.pad { println!("string keys pad differs"); }
+                    if a.vals != b.vals {
+                        println!("string keys vals differs");
+                        for (a, b) in a.vals.iter().zip(b.vals.iter()) {
+                            if a != b { println!("{:?}, {:?}", a, b); }
+                        }
                     }
                 }
-                if a.foliages != b.foliages { println!("foliages differs"); }
-                if a.radiosity != b.radiosity { println!("radiosity differs"); }
+                if level.pak.block1.objs != dumped_level.pak.block1.objs {
+                    println!("objs differ");
+                    let a = &level.pak.block1.objs;
+                    let b = &dumped_level.pak.block1.objs;
+                    if a.textures != b.textures { println!("textures differs"); }
+                    let mut index = 0;
+                    if a.models != b.models {
+                        println!("models differs {}, {}", a.models.len(), b.models.len());
+                        for (a, b) in a.models.values().zip(b.models.values()) {
+                            println!("{}\n{:#?}\n{:#?}", index, a.info, b.info);
+                            index += 1;
+                            if a == b { continue; }
+                            println!("models differ {} {}, {}", get_string(&a.info.key.val.into(), &level), get_string(&b.info.key.val.into(), &dumped_level), a.info.key.val); 
+                            if a.info != b.info {
+                            //    println!("{:#?}\n{:#?}", a.info, b.info);
+                            }
+                            if a.bones != b.bones { println!("model bones differ"); }
+                            if a.mat_order != b.mat_order { println!("model mat_order differ"); }
+                            if a.mesh_order != b.mesh_order { println!("model mesh_order differ"); }
+                            if a.mesh_bounding_boxes != b.mesh_bounding_boxes { println!("model mesh_bounding_boxes differ"); }
+                            if a.skin_binds != b.skin_binds { println!("model skin_binds differ"); }
+                            if a.skin_order != b.skin_order { println!("model skin_order differ"); }
+                            if a.vals_j != b.vals_j { println!("model vals_j differ"); }
+                            if a.val_k_header != b.val_k_header { println!("model val_k_header differ"); }
+                            if a.slots != b.slots { println!("model slots differ"); }
+                            if a.slot_map != b.slot_map { println!("model slot_map differ"); }
+                            if a.block_header != b.block_header { println!("model block_header differ"); }
+                            if a.block_offsets != b.block_offsets { println!("model block_offsets differ"); }
+                            if a.blocks != b.blocks { println!("model blocks differ"); }
+                            if a.buffer_infos != b.buffer_infos { println!("model buffer_infos differ"); }
+                            if a.vbuff_order != b.vbuff_order { println!("model vbuff_order differ"); }
+                            if a.ibuff_order != b.ibuff_order { println!("model ibuff_order differ"); }
+                            if a.vbuffs != b.vbuffs { println!("model vbuffs differ"); }
+                            if a.ibuffs != b.ibuffs { println!("model ibuffs differ"); }
+                            if a.mats != b.mats { println!("model mats differ"); }
+                            if a.hk_constraint != b.hk_constraint { println!("model hk_constraint differ"); }
+                            if a.hk_constraint_datas != b.hk_constraint_datas { println!("model hk_constraint_datas differ"); }
+                            if a.shapes != b.shapes { println!("model shapes differ"); }
+                            if a.data != b.data {
+                                println!("model data differ"); 
+                                if a.data.infos != b.data.infos { println!("model data infos differ"); }
+                                if a.data.vbuff_order != b.data.vbuff_order { println!("model vbuff_order infos differ"); }
+                                if a.data.ibuff_order != b.data.ibuff_order { println!("model ibuff_order infos differ"); }
+                                if a.data.vertex != b.data.vertex { println!("model data vertex differ"); }
+                                if a.data.index != b.data.index { println!("model data index differ"); }
+                                if a.data.data != b.data.data { 
+                                    println!("model data data differ");
+                                    if let Some(data) = a.data.data {
+                                        println!("{:?}", &data.data_decomp[..]);
+                                    } else {
+                                        println!("None");
+                                    }
+                                    if let Some(data) = b.data.data {
+                                        println!("{:?}", &data.data_decomp[..]);
+                                    } else {
+                                        println!("None");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if a.effects != b.effects { println!("effects differs"); }
+                    if a.gfxs != b.gfxs {
+                        println!("gfxs differs {} {}", a.gfxs.len(), b.gfxs.len());
+                        for ((k1, v1), (k2, v2)) in a.gfxs.iter().zip(b.gfxs.iter()) {
+                            //if (v1 != v2) { println!("{:?}\n{:?}", v1, v2); }
+                            if k1 != k2 { println!("{} {}", k1, k2); }
+                        }
+                    }
+                    if a.foliages != b.foliages { println!("foliages differs"); }
+                    if a.radiosity != b.radiosity {
+                        println!("radiosity differs");
+                        /*
+                        for ((k1, v1), (k2, v2)) in a.radiosity.vals.iter().zip(b.radiosity.vals.iter()) {
+                            println!("{} {}", k1, k2);
+                            if v1 != v2 { println!("{:?}\n{:?}", v1, v2); }
+                            if k1 != k2 { println!("{} {}", k1, k2); }
+                        }
+                        */
+                    }
 
+                }
+                println!("asset handles {} {}", level.bin.asset_handles.len(), dumped_level.bin.asset_handles.len());
+                println!("model handles {} {}", level.bin.header.vdata_num, dumped_level.bin.header.vdata_num);
+                println!("texture handles {} {}", level.bin.header.texdata_num, dumped_level.bin.header.texdata_num);
+
+                if level.bin.asset_handles.len() != dumped_level.bin.asset_handles.len() {
+                   for (a, b) in level.bin.asset_handles.iter().zip(dumped_level.bin.asset_handles) {
+                       if a.key.val != b.key.val {
+                         println!("{}({})\t{}({})", a.key.val, a.kind, b.key.val, b.kind);
+                       }
+                   }
+                }
+            },
+            Err(e) => {
+                println!("dumped level failed to parse: {:?}", e);
             }
-            println!("{} {}", level.bin.asset_handles.len(), dumped_level.bin.asset_handles.len());
-        } else {
-            println!("dumped level failed to parse");
         }
         // validate offsets
         for (src, dst) in level_compressed_data.pak.animations.iter().zip(&compressed_data_dump.pak.animations) {

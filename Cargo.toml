@@ -4,11 +4,13 @@ members = [
     "lotrc",
     "lotrc_rs",
     "lotrc_proc",
-    "ffi", "lotrc_wrappers"]
+    "lotrc_wrappers",
+    "ffi",
+]
 
 [profile.release]
 #strip = true
-lto = true
+#lto = true
 
 
 [workspace.dependencies]

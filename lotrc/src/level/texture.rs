@@ -2,37 +2,32 @@ use anyhow::{anyhow, Context, Result};
 use enum_dispatch::enum_dispatch;
 use indexmap::IndexMap;
 use log::warn;
-use lotrc_proc::{make_endian, derive_ordered_data};
+use lotrc_proc::{derive_pod};
 
 use crate::{
-    level::{Version, LevelFormat},
-    types::{compress_segmented, DumpSlice, DumpCompressedData, CompressedData, Crc, hash_string, OrderedData, CompressedDataRef, get_default_ref, DumpData}
-};
-#[make_endian]
-use crate::{
-    level::pak::block1::infos::{DumpInfos_XE_, DumpInfoData_XE_},
-    types::{Crc_XE_, u32_XE_, u16_XE_, i32_XE_}
+    level::{
+        Version,
+        pak::block1::infos::{DumpInfoData, DumpInfos}
+    },
+    types::{compress_segmented, DumpSlice, Crc, hash_string, CompressedDataRef, BaseTypes, NE, DumpCompressedData, CompressedData, ReadData}
 };
 
-#[derive_ordered_data]
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct TextureInfo_XE_ {
-    pub key: Crc_XE_,
-    pub gamemodemask: i32_XE_,
-    pub asset_key: Crc_XE_,
-    pub asset_type: u32_XE_,
-    pub kind: u32_XE_,
-    pub format: u32_XE_,
-    pub unk_6: u32_XE_,
-    pub unk_7: u32_XE_,
-    pub unk_8: u32_XE_,
-    pub unk_9: u32_XE_,
-    pub unk_10: u32_XE_,
-    pub unk_11: u32_XE_,
-    pub width: u16_XE_,
-    pub height: u16_XE_,
-    pub depth: u16_XE_,
-    pub levels: u16_XE_,
+#[derive_pod]
+pub struct TextureDataInfo<T: BaseTypes> {
+    pub key: Crc<T>,
+    pub asset_type: T::u32,
+    pub kind: T::u32,
+    pub format: T::u32,
+    pub unk_6: T::u32,
+    pub unk_7: T::u32,
+    pub unk_8: T::u32,
+    pub unk_9: T::u32,
+    pub unk_10: T::u32,
+    pub unk_11: T::u32,
+    pub width: T::u16,
+    pub height: T::u16,
+    pub depth: T::u16,
+    pub levels: T::u16,
     pub unk_16_1: u8,
     pub unk_16_2: u8,
     pub unk_16_3: u8,
@@ -272,30 +267,30 @@ fn decomp_bc4(arr: &[u8], w: usize, h: usize) -> Vec<u8> {
 
 #[cfg_attr(feature = "ffi", repr(C))]
 #[derive(PartialEq)]
-pub struct TextureRef<'a, L: LevelFormat> {
-    pub info: &'a L::TextureInfo,
+pub struct TextureDataRef<'a, T: BaseTypes> {
+    pub info: &'a TextureDataInfo<T>,
     pub data0: Option<&'a CompressedDataRef<'a>>,
     pub data1: Option<&'a CompressedDataRef<'a>>
 }
 
-impl<'a, L: LevelFormat> TextureRef<'a, L> {
-    pub fn from_data(info: &'a L::TextureInfo, texture_data: &IndexMap<u32, &'a CompressedDataRef<'a>>) -> Result<Self> {
+impl<'a,  T: BaseTypes> TextureDataRef<'a, T> {
+    pub fn from_data(info: &'a TextureDataInfo<T>, texture_data: &IndexMap<u32, &'a CompressedDataRef<'a>>) -> Result<Self> {
         Ok(Self {
             info,
-            data0: texture_data.get(&info.asset_key()).copied(),
-            data1: texture_data.get(&hash_string(b"*", Some(info.asset_key().get()))).copied()
+            data0: texture_data.get(&info.key.val.into()).copied(),
+            data1: texture_data.get(&hash_string(b"*", Some(info.key.val.into()))).copied()
         })
     }
     fn parse(&self, version: Version) -> Result<Box<[&'a [u8]]>> {
         let data0 = self.data0.map(|x| &x.data_decomp[..]).unwrap_or_default();
         let data1 = self.data1.map(|x| &x.data_decomp[..]).unwrap_or_default();
-        Ok(match self.info.kind() {
-            0 | 7 | 8 => parse_texture::<L>(self.info, data0, data1, version).context("texture data")?,
-            1 | 9 => parse_cube::<L>(self.info, data0, data1, version).context("cube data")?,
+        Ok(match self.info.kind.into() {
+            mip_texture!() => parse_texture::<T>(self.info, data0, data1, version).context("texture data")?,
+            cube_texture!() => parse_cube::<T>(self.info, data0, data1, version).context("cube data")?,
             _ => {
                 warn!(
                     "Unsupported Texture Type {} for texture {:?}",
-                    self.info.kind(), self.info.key()
+                    self.info.kind.into(), self.info.key.val.into()
                 );
                 vec![data0, data1].into()
             }
@@ -303,29 +298,29 @@ impl<'a, L: LevelFormat> TextureRef<'a, L> {
     }
 }
 
-fn parse_texture<'a, L: LevelFormat>(info: &L::TextureInfo, data0: &'a [u8], data1: &'a [u8], version: Version) -> Result<Box<[&'a [u8]]>> {
-    let (s, d) = match get_stride_width(info.format()) {
+fn parse_texture<'a,  T: BaseTypes>(info: &TextureDataInfo<T>, data0: &'a [u8], data1: &'a [u8], version: Version) -> Result<Box<[&'a [u8]]>> {
+    let (s, d) = match get_stride_width(info.format.into()) {
         Some((s, d)) => (s as usize, d as usize),
         None => {
-            warn!("Unhandled Texture Format {}", info.format());
+            warn!("Unhandled Texture Format {}", info.format.into());
             return Ok(Box::new([]));
         }
     };
 
-    let mut width = info.width() as usize;
-    let mut height = info.height() as usize;
+    let mut width = info.width.into() as usize;
+    let mut height = info.height.into() as usize;
 
     let min_size = if version.is_xbox() && s != 1 { 128 / s } else { 1 };
 
-    let mut levels = Vec::with_capacity(info.levels() as usize);
-    if info.levels() == 1 {
+    let mut levels = Vec::with_capacity(info.levels.into() as usize);
+    if info.levels.into() == 1 {
         let expected_size = (width / s).max(min_size) * (height / s).max(min_size) * d;
         if data1.len() != expected_size {
             return Err(anyhow!("expected texture data to be of size {} but got {}", expected_size, data1.len()));
         }
         levels.push(&data1[..]);
     } else {
-        if !version.is_xbox() || (info.width() > 16 && info.height() > 16) {
+        if !version.is_xbox() || (info.width.into() > 16 && info.height.into() > 16) {
             let expected_size = (width / s).max(min_size) * (height / s).max(min_size) * d;
             if data0.len() != expected_size {
                 return Err(anyhow!("expected texture data to be of size {} but got {}", expected_size, data0.len()));
@@ -336,7 +331,7 @@ fn parse_texture<'a, L: LevelFormat>(info: &L::TextureInfo, data0: &'a [u8], dat
             height = height * 2;
         }
         let mut offset = 0;
-        for _ in 1..info.levels() {
+        for _ in 1..info.levels.into() {
             width /= 2;
             height /= 2;
             let size = (width / s).max(min_size) * (height / s).max(min_size) * d;
@@ -353,14 +348,14 @@ fn parse_texture<'a, L: LevelFormat>(info: &L::TextureInfo, data0: &'a [u8], dat
     Ok(levels.into())
 }
 
-fn parse_cube<'a, L: LevelFormat>(info: &L::TextureInfo, data0: &'a [u8], data1: &'a [u8], version: Version) -> Result<Box<[&'a [u8]]>> {
-    if info.levels() > 1 {
+fn parse_cube<'a,  T: BaseTypes>(info: &TextureDataInfo<T>, data0: &'a [u8], data1: &'a [u8], version: Version) -> Result<Box<[&'a [u8]]>> {
+    if info.levels.into() > 1 {
         return Err(anyhow!("Cube Textures with > 1 level are unhanded"));
     }
-    let (s, d) = match get_stride_width(info.format()) {
+    let (s, d) = match get_stride_width(info.format.into()) {
         Some((s, d)) => (s as usize, d as usize),
         None => {
-            warn!("Unhandled Cube Texture Format {}", info.format());
+            warn!("Unhandled Cube Texture Format {}", info.format.into());
             return Ok(Box::new([]));
         }
     };
@@ -373,139 +368,8 @@ fn parse_cube<'a, L: LevelFormat>(info: &L::TextureInfo, data0: &'a [u8], data1:
         return Err(anyhow!("Cube Texture exepects first data to be empty but got {} bytes", data0.len()));
     }
 
-    let data_size: usize = (info.width() as usize / s).max(min_size)
-        * (info.height() as usize / s).max(min_size)
-        * d;
-    for i in 0..6 {
-        faces.push(&data1[data_size * i..data_size * i + data_size]);
-    }
-    Ok(faces.into())
-}
-
-#[make_endian]
-#[cfg_attr(feature = "ffi", repr(C))]
-#[derive(PartialEq)]
-pub struct TextureRef_XE_<'a> {
-    pub info: &'a TextureInfo_XE_,
-    pub data0: Option<&'a CompressedDataRef<'a>>,
-    pub data1: Option<&'a CompressedDataRef<'a>>
-}
-
-#[make_endian]
-impl Default for TextureRef_XE_<'_> {
-    fn default() -> Self {
-        Self {
-            info: get_default_ref(),
-            data0: None,
-            data1: None
-        }
-    }
-}
-
-#[make_endian]
-impl<'a> TextureRef_XE_<'a> {
-    pub fn from_data(info: &'a TextureInfo_XE_, texture_data: &IndexMap<u32, &'a CompressedDataRef<'a>>) -> Result<Self> {
-        Ok(Self {
-            info,
-            data0: texture_data.get(&info.asset_key.to_native()).copied(),
-            data1: texture_data.get(&hash_string(b"*", Some(info.asset_key.conv()))).copied()
-        })
-    }
-}
-
-#[make_endian]
-impl<'a> TextureRef_XE_<'a> {
-    fn parse(&self, version: Version) -> Result<Box<[&'a [u8]]>> {
-        let data0 = self.data0.map(|x| &x.data_decomp[..]).unwrap_or_default();
-        let data1 = self.data1.map(|x| &x.data_decomp[..]).unwrap_or_default();
-        Ok(match self.info.kind.conv() {
-            0u32 | 7 | 8 => parse_texture_xe_(self.info, data0, data1, version).context("texture data")?,
-            1 | 9 => parse_cube_xe_(self.info, data0, data1, version).context("cube data")?,
-            _ => {
-                warn!(
-                    "Unsupported Texture Type {} for texture {:?}",
-                    self.info.kind, self.info.key
-                );
-                vec![data0, data1].into()
-            }
-        })
-    }
-}
-
-#[make_endian]
-fn parse_texture_xe_<'a>(info: &TextureInfo_XE_, data0: &'a [u8], data1: &'a [u8], version: Version) -> Result<Box<[&'a [u8]]>> {
-    let (s, d) = match get_stride_width(info.format.conv()) {
-        Some((s, d)) => (s as usize, d as usize),
-        None => {
-            warn!("Unhandled Texture Format {}", info.format);
-            return Ok(Box::new([]));
-        }
-    };
-
-    let mut width: usize = info.width.conv();
-    let mut height: usize = info.height.conv();
-
-    let min_size = if version.is_xbox() && s != 1 { 128 / s } else { 1 };
-
-    let mut levels = Vec::with_capacity(info.levels.conv());
-    if info.levels == 1u16 {
-        let expected_size = (width / s).max(min_size) * (height / s).max(min_size) * d;
-        if data1.len() != expected_size {
-            return Err(anyhow!("expected texture data to be of size {} but got {}", expected_size, data1.len()));
-        }
-        levels.push(&data1[..]);
-    } else {
-        if !version.is_xbox() || (info.width > 16u16 && info.height > 16u16) {
-            let expected_size = (width / s).max(min_size) * (height / s).max(min_size) * d;
-            if data0.len() != expected_size {
-                return Err(anyhow!("expected texture data to be of size {} but got {}", expected_size, data0.len()));
-            }
-            levels.push(&data0[..]);
-        } else {
-            width = width * 2;
-            height = height * 2;
-        }
-        let mut offset = 0;
-        for _ in 1usize..info.levels.conv() {
-            width /= 2;
-            height /= 2;
-            let size = (width / s).max(min_size) * (height / s).max(min_size) * d;
-            levels.push(&data1[offset..offset + size]);
-            offset += size;
-            if version.is_xbox() && (width == 16 || height == 16) {
-                break;
-            }
-        }
-        if offset != data1.len() {
-            return Err(anyhow!("expected texture data to be of size {} but got {}", offset, data0.len()));
-        }
-    }
-    Ok(levels.into())
-}
-
-#[make_endian]
-fn parse_cube_xe_<'a>(info: &TextureInfo_XE_, data0: &'a [u8], data1: &'a [u8], version: Version) -> Result<Box<[&'a [u8]]>> {
-    if info.levels > 1 {
-        return Err(anyhow!("Cube Textures with > 1 level are unhanded"));
-    }
-    let (s, d) = match get_stride_width(info.format.conv()) {
-        Some((s, d)) => (s as usize, d as usize),
-        None => {
-            warn!("Unhandled Cube Texture Format {}", info.format);
-            return Ok(Box::new([]));
-        }
-    };
-
-    let min_size = if version.is_xbox() { 128 / s } else { 1 };
-
-    let mut faces = Vec::with_capacity(6);
-
-    if data0.len() != 0 {
-        return Err(anyhow!("Cube Texture exepects first data to be empty but got {} bytes", data0.len()));
-    }
-
-    let data_size: usize = (info.width.to_native() as usize / s).max(min_size)
-        * (info.height.to_native() as usize / s).max(min_size)
+    let data_size: usize = (info.width.into() as usize / s).max(min_size)
+        * (info.height.into() as usize / s).max(min_size)
         * d;
     for i in 0..6 {
         faces.push(&data1[data_size * i..data_size * i + data_size]);
@@ -515,7 +379,7 @@ fn parse_cube_xe_<'a>(info: &TextureInfo_XE_, data0: &'a [u8], data1: &'a [u8], 
 
 #[derive(Debug, Clone)]
 pub struct Texture {
-    pub info: TextureInfo,
+    pub info: TextureDataInfo<NE>,
     pub data: Vec<Vec<u8>>,
 }
 
@@ -555,10 +419,12 @@ impl Texture {
     }
 }
 
-#[make_endian]
-impl TextureRef_XE_<'_> {
+impl<T: BaseTypes> TextureDataRef<'_, T>
+where
+    TextureDataInfo<NE>: From<TextureDataInfo<T>>
+{
     fn to_full(&self, version: Version) -> anyhow::Result<Texture> {
-        let mut info: TextureInfo = self.info.conv();
+        let mut info: TextureDataInfo<NE> = self.info.clone().into();
         let val_data = self.parse(version).context("texture data")?;
         let mut data = val_data 
             .iter()
@@ -580,7 +446,7 @@ impl TextureRef_XE_<'_> {
             let mut height = info.height as usize;
 
             match info.kind {
-                0 | 7 | 8 => {
+                mip_texture!() => {
                     // mip texture
                     if info.levels == 1 {
                         data.push(conv_img_slice(
@@ -689,7 +555,7 @@ impl TextureRef_XE_<'_> {
                         }
                     }
                 }
-                1 | 9 => {
+                cube_texture!() => {
                     // cube texture
                     data.extend(val_data.iter().map(|x| {
                         conv_img_slice(
@@ -713,15 +579,14 @@ impl TextureRef_XE_<'_> {
         Ok(Texture { info, data })
     }
 }
-
-#[make_endian]
+/*
 #[enum_dispatch(DumpTexture_XE_)]
 pub enum Texture_XE_<'a> {
-    Ref(TextureRef_XE_<'a>),
+    Ref(TextureDataRef_XE_<'a>),
     Owned(Texture)
 }
+*/
 
-#[make_endian]
 pub struct DumpTexture0<'a>(&'a Texture, Vec<u8>);
 
 impl DumpCompressedData for DumpTexture0<'_> {
@@ -736,11 +601,12 @@ impl DumpCompressedData for DumpTexture0<'_> {
         self.0.data0().map(|x| x.len()).sum::<usize>()
     }
     fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
-        self.1.dump_into(dst)
+        let dst = u8::mut_slice_from_data(dst, self.1.len())?;
+        dst.copy_from_slice(&self.1);
+        Ok(())
     }
 }
 
-#[make_endian]
 pub struct DumpTexture1<'a>(&'a Texture, Vec<u8>);
 
 impl DumpCompressedData for DumpTexture1<'_> {
@@ -755,45 +621,45 @@ impl DumpCompressedData for DumpTexture1<'_> {
         self.0.data1().map(|x| x.len()).sum::<usize>()
     }
     fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
-        self.1.dump_into(dst)
+        let dst = u8::mut_slice_from_data(dst, self.1.len())?;
+        dst.copy_from_slice(&self.1);
+        Ok(())
     }
 }
 
-#[make_endian]
 #[enum_dispatch]
-pub trait DumpTexture_XE_ {
+pub trait DumpTexture<T: BaseTypes> {
     fn key(&self) -> u32;
-    fn asset_info(&self) -> (u32_XE_, u32_XE_);
-    fn write_info(&self, info: &mut TextureInfo_XE_) -> Result<()>;
+    fn asset_info(&self) -> (T::u32, T::u32);
+    fn write_info(&self, info: &mut TextureDataInfo<T>) -> Result<()>;
     fn data0(&self) -> CompressedData<'_>;
     fn data1(&self) -> CompressedData<'_>;
 
-    fn dump_infos<'d>(&'d self, infos: &mut DumpInfos_XE_<'_, 'd>) -> Result<()> {
-        let info = infos.textures.next().context("textures")?;
+    fn dump_infos<'d>(&'d self, info: &mut TextureDataInfo<T>, infos: &mut DumpInfos<'_, 'd, T>) -> Result<()> {
         self.write_info(info).context("write info")?;
         let data0 = self.data0();
         let data1 = self.data1();
         let (key0, ty) = self.asset_info();
-        let key1 = hash_string("*".as_bytes(), Some(key0.conv()));
+        let key1 = hash_string("*".as_bytes(), Some(key0.into()));
         if data1.size() == 0 {
-            infos.texture_data.push(DumpInfoData_XE_ {
-                key: key1.conv(),
+            infos.texture_data.insert(key1, DumpInfoData {
+                key: key1.into(),
                 kind: ty,
                 data: data1
             });
-            infos.texture_data.push(DumpInfoData_XE_ {
+            infos.texture_data.insert(key0.into(), DumpInfoData {
                 key: key0,
                 kind: ty,
                 data: data0
             });
         } else {
-            infos.texture_data.push(DumpInfoData_XE_ {
+            infos.texture_data.insert(key0.into(), DumpInfoData {
                 key: key0,
                 kind: ty,
                 data: data0
             });
-            infos.texture_data.push(DumpInfoData_XE_ {
-                key: key1.conv(),
+            infos.texture_data.insert(key1, DumpInfoData {
+                key: key1.into(),
                 kind: ty,
                 data: data1
             });
@@ -803,16 +669,16 @@ pub trait DumpTexture_XE_ {
     }
 }
 
-#[make_endian]
-impl<'a> DumpTexture_XE_ for TextureRef_XE_<'a> {
+impl<'a, T: BaseTypes> DumpTexture<T> for TextureDataRef<'a, T> {
     fn key(&self) -> u32 {
-        self.info.key.conv()
+        self.info.key.val.into()
     }
-    fn asset_info(&self) -> (u32_XE_, u32_XE_) {
-        (self.info.asset_key, self.info.asset_type)
+    fn asset_info(&self) -> (T::u32, T::u32) {
+        (self.info.key.val, self.info.asset_type)
     }
-    fn write_info(&self, info: &mut TextureInfo_XE_) -> Result<()> {
-        info.write_from(self.info)
+    fn write_info(&self, info: &mut TextureDataInfo<T>) -> Result<()> {
+        *info = *self.info;
+        Ok(())
     }
     fn data0(&self) -> CompressedData<'_> {
         self.data0.into()
@@ -822,16 +688,18 @@ impl<'a> DumpTexture_XE_ for TextureRef_XE_<'a> {
     }
 }
 
-#[make_endian]
-impl DumpTexture_XE_ for Texture {
+impl<T: BaseTypes> DumpTexture<T> for Texture
+where
+    TextureDataInfo<T>: From<TextureDataInfo<NE>>
+{
     fn key(&self) -> u32 {
-        self.info.key.get()
+        self.info.key.val
     }
-    fn asset_info(&self) -> (u32_XE_, u32_XE_) {
-        (self.info.asset_key.get().into(), self.info.asset_type.into())
+    fn asset_info(&self) -> (T::u32, T::u32) {
+        (self.info.key.val.into(), self.info.asset_type.into())
     }
-    fn write_info(&self, info: &mut TextureInfo_XE_) -> Result<()> {
-        *info = self.info.conv();
+    fn write_info(&self, info: &mut TextureDataInfo<T>) -> Result<()> {
+        *info = self.info.into();
         Ok(())
     }
     fn data0(&self) -> CompressedData<'_> {
@@ -842,8 +710,7 @@ impl DumpTexture_XE_ for Texture {
     }
 }
 
-#[make_endian]
-pub trait DumpTextures_XE_ {
+pub trait DumpTextures<T: BaseTypes> {
     fn num(&self) -> usize;
-    fn write_infos(&self, infos: &mut [TextureInfo_XE_]);
+    fn write_infos(&self, infos: &mut [TextureDataInfo<T>]);
 }

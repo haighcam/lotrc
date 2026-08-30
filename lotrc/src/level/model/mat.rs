@@ -1,668 +1,558 @@
 use anyhow::{Context, Result};
 
-#[make_endian]
-use crate::{
-    level::pak::block1::infos::DumpInfos_XE_,
-    types::{u32_XE_, Crc_XE_, u16_XE_, u64_XE_, f32_XE_}
-};
-
-use crate::types::{Crc, RefFromData, OrderedData, DumpData};
+use crate::types::{Crc, ReadData, BaseTypes, NE};
 use crate::level::{
-    LevelPc,
-    pak::block1::infos::InfoCounts
+    pak::block1::infos::{InfoCounts, DumpInfos}
 };
-use lotrc_proc::{make_endian, derive_ordered_data};
+use lotrc_proc::{derive_pod};
 
-pub trait MatTypes {
-    type Mat1: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + Mat1TypeTrait;
-    type Mat2Extra: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + Mat2ExtraTypeTrait;
-    type Mat2: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + Mat2TypeTrait;
-    type Mat3Extra: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + Mat3ExtraTypeTrait;
-    type Mat3: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + Mat3TypeTrait;
-    type Mat4Extra: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + Mat4ExtraTypeTrait;
-    type Mat4: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + Mat4TypeTrait;
-    type MatExtra: std::fmt::Debug + Clone + PartialEq + RefFromData + DumpData + MatExtraTypeTrait;
+pub trait MatTypes: BaseTypes {
+
 }
 
-impl MatTypes for LevelPc {
-    type Mat1 = Mat1LE;
-    type Mat2Extra = Mat2ExtraLE;
-    type Mat2 = Mat2LE;
-    type Mat3Extra = Mat3ExtraLE;
-    type Mat3 = Mat3LE;
-    type Mat4Extra = Mat4ExtraLE;
-    type Mat4 = Mat4LE;
-    type MatExtra = MatExtraLE;
-}
-
-#[make_endian]
-#[derive(Debug, Default, Clone)]
-pub struct MatPs3_XE_ {
-    pub unk_0: u32_XE_,
-    pub tex0: Crc_XE_,
-    pub tex1: Crc_XE_,
-    pub tex2: Crc_XE_,
-    pub tex3: Crc_XE_,
-    pub tex4: Crc_XE_,
-    pub tex5: Crc_XE_,
-    pub key_guid: Crc_XE_,
-    pub mask0: Crc_XE_,
-    pub mask1: Crc_XE_,
-    pub mask2: Crc_XE_,
-    pub unk_12: u32_XE_,
-    pub unk_13: u32_XE_,
-    pub unk_14: u32_XE_,
-    pub unk_15: u32_XE_,
-    pub unk_16: u32_XE_,
-    pub unk_17: u32_XE_,
-    pub unk_18: u32_XE_,
-    pub unk_19: u32_XE_,
-    pub unk_20: u32_XE_,
-    pub unk_21: u32_XE_,
-    pub unk_22: u32_XE_,
-    pub unk_23: u32_XE_,
-    pub unk_24: u32_XE_,
-    pub unk_25: u32_XE_,
-    pub unk_26: u32_XE_,
-    pub unk_27: u32_XE_,
-    pub unk_28: u32_XE_,
-    pub unk_29: u32_XE_,
-    pub unk_30: u32_XE_,
-    pub unk_31: u32_XE_,
-    pub unk_32: u32_XE_,
-    pub unk_33: u32_XE_,
-    pub z_35: u32_XE_,
-    pub z_36: u32_XE_,
-    pub z_37: u32_XE_,
-    pub z_38: u32_XE_,
-    pub z_39: u32_XE_,
-    pub unk_40: u32_XE_,
-    pub unk_41: u32_XE_,
-    pub unk_42: u32_XE_,
-    pub unk_43: u32_XE_,
-    pub unk_44: u32_XE_,
-    pub unk_45: u32_XE_,
-    pub unk_46: u32_XE_,
-    pub unk_47: u32_XE_,
-    pub unk_48: u32_XE_,
-    pub unk_49: u32_XE_,
-    pub flags: u64_XE_, //Q', #(flags1, flags2)
-    pub kind: u32_XE_,
-    pub unk_53: u32_XE_,
+#[derive_pod]
+pub struct MatPs3<T: BaseTypes> {
+    pub unk_0: T::u32,
+    pub tex0: Crc<T>,
+    pub tex1: Crc<T>,
+    pub tex2: Crc<T>,
+    pub tex3: Crc<T>,
+    pub tex4: Crc<T>,
+    pub tex5: Crc<T>,
+    pub key_guid: Crc<T>,
+    pub mask0: Crc<T>,
+    pub mask1: Crc<T>,
+    pub mask2: Crc<T>,
+    pub unk_12: T::u32,
+    pub unk_13: T::u32,
+    pub unk_14: T::u32,
+    pub unk_15: T::u32,
+    pub unk_16: T::u32,
+    pub unk_17: T::u32,
+    pub unk_18: T::u32,
+    pub unk_19: T::u32,
+    pub unk_20: T::u32,
+    pub unk_21: T::u32,
+    pub unk_22: T::u32,
+    pub unk_23: T::u32,
+    pub unk_24: T::u32,
+    pub unk_25: T::u32,
+    pub unk_26: T::u32,
+    pub unk_27: T::u32,
+    pub unk_28: T::u32,
+    pub unk_29: T::u32,
+    pub unk_30: T::u32,
+    pub unk_31: T::u32,
+    pub unk_32: T::u32,
+    pub unk_33: T::u32,
+    pub z_35: T::u32,
+    pub z_36: T::u32,
+    pub z_37: T::u32,
+    pub z_38: T::u32,
+    pub z_39: T::u32,
+    pub unk_40: T::u32,
+    pub unk_41: T::u32,
+    pub unk_42: T::u32,
+    pub unk_43: T::u32,
+    pub unk_44: T::u32,
+    pub unk_45: T::u32,
+    pub unk_46: T::u32,
+    pub unk_47: T::u32,
+    pub unk_48: T::u32,
+    pub unk_49: T::u32,
+    pub flags: T::u64, //Q', #(flags1, flags2)
+    pub kind: T::u32,
+    pub unk_53: T::u32,
     pub unk_54a: u8,
     pub unk_54b: u8,
-    pub side_flags: u16_XE_,
-    pub unk_55: u32_XE_,
-    pub unk_56: u32_XE_,
-    pub unk_57: u32_XE_,
-    pub unk_58: f32_XE_,
-    pub unk_59: f32_XE_,
-    pub unk_60: f32_XE_,
-    pub unk_61: f32_XE_,
-    pub unk_62: f32_XE_,
-    pub unk_63: f32_XE_,
-    pub unk_64: f32_XE_,
-    pub unk_65: f32_XE_,
-    pub unk_66: f32_XE_,
-    pub unk_67: f32_XE_,
-    pub unk_68: f32_XE_,
-    pub unk_69: f32_XE_,
-    pub unk_70: u32_XE_,
-    pub unk_71: u32_XE_,
-    pub unk_72: u32_XE_,
-    pub unk_73: f32_XE_,
-    pub unk_74: f32_XE_,
-    pub unk_75: f32_XE_,
-    pub unk_76: f32_XE_,
-    pub unk_77: u32_XE_,
-    pub unk_78: f32_XE_,
-    pub unk_79: f32_XE_,
-    pub unk_80: f32_XE_,
-    pub unk_81: f32_XE_,
-    pub unk_82: u32_XE_,
-    pub unk_83: u32_XE_,
-    pub unk_84: u32_XE_,
-    pub unk_85: f32_XE_,
-    pub mat_extra_offset: u32_XE_,
-    pub key: Crc_XE_,
-    pub unk_88: u32_XE_,
-    pub z_89: u32_XE_,
+    pub side_flags: T::u16,
+    pub unk_55: T::u32,
+    pub unk_56: T::u32,
+    pub unk_57: T::u32,
+    pub unk_58: T::f32,
+    pub unk_59: T::f32,
+    pub unk_60: T::f32,
+    pub unk_61: T::f32,
+    pub unk_62: T::f32,
+    pub unk_63: T::f32,
+    pub unk_64: T::f32,
+    pub unk_65: T::f32,
+    pub unk_66: T::f32,
+    pub unk_67: T::f32,
+    pub unk_68: T::f32,
+    pub unk_69: T::f32,
+    pub unk_70: T::u32,
+    pub unk_71: T::u32,
+    pub unk_72: T::u32,
+    pub unk_73: T::f32,
+    pub unk_74: T::f32,
+    pub unk_75: T::f32,
+    pub unk_76: T::f32,
+    pub unk_77: T::u32,
+    pub unk_78: T::f32,
+    pub unk_79: T::f32,
+    pub unk_80: T::f32,
+    pub unk_81: T::f32,
+    pub unk_82: T::u32,
+    pub unk_83: T::u32,
+    pub unk_84: T::u32,
+    pub unk_85: T::f32,
+    pub mat_extra_offset: T::u32,
+    pub key: Crc<T>,
+    pub unk_88: T::u32,
+    pub z_89: T::u32,
 }
 
-#[derive_ordered_data]
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct Mat1_XE_ {
-    pub unk_0: u32_XE_,
-    pub unk_1: u32_XE_,
-    pub tex0: Crc_XE_,
-    pub tex1: Crc_XE_,
-    pub tex2: Crc_XE_,
-    pub tex3: Crc_XE_,
-    pub tex4: Crc_XE_,
-    pub tex5: Crc_XE_,
-    pub key_guid: Crc_XE_,
-    pub mask0: Crc_XE_,
-    pub mask1: Crc_XE_,
-    pub mask2: Crc_XE_,
-    pub unk_12: u32_XE_,
-    pub unk_13: u32_XE_,
-    pub unk_14: u32_XE_,
-    pub unk_15: u32_XE_,
-    pub unk_16: u32_XE_,
-    pub unk_17: u32_XE_,
-    pub unk_18: u32_XE_,
-    pub unk_19: u32_XE_,
-    pub unk_20: u32_XE_,
-    pub unk_21: u32_XE_,
-    pub unk_22: u32_XE_,
-    pub unk_23: u32_XE_,
-    pub unk_24: u32_XE_,
-    pub unk_25: u32_XE_,
-    pub unk_26: u32_XE_,
-    pub unk_27: u32_XE_,
-    pub unk_28: u32_XE_,
-    pub unk_29: u32_XE_,
-    pub unk_30: u32_XE_,
-    pub unk_31: u32_XE_,
-    pub unk_32: u32_XE_,
-    pub unk_33: u32_XE_,
-    pub z_34: u32_XE_,
-    pub z_35: u32_XE_,
-    pub z_36: u32_XE_,
-    pub z_37: u32_XE_,
-    pub z_38: u32_XE_,
-    pub z_39: u32_XE_,
-    pub unk_40: u32_XE_,
-    pub unk_41: u32_XE_,
-    pub unk_42: u32_XE_,
-    pub unk_43: u32_XE_,
-    pub unk_44: u32_XE_,
-    pub unk_45: u32_XE_,
-    pub unk_46: u32_XE_,
-    pub unk_47: u32_XE_,
-    pub unk_48: u32_XE_,
-    pub unk_49: u32_XE_,
-    pub flags: u64_XE_, //Q', #(flags1, flags2)
-    pub kind: u32_XE_,
-    pub unk_53: u32_XE_,
+#[derive_pod]
+pub struct Mat1<T: BaseTypes> {
+    pub unk_0: T::u32,
+    pub unk_1: T::u32,
+    pub tex0: Crc<T>,
+    pub tex1: Crc<T>,
+    pub tex2: Crc<T>,
+    pub tex3: Crc<T>,
+    pub tex4: Crc<T>,
+    pub tex5: Crc<T>,
+    pub key_guid: Crc<T>,
+    pub mask0: Crc<T>,
+    pub mask1: Crc<T>,
+    pub mask2: Crc<T>,
+    pub unk_12: T::u32,
+    pub unk_13: T::u32,
+    pub unk_14: T::u32,
+    pub unk_15: T::u32,
+    pub unk_16: T::u32,
+    pub unk_17: T::u32,
+    pub unk_18: T::u32,
+    pub unk_19: T::u32,
+    pub unk_20: T::u32,
+    pub unk_21: T::u32,
+    pub unk_22: T::u32,
+    pub unk_23: T::u32,
+    pub unk_24: T::u32,
+    pub unk_25: T::u32,
+    pub unk_26: T::u32,
+    pub unk_27: T::u32,
+    pub unk_28: T::u32,
+    pub unk_29: T::u32,
+    pub unk_30: T::u32,
+    pub unk_31: T::u32,
+    pub unk_32: T::u32,
+    pub unk_33: T::u32,
+    pub z_34: T::u32,
+    pub z_35: T::u32,
+    pub z_36: T::u32,
+    pub z_37: T::u32,
+    pub z_38: T::u32,
+    pub z_39: T::u32,
+    pub unk_40: T::u32,
+    pub unk_41: T::u32,
+    pub unk_42: T::u32,
+    pub unk_43: T::u32,
+    pub unk_44: T::u32,
+    pub unk_45: T::u32,
+    pub unk_46: T::u32,
+    pub unk_47: T::u32,
+    pub unk_48: T::u32,
+    pub unk_49: T::u32,
+    pub flags: T::u64, //Q', #(flags1, flags2)
+    pub kind: T::u32,
+    pub unk_53: T::u32,
     pub unk_54a: u8,
     pub unk_54b: u8,
-    pub side_flags: u16_XE_,
-    pub unk_55: u32_XE_,
-    pub unk_56: u32_XE_,
-    pub unk_57: u32_XE_,
-    pub unk_58: f32_XE_,
-    pub unk_59: f32_XE_,
-    pub unk_60: f32_XE_,
-    pub unk_61: f32_XE_,
-    pub unk_62: f32_XE_,
-    pub unk_63: f32_XE_,
-    pub unk_64: f32_XE_,
-    pub unk_65: f32_XE_,
-    pub unk_66: f32_XE_,
-    pub unk_67: f32_XE_,
-    pub unk_68: f32_XE_,
-    pub unk_69: f32_XE_,
-    pub unk_70: u32_XE_,
-    pub unk_71: u32_XE_,
-    pub unk_72: u32_XE_,
-    pub unk_73: f32_XE_,
-    pub unk_74: f32_XE_,
-    pub unk_75: f32_XE_,
-    pub unk_76: f32_XE_,
-    pub unk_77: u32_XE_,
-    pub unk_78: f32_XE_,
-    pub unk_79: f32_XE_,
-    pub unk_80: f32_XE_,
-    pub unk_81: f32_XE_,
-    pub unk_82: u32_XE_,
-    pub unk_83: u32_XE_,
-    pub unk_84: u32_XE_,
-    pub unk_85: f32_XE_,
-    pub mat_extra_offset: u32_XE_,
-    pub key: Crc_XE_,
-    pub unk_88: u32_XE_,
-    pub z_89: u32_XE_,
+    pub side_flags: T::u16,
+    pub unk_55: T::u32,
+    pub unk_56: T::u32,
+    pub unk_57: T::u32,
+    pub unk_58: T::f32,
+    pub unk_59: T::f32,
+    pub unk_60: T::f32,
+    pub unk_61: T::f32,
+    pub unk_62: T::f32,
+    pub unk_63: T::f32,
+    pub unk_64: T::f32,
+    pub unk_65: T::f32,
+    pub unk_66: T::f32,
+    pub unk_67: T::f32,
+    pub unk_68: T::f32,
+    pub unk_69: T::f32,
+    pub unk_70: T::u32,
+    pub unk_71: T::u32,
+    pub unk_72: T::u32,
+    pub unk_73: T::f32,
+    pub unk_74: T::f32,
+    pub unk_75: T::f32,
+    pub unk_76: T::f32,
+    pub unk_77: T::u32,
+    pub unk_78: T::f32,
+    pub unk_79: T::f32,
+    pub unk_80: T::f32,
+    pub unk_81: T::f32,
+    pub unk_82: T::u32,
+    pub unk_83: T::u32,
+    pub unk_84: T::u32,
+    pub unk_85: T::f32,
+    pub mat_extra_offset: T::u32,
+    pub key: Crc<T>,
+    pub unk_88: T::u32,
+    pub z_89: T::u32,
 }
 
-#[derive_ordered_data]
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct Mat2Extra_XE_ {
-    pub unk_90: u32_XE_,
-    pub unk_91: u32_XE_,
-    pub unk_92: u32_XE_,
-    pub unk_93: u32_XE_,
-    pub unk_94: u32_XE_,
-    pub unk_95: u32_XE_,
-    pub unk_96: u32_XE_,
-    pub unk_97: u32_XE_,
-    pub unk_98: u32_XE_,
-    pub unk_99: u32_XE_,
-    pub unk_100: u32_XE_,
-    pub unk_101: u32_XE_,
-    pub unk_102: f32_XE_,
-    pub unk_103: f32_XE_,
-    pub unk_104: f32_XE_,
-    pub unk_105: f32_XE_,
-    pub unk_106: f32_XE_,
-    pub unk_107: f32_XE_,
-    pub unk_108: f32_XE_,
-    pub unk_109: f32_XE_,
-    pub unk_110: f32_XE_,
-    pub unk_111: f32_XE_,
-    pub unk_112: f32_XE_,
-    pub unk_113: f32_XE_,
-    pub unk_114: u32_XE_,
-    pub unk_115: u32_XE_,
-    pub unk_116: u32_XE_,
-    pub unk_117: Crc_XE_,
-    pub unk_118: Crc_XE_,
-    pub unk_119: Crc_XE_,
+#[derive_pod]
+pub struct Mat2Extra<T: BaseTypes> {
+    pub unk_90: T::u32,
+    pub unk_91: T::u32,
+    pub unk_92: T::u32,
+    pub unk_93: T::u32,
+    pub unk_94: T::u32,
+    pub unk_95: T::u32,
+    pub unk_96: T::u32,
+    pub unk_97: T::u32,
+    pub unk_98: T::u32,
+    pub unk_99: T::u32,
+    pub unk_100: T::u32,
+    pub unk_101: T::u32,
+    pub unk_102: T::f32,
+    pub unk_103: T::f32,
+    pub unk_104: T::f32,
+    pub unk_105: T::f32,
+    pub unk_106: T::f32,
+    pub unk_107: T::f32,
+    pub unk_108: T::f32,
+    pub unk_109: T::f32,
+    pub unk_110: T::f32,
+    pub unk_111: T::f32,
+    pub unk_112: T::f32,
+    pub unk_113: T::f32,
+    pub unk_114: T::u32,
+    pub unk_115: T::u32,
+    pub unk_116: T::u32,
+    pub unk_117: Crc<T>,
+    pub unk_118: Crc<T>,
+    pub unk_119: Crc<T>,
     pub unk_120a: u8,
     pub unk_120b: u8,
     pub unk_120c: u8,
     pub unk_120d: u8,
-    pub unk_121: u32_XE_,
+    pub unk_121: T::u32,
 }
 
-#[derive_ordered_data]
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct Mat2_XE_ {
-    base: Mat1_XE_,
-    extra: Mat2Extra_XE_
+#[derive_pod]
+pub struct Mat2<T: BaseTypes> {
+    base: Mat1<T>,
+    extra: Mat2Extra<T>,
 }
 
-#[make_endian]
-pub struct Mat3ExtraPS3_XE_ {
-    pub unk_90: f32_XE_,
-    pub unk_91: f32_XE_,
-    pub unk_92: f32_XE_,
-    pub unk_93: f32_XE_,
-    pub unk_94: f32_XE_,
-    pub unk_95: f32_XE_,
-    pub unk_96: f32_XE_,
-    pub unk_97: f32_XE_,
-    pub unk_98: f32_XE_,
-    pub unk_99: f32_XE_,
-    pub unk_100: f32_XE_,
-    pub unk_101: f32_XE_,
-    pub unk_102: f32_XE_,
-    pub unk_103: f32_XE_,
-    pub unk_104: f32_XE_,
-    pub unk_105: f32_XE_,
-    pub unk_106: f32_XE_,
-    pub unk_107: f32_XE_,
-    pub unk_108: f32_XE_,
-    pub unk_109: f32_XE_,
-    pub unk_110: f32_XE_,
-    pub unk_111: f32_XE_,
-    pub unk_112: f32_XE_,
-    pub unk_113: f32_XE_,
+#[derive_pod]
+pub struct Mat3ExtraPS3<T: BaseTypes> {
+    pub unk_90: T::f32,
+    pub unk_91: T::f32,
+    pub unk_92: T::f32,
+    pub unk_93: T::f32,
+    pub unk_94: T::f32,
+    pub unk_95: T::f32,
+    pub unk_96: T::f32,
+    pub unk_97: T::f32,
+    pub unk_98: T::f32,
+    pub unk_99: T::f32,
+    pub unk_100: T::f32,
+    pub unk_101: T::f32,
+    pub unk_102: T::f32,
+    pub unk_103: T::f32,
+    pub unk_104: T::f32,
+    pub unk_105: T::f32,
+    pub unk_106: T::f32,
+    pub unk_107: T::f32,
+    pub unk_108: T::f32,
+    pub unk_109: T::f32,
+    pub unk_110: T::f32,
+    pub unk_111: T::f32,
+    pub unk_112: T::f32,
+    pub unk_113: T::f32,
     pub variation_id_color: u8,
     pub variation_id_texture: u8,
     pub variation_id_specular: u8,
     pub unk_114d: u8,
-    pub unk_115: u32_XE_,
-    pub unk_116: u32_XE_,
-    pub unk_117: u32_XE_,
+    pub unk_115: T::u32,
+    pub unk_116: T::u32,
+    pub unk_117: T::u32,
 }
 
-#[derive_ordered_data]
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct Mat3Extra_XE_ {
-    pub unk_90: f32_XE_,
-    pub unk_91: f32_XE_,
-    pub unk_92: f32_XE_,
-    pub unk_93: f32_XE_,
-    pub unk_94: f32_XE_,
-    pub unk_95: f32_XE_,
-    pub unk_96: f32_XE_,
-    pub unk_97: f32_XE_,
-    pub unk_98: f32_XE_,
-    pub unk_99: f32_XE_,
-    pub unk_100: f32_XE_,
-    pub unk_101: f32_XE_,
-    pub unk_102: f32_XE_,
-    pub unk_103: f32_XE_,
-    pub unk_104: f32_XE_,
-    pub unk_105: f32_XE_,
-    pub unk_106: f32_XE_,
-    pub unk_107: f32_XE_,
-    pub unk_108: f32_XE_,
-    pub unk_109: f32_XE_,
-    pub unk_110: f32_XE_,
-    pub unk_111: f32_XE_,
-    pub unk_112: f32_XE_,
-    pub unk_113: f32_XE_,
+#[derive_pod]
+pub struct Mat3Extra<T: BaseTypes> {
+    pub unk_90: T::f32,
+    pub unk_91: T::f32,
+    pub unk_92: T::f32,
+    pub unk_93: T::f32,
+    pub unk_94: T::f32,
+    pub unk_95: T::f32,
+    pub unk_96: T::f32,
+    pub unk_97: T::f32,
+    pub unk_98: T::f32,
+    pub unk_99: T::f32,
+    pub unk_100: T::f32,
+    pub unk_101: T::f32,
+    pub unk_102: T::f32,
+    pub unk_103: T::f32,
+    pub unk_104: T::f32,
+    pub unk_105: T::f32,
+    pub unk_106: T::f32,
+    pub unk_107: T::f32,
+    pub unk_108: T::f32,
+    pub unk_109: T::f32,
+    pub unk_110: T::f32,
+    pub unk_111: T::f32,
+    pub unk_112: T::f32,
+    pub unk_113: T::f32,
     pub variation_id_color: u8,
     pub variation_id_texture: u8,
     pub variation_id_specular: u8,
     pub unk_114d: u8,
-    pub unk_115: u32_XE_,
+    pub unk_115: T::u32,
 }
 
-#[derive_ordered_data]
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct Mat3_XE_ {
-    base: Mat1_XE_,
-    extra: Mat3Extra_XE_
+#[derive_pod]
+pub struct Mat3<T: BaseTypes> {
+    base: Mat1<T>,
+    extra: Mat3Extra<T>,
 }
 
-#[derive_ordered_data]
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct Mat4Extra_XE_ {
-    pub unk_90: f32_XE_,
-    pub unk_91: u32_XE_,
-    pub unk_92: u32_XE_,
-    pub unk_93: u32_XE_,
-    pub unk_94: u32_XE_,
-    pub unk_95: u32_XE_,
-    pub unk_96: f32_XE_,
-    pub unk_97: u32_XE_,
-    pub unk_98: f32_XE_,
-    pub unk_99: u32_XE_,
-    pub unk_100: u32_XE_,
-    pub unk_101: u32_XE_,
-    pub unk_102: u32_XE_,
-    pub unk_103: u32_XE_,
-    pub unk_104: f32_XE_,
-    pub unk_105: u32_XE_,
-    pub unk_106: f32_XE_,
-    pub unk_107: u32_XE_,
-    pub unk_108: u32_XE_,
-    pub unk_109: f32_XE_,
-    pub unk_110: u32_XE_,
-    pub unk_111: u32_XE_,
-    pub unk_112: f32_XE_,
-    pub unk_113: f32_XE_,
-    pub unk_114: f32_XE_,
-    pub unk_115: u32_XE_,
-    pub unk_116: u32_XE_,
-    pub unk_117: f32_XE_,
-    pub unk_118: u32_XE_,
-    pub unk_119: u32_XE_,
-    pub unk_120: f32_XE_,
-    pub unk_121: f32_XE_,
-    pub unk_122: f32_XE_,
-    pub unk_123: u32_XE_,
-    pub unk_124: u32_XE_,
-    pub unk_125: f32_XE_,
-    pub unk_126: u32_XE_,
-    pub unk_127: u32_XE_,
-    pub unk_128: f32_XE_,
-    pub unk_129: f32_XE_,
-    pub unk_130: f32_XE_,
-    pub unk_131: u32_XE_,
-    pub unk_132: u32_XE_,
-    pub unk_133: f32_XE_,
-    pub unk_134: u32_XE_,
-    pub unk_135: u32_XE_,
-    pub unk_136: f32_XE_,
-    pub unk_137: f32_XE_,
-    pub unk_138: f32_XE_,
-    pub unk_139: u32_XE_,
-    pub unk_140: u32_XE_,
-    pub unk_141: f32_XE_,
-    pub unk_142: u32_XE_,
-    pub unk_143: u32_XE_,
-    pub unk_144: f32_XE_,
-    pub unk_145: f32_XE_,
+#[derive_pod]
+pub struct Mat4Extra<T: BaseTypes> {
+    pub unk_90: T::f32,
+    pub unk_91: T::u32,
+    pub unk_92: T::u32,
+    pub unk_93: T::u32,
+    pub unk_94: T::u32,
+    pub unk_95: T::u32,
+    pub unk_96: T::f32,
+    pub unk_97: T::u32,
+    pub unk_98: T::f32,
+    pub unk_99: T::u32,
+    pub unk_100: T::u32,
+    pub unk_101: T::u32,
+    pub unk_102: T::u32,
+    pub unk_103: T::u32,
+    pub unk_104: T::f32,
+    pub unk_105: T::u32,
+    pub unk_106: T::f32,
+    pub unk_107: T::u32,
+    pub unk_108: T::u32,
+    pub unk_109: T::f32,
+    pub unk_110: T::u32,
+    pub unk_111: T::u32,
+    pub unk_112: T::f32,
+    pub unk_113: T::f32,
+    pub unk_114: T::f32,
+    pub unk_115: T::u32,
+    pub unk_116: T::u32,
+    pub unk_117: T::f32,
+    pub unk_118: T::u32,
+    pub unk_119: T::u32,
+    pub unk_120: T::f32,
+    pub unk_121: T::f32,
+    pub unk_122: T::f32,
+    pub unk_123: T::u32,
+    pub unk_124: T::u32,
+    pub unk_125: T::f32,
+    pub unk_126: T::u32,
+    pub unk_127: T::u32,
+    pub unk_128: T::f32,
+    pub unk_129: T::f32,
+    pub unk_130: T::f32,
+    pub unk_131: T::u32,
+    pub unk_132: T::u32,
+    pub unk_133: T::f32,
+    pub unk_134: T::u32,
+    pub unk_135: T::u32,
+    pub unk_136: T::f32,
+    pub unk_137: T::f32,
+    pub unk_138: T::f32,
+    pub unk_139: T::u32,
+    pub unk_140: T::u32,
+    pub unk_141: T::f32,
+    pub unk_142: T::u32,
+    pub unk_143: T::u32,
+    pub unk_144: T::f32,
+    pub unk_145: T::f32,
 }
 
-#[derive_ordered_data]
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct Mat4_XE_ {
-    base: Mat1_XE_,
-    extra: Mat4Extra_XE_
+#[derive_pod]
+pub struct Mat4<T: BaseTypes> {
+    base: Mat1<T>,
+    extra: Mat4Extra<T>,
 }
 
-#[derive_ordered_data]
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct MatExtra_XE_ {
-    pub unk_0: u32_XE_,
-    pub unk_1: u32_XE_,
-    pub unk_2: u32_XE_,
-    pub unk_3: u32_XE_,
-    pub unk_4: u32_XE_,
-    pub unk_5: u32_XE_,
-    pub unk_6: u32_XE_,
-    pub unk_7: u32_XE_,
-    pub unk_8: u32_XE_,
-    pub unk_9: u32_XE_,
-    pub unk_10: u32_XE_,
-    pub unk_11: f32_XE_,
-    pub unk_12: f32_XE_,
-    pub unk_13: f32_XE_,
-    pub unk_14: f32_XE_,
-    pub unk_15: f32_XE_,
-    pub unk_16: u32_XE_,
-    pub unk_17: f32_XE_,
-    pub unk_18: f32_XE_,
-    pub unk_19: f32_XE_,
-    pub unk_20: f32_XE_,
-    pub unk_21: f32_XE_,
-    pub unk_22: u32_XE_,
-    pub unk_23: u32_XE_,
-    pub unk_24: u32_XE_,
-    pub unk_25: u32_XE_,
-    pub unk_26: u32_XE_,
-    pub unk_27: u32_XE_,
-    pub unk_28: u32_XE_,
-    pub unk_29: u32_XE_,
-    pub unk_30: u32_XE_,
-    pub unk_31: u32_XE_,
-    pub unk_32: u32_XE_,
-    pub unk_33: u32_XE_,
-    pub unk_34: u32_XE_,
-    pub unk_35: u32_XE_,
-    pub unk_36: u32_XE_,
-    pub unk_37: u32_XE_,
-    pub unk_38: u32_XE_,
-    pub unk_39: u32_XE_,
-    pub unk_40: u32_XE_,
-    pub unk_41: u32_XE_,
-    pub unk_42: u32_XE_,
-    pub unk_43: u32_XE_,
-    pub unk_44: u32_XE_,
-    pub unk_45: u32_XE_,
-    pub unk_46: u32_XE_,
-    pub unk_47: u32_XE_,
-    pub unk_48: u32_XE_,
-    pub unk_49: u32_XE_,
-}
-
-#[make_endian]
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "ffi", repr(C))]
-pub struct Mat1Ref_XE_<'a> {
-    pub info: &'a Mat1_XE_,
-    pub extra: Option<&'a MatExtra_XE_>
-}
-
-#[make_endian]
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "ffi", repr(C))]
-pub struct Mat2Ref_XE_<'a> {
-    pub info: &'a Mat2_XE_,
-    pub extra: Option<&'a MatExtra_XE_>
-}
-
-#[make_endian]
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "ffi", repr(C))]
-pub struct Mat3Ref_XE_<'a> {
-    pub info: &'a Mat3_XE_,
-    pub extra: Option<&'a MatExtra_XE_>
-}
-
-#[make_endian]
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "ffi", repr(C))]
-pub struct Mat4Ref_XE_<'a> {
-    pub info: &'a Mat4_XE_,
-    pub extra: Option<&'a MatExtra_XE_>
+#[derive_pod]
+pub struct MatExtra<T: BaseTypes> {
+    pub unk_0: T::u32,
+    pub unk_1: T::u32,
+    pub unk_2: T::u32,
+    pub unk_3: T::u32,
+    pub unk_4: T::u32,
+    pub unk_5: T::u32,
+    pub unk_6: T::u32,
+    pub unk_7: T::u32,
+    pub unk_8: T::u32,
+    pub unk_9: T::u32,
+    pub unk_10: T::u32,
+    pub unk_11: T::f32,
+    pub unk_12: T::f32,
+    pub unk_13: T::f32,
+    pub unk_14: T::f32,
+    pub unk_15: T::f32,
+    pub unk_16: T::u32,
+    pub unk_17: T::f32,
+    pub unk_18: T::f32,
+    pub unk_19: T::f32,
+    pub unk_20: T::f32,
+    pub unk_21: T::f32,
+    pub unk_22: T::u32,
+    pub unk_23: T::u32,
+    pub unk_24: T::u32,
+    pub unk_25: T::u32,
+    pub unk_26: T::u32,
+    pub unk_27: T::u32,
+    pub unk_28: T::u32,
+    pub unk_29: T::u32,
+    pub unk_30: T::u32,
+    pub unk_31: T::u32,
+    pub unk_32: T::u32,
+    pub unk_33: T::u32,
+    pub unk_34: T::u32,
+    pub unk_35: T::u32,
+    pub unk_36: T::u32,
+    pub unk_37: T::u32,
+    pub unk_38: T::u32,
+    pub unk_39: T::u32,
+    pub unk_40: T::u32,
+    pub unk_41: T::u32,
+    pub unk_42: T::u32,
+    pub unk_43: T::u32,
+    pub unk_44: T::u32,
+    pub unk_45: T::u32,
+    pub unk_46: T::u32,
+    pub unk_47: T::u32,
+    pub unk_48: T::u32,
+    pub unk_49: T::u32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "ffi", repr(C))]
-pub struct Mat1Ref<'a, T: MatTypes> {
-    pub info: &'a T::Mat1,
-    pub extra: Option<&'a T::MatExtra>
+pub struct Mat1Ref<'a, T: BaseTypes> {
+    pub info: &'a Mat1<T>,
+    pub extra: Option<&'a MatExtra<T>>
 }
 
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "ffi", repr(C))]
-pub struct Mat2Ref<'a, T: MatTypes> {
-    pub info: &'a T::Mat2,
-    pub extra: Option<&'a T::MatExtra>
+pub struct Mat2Ref<'a, T: BaseTypes> {
+    pub info: &'a Mat2<T>,
+    pub extra: Option<&'a MatExtra<T>>
 }
 
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "ffi", repr(C))]
-pub struct Mat3Ref<'a, T: MatTypes> {
-    pub info: &'a T::Mat3,
-    pub extra: Option<&'a T::MatExtra>
+pub struct Mat3Ref<'a, T: BaseTypes> {
+    pub info: &'a Mat3<T>,
+    pub extra: Option<&'a MatExtra<T>>
 }
 
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "ffi", repr(C))]
-pub struct Mat4Ref<'a, T: MatTypes> {
-    pub info: &'a T::Mat4,
-    pub extra: Option<&'a T::MatExtra>
+pub struct Mat4Ref<'a, T: BaseTypes> {
+    pub info: &'a Mat4<T>,
+    pub extra: Option<&'a MatExtra<T>>
 }
 
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "ffi", repr(C, u8))]
-pub enum MatRef<'a, T: MatTypes> {
+pub enum MatRef<'a, T: BaseTypes> {
     Mat1(Mat1Ref<'a, T>),
     Mat2(Mat2Ref<'a, T>),
     Mat3(Mat3Ref<'a, T>),
     Mat4(Mat4Ref<'a, T>),
 }
 
-impl<'a, T: MatTypes> MatRef<'a, T> {
+impl<'a, T: BaseTypes> MatRef<'a, T> {
     pub fn from_data(src: &'a [u8], offset: usize) -> Result<Self> {
-        let base = T::Mat1::from_data(&src[offset..]).context("base")?;
-        let extra = if base.mat_extra_offset() != 0 {
-            Some(T::MatExtra::from_data(&src[base.mat_extra_offset() as usize..]).context("extra")?)
+        let base = Mat1::<T>::from_data(&src[offset..]).context("base")?;
+        let extra = if base.mat_extra_offset.into() != 0 {
+            Some(MatExtra::from_data(&src[base.mat_extra_offset.into() as usize..]).context("extra")?)
         } else {
             None
         };
-        Ok(match base.kind() {
+        Ok(match base.kind.into() {
             0 => Self::Mat1(Mat1Ref {
-                info: T::Mat1::from_data(&src[offset..]).context("mat1")?,
+                info: Mat1::from_data(&src[offset..]).context("mat1")?,
                 extra,
             }),
             1 => Self::Mat4(Mat4Ref {
-                info: T::Mat4::from_data(&src[offset..]).context("mat4")?,
+                info: Mat4::from_data(&src[offset..]).context("mat4")?,
                 extra,
             }),
             2 => Self::Mat2(Mat2Ref {
-                info: T::Mat2::from_data(&src[offset..]).context("mat2")?,
+                info: Mat2::from_data(&src[offset..]).context("mat2")?,
                 extra,
             }),
             3 => Self::Mat3(Mat3Ref {
-                info: T::Mat3::from_data(&src[offset..]).context("mat3")?,
+                info: Mat3::from_data(&src[offset..]).context("mat3")?,
                 extra,
             }),
-            _ => return Err(anyhow::anyhow!("Unknown Mat Type {}", base.kind())),
+            _ => return Err(anyhow::anyhow!("Unknown Mat Type {}", base.kind.into())),
         })
     }
 }
 
-#[make_endian]
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "ffi", repr(C, u8))]
-pub enum MatRef_XE_<'a> {
-    Mat1(Mat1Ref_XE_<'a>),
-    Mat2(Mat2Ref_XE_<'a>),
-    Mat3(Mat3Ref_XE_<'a>),
-    Mat4(Mat4Ref_XE_<'a>),
-}
-
-#[make_endian]
-impl<'a> MatRef_XE_<'a> {
-    pub fn from_data(src: &'a [u8], offset: usize) -> Result<Self> {
-        let base = Mat1_XE_::from_data(&src[offset..]).context("base")?;
-        let extra = if base.mat_extra_offset != 0 {
-            Some(MatExtra_XE_::from_data(&src[base.mat_extra_offset.conv()..]).context("extra")?)
-        } else {
-            None
-        };
-        Ok(match base.kind.conv() {
-            0u32 => Self::Mat1(Mat1Ref_XE_ {
-                info: Mat1_XE_::from_data(&src[offset..]).context("mat1")?,
-                extra,
-            }),
-            1 => Self::Mat4(Mat4Ref_XE_ {
-                info: Mat4_XE_::from_data(&src[offset..]).context("mat4")?,
-                extra,
-            }),
-            2 => Self::Mat2(Mat2Ref_XE_ {
-                info: Mat2_XE_::from_data(&src[offset..]).context("mat2")?,
-                extra,
-            }),
-            3 => Self::Mat3(Mat3Ref_XE_ {
-                info: Mat3_XE_::from_data(&src[offset..]).context("mat3")?,
-                extra,
-            }),
-            _ => return Err(anyhow::anyhow!("Unknown Mat Type {}", base.kind.to_native())),
-        })
-    }
-}
-
-
-#[make_endian]
-pub trait DumpMat_XE_ {
-    fn dump_infos(&self, infos: &mut DumpInfos_XE_) -> Result<u32>;
+pub trait DumpMat<T: BaseTypes> {
+    fn dump_infos(&self, infos: &mut DumpInfos<T>) -> Result<u32>;
     fn add_counts(&self, counts: &mut InfoCounts);
 }
 
-#[make_endian]
-impl DumpMat_XE_ for MatRef_XE_<'_> {
-    fn dump_infos(&self, infos: &mut DumpInfos_XE_) -> Result<u32> {
+impl<T: BaseTypes> DumpMat<T> for MatRef<'_, T> {
+    fn dump_infos(&self, infos: &mut DumpInfos<T>) -> Result<u32> {
         match self {
-            Self::Mat1(Mat1Ref_XE_ { info, extra}) => {
+            Self::Mat1(Mat1Ref { info, extra}) => {
                 let val = infos.mat1s.offset;
                 let mat = infos.mat1s.next().context("mat1s")?;
-                mat.write_from(info)?;
-                mat.mat_extra_offset = extra.map(|_| infos.mat_extras.offset as u32).unwrap_or_default().conv();
+                *mat = **info;
+                mat.mat_extra_offset = extra.map(|_| infos.mat_extras.offset as u32).unwrap_or_default().into();
                 if let Some(extra) = extra {
-                    infos.mat_extras.next().context("mat_extras")?.write_from(extra)?;
-                    *infos.offsets.next().context("offsets")? = (val + std::mem::offset_of!(Mat1_XE_, mat_extra_offset)).conv();
+                    *infos.mat_extras.next().context("mat_extras")? = **extra;
+                    *infos.offsets.next().context("offsets")? = ((val + std::mem::offset_of!(Mat1<T>, mat_extra_offset)) as u32).into();
                 }
                 Ok(val as u32)
             }
-            Self::Mat2(Mat2Ref_XE_ { info, extra }) => {
+            Self::Mat2(Mat2Ref { info, extra }) => {
                 let val = infos.mat2s.offset;
                 let mat = infos.mat2s.next().context("mat2s")?;
-                mat.write_from(info)?;
-                mat.base.mat_extra_offset = extra.map(|_| infos.mat_extras.offset as u32).unwrap_or_default().conv();
+                *mat = **info;
+                mat.base.mat_extra_offset = extra.map(|_| infos.mat_extras.offset as u32).unwrap_or_default().into();
                 if let Some(extra) = extra {
-                    infos.mat_extras.next().context("mat_extras")?.write_from(extra)?;
-                    *infos.offsets.next().context("offsets")? = (val + std::mem::offset_of!(Mat2_XE_, base) + std::mem::offset_of!(Mat1_XE_, mat_extra_offset)).conv();
+                    *infos.mat_extras.next().context("mat_extras")? = **extra;
+                    *infos.offsets.next().context("offsets")? = ((val + std::mem::offset_of!(Mat2<T>, base) + std::mem::offset_of!(Mat1<T>, mat_extra_offset)) as u32).into();
                 }
                 Ok(val as u32)
             }
-            Self::Mat3(Mat3Ref_XE_ { info, extra }) => {
+            Self::Mat3(Mat3Ref { info, extra }) => {
                 let val = infos.mat3s.offset;
                 let mat = infos.mat3s.next().context("mat3s")?;
-                mat.write_from(info)?;
-                mat.base.mat_extra_offset = extra.map(|_| infos.mat_extras.offset as u32).unwrap_or_default().conv();
+                *mat = **info;
+                mat.base.mat_extra_offset = extra.map(|_| infos.mat_extras.offset as u32).unwrap_or_default().into();
                 if let Some(extra) = extra {
-                    infos.mat_extras.next().context("mat_extras")?.write_from(extra)?;
-                    *infos.offsets.next().context("offsets")? = (val + std::mem::offset_of!(Mat3_XE_, base) + std::mem::offset_of!(Mat1_XE_, mat_extra_offset)).conv();
+                    *infos.mat_extras.next().context("mat_extras")? = **extra;
+                    *infos.offsets.next().context("offsets")? = ((val + std::mem::offset_of!(Mat3<T>, base) + std::mem::offset_of!(Mat1<T>, mat_extra_offset)) as u32).into();
                 }
                 Ok(val as u32)
             }
-            Self::Mat4(Mat4Ref_XE_ { info, extra }) => {
+            Self::Mat4(Mat4Ref { info, extra }) => {
                 let val = infos.mat4s.offset;
                 let mat = infos.mat4s.next().context("mat4s")?;
-                mat.write_from(info)?;
-                mat.base.mat_extra_offset = extra.map(|_| infos.mat_extras.offset as u32).unwrap_or_default().conv();
+                *mat = **info;
+                mat.base.mat_extra_offset = extra.map(|_| infos.mat_extras.offset as u32).unwrap_or_default().into();
                 if let Some(extra) = extra {
-                    infos.mat_extras.next().context("mat_extras")?.write_from(extra)?;
-                    *infos.offsets.next().context("offsets")? = (val + std::mem::offset_of!(Mat4_XE_, base) + std::mem::offset_of!(Mat1_XE_, mat_extra_offset)).conv();
+                    *infos.mat_extras.next().context("mat_extras")? = **extra;
+                    *infos.offsets.next().context("offsets")? = ((val + std::mem::offset_of!(Mat4<T>, base) + std::mem::offset_of!(Mat1<T>, mat_extra_offset)) as u32).into();
                 }
                 Ok(val as u32)
             }
@@ -712,48 +602,28 @@ pub enum MatInd {
 
 #[derive(Debug, Clone)]
 pub enum Mat {
-    Normal(Mat1, Option<MatExtra>),
-    Variation(Mat2, Option<MatExtra>),
-    CharacterVariation(Mat3, Option<MatExtra>),
-    Terrain(Mat4, Option<MatExtra>),
+    Normal(Mat1<NE>, Option<MatExtra<NE>>),
+    Variation(Mat2<NE>, Option<MatExtra<NE>>),
+    CharacterVariation(Mat3<NE>, Option<MatExtra<NE>>),
+    Terrain(Mat4<NE>, Option<MatExtra<NE>>),
 }
 
-#[make_endian]
-impl From<&MatRef_XE_<'_>> for Mat {
-    fn from(val: &MatRef_XE_) -> Self {
+impl<T: BaseTypes> From<&MatRef<'_, T>> for Mat
+where
+    Mat1<NE>: From<Mat1<T>>,
+    Mat2<NE>: From<Mat2<T>>,
+    Mat3<NE>: From<Mat3<T>>,
+    Mat4<NE>: From<Mat4<T>>,
+    MatExtra<NE>: From<MatExtra<T>>,
+{
+    fn from(val: &MatRef<T>) -> Self {
         match val {
-            MatRef_XE_::Mat1(Mat1Ref_XE_ { info, extra }) => Self::Normal(info.conv(), extra.map(|x| x.conv())),
-            MatRef_XE_::Mat2(Mat2Ref_XE_ { info, extra }) => Self::Variation(info.conv(), extra.map(|x| x.conv())),
-            MatRef_XE_::Mat3(Mat3Ref_XE_ { info, extra }) => {
-                Self::CharacterVariation(info.conv(), extra.map(|x| x.conv()))
+            MatRef::Mat1(Mat1Ref { info, extra }) => Self::Normal((**info).into(), extra.map(|&x| x.into())),
+            MatRef::Mat2(Mat2Ref { info, extra }) => Self::Variation((**info).into(), extra.map(|&x| x.into())),
+            MatRef::Mat3(Mat3Ref { info, extra }) => {
+                Self::CharacterVariation((**info).into(), extra.map(|&x| x.into()))
             }
-            MatRef_XE_::Mat4(Mat4Ref_XE_ { info, extra }) => Self::Terrain(info.conv(), extra.map(|x| x.conv())),
+            MatRef::Mat4(Mat4Ref { info, extra }) => Self::Terrain((**info).into(), extra.map(|&x| x.into())),
         }
     }
 }
-
-/*
-impl Mat {
-    #[make_endian]
-    pub fn get_raw_ver(&self) -> (Mat_XE_, Option<MatExtra_XE_>) {
-        match self {
-            Self::Normal(mat, extra) => (
-                Mat_XE_::Mat1(Mat1_XE_::from(mat.clone())),
-                extra.as_ref().map(|x| MatExtra_XE_::from(x.clone())),
-            ),
-            Self::Variation(mat, extra) => (
-                Mat_XE_::Mat2(Mat2_XE_::from(mat.clone())),
-                extra.as_ref().map(|x| MatExtra_XE_::from(x.clone())),
-            ),
-            Self::CharacterVariation(mat, extra) => (
-                Mat_XE_::Mat3(Mat3_XE_::from(mat.clone())),
-                extra.as_ref().map(|x| MatExtra_XE_::from(x.clone())),
-            ),
-            Self::Terrain(mat, extra) => (
-                Mat_XE_::Mat4(Mat4_XE_::from(mat.clone())),
-                extra.as_ref().map(|x| MatExtra_XE_::from(x.clone())),
-            ),
-        }
-    }
-}
-*/

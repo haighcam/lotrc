@@ -1,43 +1,16 @@
 
 use anyhow::{anyhow, Context, Result};
-use lotrc_proc::{make_endian, derive_ordered_data};
+use lotrc_proc::{derive_pod};
 use parking_lot::{MappedMutexGuard, Mutex, MutexGuard};
 use std::collections::HashMap;
 use std::io::Read;
-use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 use enum_dispatch::enum_dispatch;
+use bytemuck::{Pod, cast_slice, cast_slice_mut};
 
 pub use lotrc_wrappers::*;
 pub mod sub_blocks;
 
-pub trait EndianTypes {
-    #[allow(non_camel_case_types)]
-    type u16: std::fmt::Debug + RefFromData + DumpData + OrderedData<u16> + Copy + Default + PartialEq + From<u16> + Into<u16>;
-    #[allow(non_camel_case_types)]
-    type u32: std::fmt::Debug + RefFromData + DumpData + OrderedData<u32> + Copy + Default + PartialEq;
-    #[allow(non_camel_case_types)]
-    type u64: std::fmt::Debug + RefFromData + DumpData + OrderedData<u64> + Copy + Default + PartialEq;
-    #[allow(non_camel_case_types)]
-    type i16: std::fmt::Debug + RefFromData + DumpData + OrderedData<i16> + Copy + Default + PartialEq;
-    #[allow(non_camel_case_types)]
-    type i32: std::fmt::Debug + RefFromData + DumpData + OrderedData<i32> + Copy + Default + PartialEq;
-    #[allow(non_camel_case_types)]
-    type f32: std::fmt::Debug + RefFromData + DumpData + OrderedData<f32> + Copy + Default + PartialEq;
-
-    // should be unaligned
-    type U16: std::fmt::Debug + RefFromData + DumpData + OrderedData<u16> + Copy + Default + PartialEq;
-    type U32: std::fmt::Debug + RefFromData + DumpData + OrderedData<u32> + Copy + Default + PartialEq;
-    type I32: std::fmt::Debug + RefFromData + DumpData + OrderedData<i32> + Copy + Default + PartialEq;
-
-    type Crc: std::fmt::Debug + PartialEq + RefFromData + DumpData + CrcTypeTrait + OrderedData<Crc>;
-    type Vector2: std::fmt::Debug + PartialEq + RefFromData + DumpData + Vector2TypeTrait;
-    type Vector3: std::fmt::Debug + PartialEq + RefFromData + DumpData + Vector3TypeTrait;
-    type Vector4: std::fmt::Debug + PartialEq + RefFromData + DumpData + Vector4TypeTrait;
-    type Matrix4x4: std::fmt::Debug + PartialEq + RefFromData + DumpData + Matrix4x4TypeTrait;
-}
-
 pub type AlignmentHelper = u32;
-
 const _: () = assert!(std::mem::align_of::<AlignmentHelper>() == 4);
 
 #[cfg_attr(feature = "ffi", repr(C))]
@@ -50,12 +23,12 @@ pub struct AlignedBuf {
 impl std::ops::Deref for AlignedBuf {
     type Target = [u8];
     fn deref(&self) -> &Self::Target {
-        &self.data.as_bytes()[..self.size]
+        &cast_slice::<AlignmentHelper, u8>(&self.data[..])[..self.size]
     }
 }
 impl std::ops::DerefMut for AlignedBuf {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.data.as_mut_bytes()[..self.size]
+        &mut cast_slice_mut::<AlignmentHelper, u8>(&mut self.data[..])[..self.size]
     }
 }
 
@@ -124,115 +97,40 @@ impl<'a> DumpSlice<'a> {
     }
 }
 
-pub trait DumpData {
-    fn write_from(&mut self, val: &Self) -> Result<()>;
-    fn dump_into(&self, dst: &mut DumpSlice) -> Result<()>;
-    fn dump(&self) -> Result<Vec<u8>> {
-        let mut data = vec![0u8; self.size_of_val()];
-        let mut slice = (&mut data).into();
-        self.dump_into(&mut slice)?;
-        Ok(data)
-    }
-    fn size_of_val(&self) -> usize;
-}
-
-impl<T: Sized + KnownLayout + Immutable + IntoBytes + FromBytes> DumpData for T {
-    fn write_from(&mut self, val: &Self) -> Result<()> {
-        val.write_to(self.as_mut_bytes())
-            .map_err(|e| anyhow!(e.to_string()))
-    }
-    fn dump_into<'a>(&self, dst: &mut DumpSlice) -> Result<()> {
-        self.write_to_prefix(dst.vals)
-            .map_err(|e| anyhow!(e.to_string()))?;
-        dst.split(std::mem::size_of::<T>())?;
-        Ok(())
-    }
-    fn size_of_val(&self) -> usize {
-        std::mem::size_of::<T>()
-    }
-}
-
-impl<T: Sized + KnownLayout + Immutable + IntoBytes + FromBytes> DumpData for [T] {
-    fn write_from(&mut self, val: &Self) -> Result<()> {
-        val.write_to(self.as_mut_bytes())
-            .map_err(|e| anyhow!(e.to_string()))
-    }
-    fn dump_into<'a>(&self, dst: &mut DumpSlice) -> Result<()> {
-        self.write_to_prefix(dst.vals)
-            .map_err(|e| anyhow!(e.to_string()))?;
-        dst.split(std::mem::size_of_val(self))?;
-        Ok(())
-    }
-    fn size_of_val(&self) -> usize {
-        std::mem::size_of_val(self)
-    }
-}
-
 pub fn align_offset(offset: usize, size: usize) -> usize {
     (offset + (size - 1)) & (0xFFFFFFFF - (size - 1))
 }
 
-pub trait RefFromData
-where
-    Self: Sized + KnownLayout + Immutable + FromBytes + IntoBytes + 'static,
-{
+pub trait ReadData: Pod {
     fn from_data(data: &[u8]) -> Result<&Self> {
-        Ok(FromBytes::ref_from_prefix(data)
-            .map_err(|e| anyhow!(e.to_string()))?
-            .0)
+        Ok(bytemuck::try_from_bytes(data
+            .split_at_checked(std::mem::size_of::<Self>())
+            .ok_or(anyhow!("data too short"))?.0
+        )?)
     }
     fn slice_from_data(data: &[u8], count: usize) -> Result<&[Self]> {
-        Ok(FromBytes::ref_from_prefix_with_elems(data, count)
-            .map_err(|e| anyhow!(e.to_string()))?
-            .0)
-    }
-    fn size_of() -> usize {
-        std::mem::size_of::<Self>()
+        Ok(bytemuck::try_cast_slice(data
+            .split_at_checked(std::mem::size_of::<Self>() * count)
+            .ok_or(anyhow!("data too short"))?.0
+        )?)
     }
     fn mut_from_data<'a>(src: &mut DumpSlice<'a>) -> Result<&'a mut Self> {
-        let val = FromBytes::mut_from_bytes(src.split(std::mem::size_of::<Self>())?.vals)
-            .map_err(|e| anyhow!(e.to_string()))?;
-        Ok(val)
+        Ok(bytemuck::try_from_bytes_mut(src.split(std::mem::size_of::<Self>())?.vals)?)
     }
     fn mut_slice_from_data<'a>(src: &mut DumpSlice<'a>, count: usize) -> Result<&'a mut [Self]> {
-        let val = FromBytes::mut_from_bytes_with_elems(
-            src.split(std::mem::size_of::<Self>() * count)?.vals,
-            count,
-        )
-        .map_err(|e| anyhow!(e.to_string()))?;
-        Ok(val)
+        Ok(bytemuck::try_cast_slice_mut(src.split(std::mem::size_of::<Self>() * count)?.vals)?)
     }
 }
 
-impl<T> RefFromData for T where T: Sized + KnownLayout + Immutable + FromBytes + IntoBytes + 'static {}
+impl<T: Pod> ReadData for T {}
 
 pub type Color = u32;
-#[make_endian]
-pub type Color_XE_ = u32_XE_;
 
+/*
 #[derive(Default, Debug, Clone, Copy, Eq, Hash, PartialEq)]
 #[repr(transparent)]
 pub struct Crc {
     pub val: u32,
-}
-#[make_endian]
-pub type Crc_XE_ = u32_XE_;
-
-pub trait CrcTypeTrait {
-    fn get(&self) -> u32;
-}
-impl CrcTypeTrait for Crc {
-    #[inline(always)]
-    fn get(&self) -> u32 { 
-        self.val
-    }
-}
-#[make_endian]
-impl CrcTypeTrait for Crc_XE_ {
-    #[inline(always)]
-    fn get(&self) -> u32 { 
-        self.to_native()
-    }
 }
 
 impl Crc {
@@ -265,167 +163,68 @@ impl indexmap::Equivalent<Crc> for u32 {
         self.eq(&key.val)
     }
 }
+*/
 
-#[make_endian]
-mod crc_impl_xe_ {
-    use super::*;
-    impl OrderedData<Crc> for U32_XE_ {
-        #[inline(always)]
-        fn conv(&self) -> Crc {
-            self.get().into()
-        }
-    }
-    impl OrderedData<U32_XE_> for Crc {
-        #[inline(always)]
-        fn conv(&self) -> U32_XE_ {
-            self.get().into()
-        }
-    }
-    impl OrderedData<Crc> for u32_XE_ {
-        #[inline(always)]
-        fn conv(&self) -> Crc {
-            self.to_native().into()
-        }
-    }
-    impl OrderedData<u32_XE_> for Crc {
-        #[inline(always)]
-        fn conv(&self) -> u32_XE_ {
-            self.get().into()
-        }
+#[derive_pod]
+#[derive(Hash)]
+pub struct Crc<T: BaseTypes> {
+    pub val: T::u32,
+}
+impl<T: BaseTypes> Eq for Crc<T> {}
+
+impl<T: BaseTypes> Crc<T> {
+    pub const fn new(val: T::u32) -> Self {
+        Self { val }
     }
 }
 
-#[derive_ordered_data]
-#[derive(Debug, Default, Clone, PartialEq)]
-#[cfg_attr(feature = "ffi", repr(C))]
-pub struct Vector2_XE_ {
-    pub x: f32_XE_,
-    pub y: f32_XE_,
+#[derive_pod]
+pub struct CrcLE<T: BaseTypes> {
+    pub val: T::u32LE,
 }
-impl TryFrom<&[f32]> for Vector2 {
-    type Error = anyhow::Error;
-    fn try_from(val: &[f32]) -> Result<Self> {
-        if val.len() != 2 {
-            Err(anyhow!("need 2 values"))
-        } else {
-            Ok(Self { x: val[0], y: val[1] })
-        }
-    }
-}
-impl From<Vector2> for Vec<f32> {
-    fn from(val: Vector2) -> Self {
-        vec![val.x, val.y]
+
+impl<T: BaseTypes> CrcLE<T> {
+    pub const fn new(val: T::u32LE) -> Self {
+        Self { val }
     }
 }
 
-#[derive_ordered_data]
-#[derive(Debug, Default, Clone, PartialEq)]
-#[cfg_attr(feature = "ffi", repr(C))]
-pub struct Vector3_XE_ {
-    pub x: f32_XE_,
-    pub y: f32_XE_,
-    pub z: f32_XE_,
-}
-impl TryFrom<&[f32]> for Vector3 {
-    type Error = anyhow::Error;
-    fn try_from(val: &[f32]) -> Result<Self> {
-        if val.len() != 3 {
-            Err(anyhow!("need 3 values"))
-        } else {
-            Ok(Self { x: val[0], y: val[1], z: val[2] })
-        }
-    }
-}
-impl From<Vector3> for Vec<f32> {
-    fn from(val: Vector3) -> Self {
-        vec![val.x, val.y, val.z]
-    }
+#[derive_pod]
+pub struct Vector2<T: BaseTypes> {
+    pub x: T::f32,
+    pub y: T::f32,
 }
 
-#[derive_ordered_data]
-#[derive(Debug, Default, Clone, PartialEq)]
-#[cfg_attr(feature = "ffi", repr(C))]
-pub struct Vector4_XE_ {
-    pub x: f32_XE_,
-    pub y: f32_XE_,
-    pub z: f32_XE_,
-    pub w: f32_XE_,
-}
-impl TryFrom<&[f32]> for Vector4 {
-    type Error = anyhow::Error;
-    fn try_from(val: &[f32]) -> Result<Self> {
-        if val.len() != 4 {
-            Err(anyhow!("need 4 values"))
-        } else {
-            Ok(Self { x: val[0], y: val[1], z: val[2], w: val[3] })
-        }
-    }
-}
-impl From<Vector4> for Vec<f32> {
-    fn from(val: Vector4) -> Self {
-        vec![val.x, val.y, val.z, val.w]
-    }
+#[derive_pod]
+pub struct Vector3<T: BaseTypes> {
+    pub x: T::f32,
+    pub y: T::f32,
+    pub z: T::f32,
 }
 
-#[derive_ordered_data]
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct Matrix4x4_XE_ {
-    pub x: Vector4_XE_,
-    pub y: Vector4_XE_,
-    pub z: Vector4_XE_,
-    pub w: Vector4_XE_,
-}
-impl TryFrom<&[f32]> for Matrix4x4 {
-    type Error = anyhow::Error;
-    fn try_from(val: &[f32]) -> Result<Self> {
-        if val.len() != 16 {
-            Err(anyhow!("need 16 values"))
-        } else {
-            Ok(Self {
-                x: Vector4 { x: val[0], y: val[1], z: val[2], w: val[3] },
-                y: Vector4 { x: val[4], y: val[5], z: val[6], w: val[7] },
-                z: Vector4 { x: val[8], y: val[9], z: val[10], w: val[11] },
-                w: Vector4 { x: val[12], y: val[13], z: val[14], w: val[15] },
-            })
-        }
-    }
-}
-impl From<Matrix4x4> for Vec<f32> {
-    fn from(val: Matrix4x4) -> Self {
-        vec![
-            val.x.x, val.x.y, val.x.z, val.x.w,
-            val.y.x, val.y.y, val.y.z, val.y.w,
-            val.z.x, val.z.y, val.z.z, val.z.w,
-            val.w.x, val.w.y, val.w.z, val.w.w
-        ]
-    }
+#[derive_pod]
+pub struct Vector4<T: BaseTypes> {
+    pub x: T::f32,
+    pub y: T::f32,
+    pub z: T::f32,
+    pub w: T::f32,
 }
 
-#[derive_ordered_data]
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct Weight_XE_ {
-    pub x: u32_XE_,
+#[derive_pod]
+pub struct Matrix4x4<T: BaseTypes> {
+    pub x: Vector4<T>,
+    pub y: Vector4<T>,
+    pub z: Vector4<T>,
+    pub w: Vector4<T>,
+}
+
+#[derive_pod]
+pub struct Weight<T: BaseTypes> {
+    pub x: T::u32,
     pub a: u8,
     pub b: u8,
     pub c: u8,
     pub d: u8,
-}
-impl TryFrom<&[u32]> for Weight {
-    type Error = anyhow::Error;
-    fn try_from(val: &[u32]) -> Result<Self> {
-        if val.len() != 5 {
-            Err(anyhow!("need 16 values"))
-        } else if val[1] > 255 || val[2] > 255 || val[3] > 255 || val[4] > 255 {
-            Err(anyhow!("values 1-5 must be < 255"))
-        } else {
-            Ok(Weight { x: val[0], a: val[1] as u8, b: val[2] as u8, c: val[3] as u8, d: val[4] as u8 })
-        }
-    }
-}
-impl From<Weight> for Vec<u32> {
-    fn from(val: Weight) -> Self {
-        vec![val.x, val.a as u32, val.b as u32, val.c as u32, val.d as u32]
-    }
 }
 
 lazy_static::lazy_static! {
@@ -595,18 +394,18 @@ pub struct StringsRef<'a> {
 }
 
 impl<'a> StringsRef<'a> {
-    pub fn from_data<T: EndianTypes>(src: &'a [u8], num: usize) -> Result<Self> {
+    pub fn from_data<T: BaseTypes>(src: &'a [u8], num: usize) -> Result<Self> {
         let mut offset = 0;
         let mut strings = Vec::with_capacity(num);
         for i in 0..num {
-            let k = T::U32::from_data(&src[offset..]).context("size")?;
+            let &k = T::U32::from_data(&src[offset..]).context("size")?;
             offset += 4;
             strings.push(
-                std::str::from_utf8(&src[offset..offset + k.conv() as usize])
-                    .with_context(|| format!("string {} of size {}", i, k.conv()))?
+                std::str::from_utf8(&src[offset..offset + k.into() as usize])
+                    .with_context(|| format!("string {} of size {}", i, k.into()))?
                     .into(),
             );
-            offset += k.conv() as usize;
+            offset += k.into() as usize;
         }
         Ok(Self {
             strings: strings.into_boxed_slice().into(),
@@ -616,37 +415,6 @@ impl<'a> StringsRef<'a> {
         self.strings.iter().map(|x| x.as_ref())
     }
 
-}
-
-#[make_endian]
-#[derive(Default)]
-#[repr(transparent)]
-pub struct StringsRef_XE_<'a> {
-    pub strings: slice<string<'a>>
-}
-
-#[make_endian]
-impl<'a> StringsRef_XE_<'a> {
-    pub fn from_data(src: &'a [u8], num: usize) -> Result<Self> {
-        let mut offset = 0;
-        let mut strings = Vec::with_capacity(num);
-        for i in 0..num {
-            let k = U32_XE_::from_data(&src[offset..]).context("size")?;
-            offset += 4;
-            strings.push(
-                std::str::from_utf8(&src[offset..offset + k.get() as usize])
-                    .with_context(|| format!("string {} of size {}", i, k.get()))?
-                    .into(),
-            );
-            offset += k.get() as usize;
-        }
-        Ok(Self {
-            strings: strings.into_boxed_slice().into(),
-        })
-    }
-    pub fn strings(&self) -> impl IntoIterator<Item=&str> {
-        self.strings.iter().map(|x| x.as_ref())
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -655,24 +423,23 @@ pub struct Strings {
     pub strings: Vec<String>,
 }
 
-#[make_endian]
-impl From<&StringsRef_XE_<'_>> for Strings {
-    fn from(val: &StringsRef_XE_) -> Self {
+impl From<&StringsRef<'_>> for Strings {
+    fn from(val: &StringsRef) -> Self {
         Self {
             strings: val.strings().into_iter().map(|x| x.to_string()).collect(),
         }
     }
 }
 
-#[make_endian]
-pub trait DumpStrings_XE_ {
+pub trait DumpStrings<T: BaseTypes> {
     fn strings(&self) -> impl Iterator<Item = &str>;
     fn num_strings(&self) -> usize;
     fn dump_into<'a>(&self, dst: &mut DumpSlice) -> Result<()> {
         for val in self.strings() {
-            let k = U32_XE_::mut_from_data(dst)?;
+            let k = T::U32::mut_from_data(dst)?;
             *k = (val.len() as u32).into();
-            val.as_bytes().dump_into(dst)?;
+            let dst = u8::mut_slice_from_data(dst, val.as_bytes().len())?;
+            dst.copy_from_slice(val.as_bytes())
         }
         Ok(())
     }
@@ -681,8 +448,7 @@ pub trait DumpStrings_XE_ {
     }
 }
 
-#[make_endian]
-impl DumpStrings_XE_ for StringsRef_XE_<'_> {
+impl<T: BaseTypes> DumpStrings<T> for StringsRef<'_> {
     fn num_strings(&self) -> usize {
         self.strings.len()
     }
@@ -691,8 +457,7 @@ impl DumpStrings_XE_ for StringsRef_XE_<'_> {
     }
 }
 
-#[make_endian]
-impl DumpStrings_XE_ for Strings {
+impl<T: BaseTypes> DumpStrings<T> for Strings {
     fn num_strings(&self) -> usize {
         self.strings.len()
     }
@@ -703,7 +468,7 @@ impl DumpStrings_XE_ for Strings {
 
 const INIT_SIZE: usize = 1024;
 static INIT_BYTES: [u8; INIT_SIZE] = [0u8; INIT_SIZE];
-pub fn get_default_ref<'a, T: Sized + RefFromData>() -> &'a T {
+pub fn get_default_ref<'a, T: Sized + ReadData>() -> &'a T {
     &unsafe { (&INIT_BYTES[..]).align_to::<T>() }.1[0]
 }
 
@@ -739,15 +504,21 @@ impl PartialEq for CompressedDataRef<'_> {
 }
 
 impl<'a> CompressedDataRef<'a> {
-    pub fn from_data(src: &'a [u8], size_comp: usize, size: usize) -> Self {
+    pub fn from_data(src: &'a [u8], size_comp: usize, size: usize) -> Result<Self> {
         let mut data_decomp = AlignedBuf::with_capacity(size);
         let data = if size_comp == 0 {
+            if src.len() < size {
+                return Err(anyhow!("slice too small"));
+            }
             data_decomp.copy_from_slice(&src[..size]);
             &[] as _
         } else {
+            if src.len() < size_comp {
+                return Err(anyhow!("slice too small"));
+            }
             &src[..size_comp]
         };
-        Self { data: data.into(), data_decomp }
+        Ok(Self { data: data.into(), data_decomp })
     }
     pub fn decompress(&mut self) -> Result<()> {
         if self.data.len() != 0 {
@@ -838,7 +609,9 @@ impl DumpCompressedData for &'_ CompressedDataRef<'_> {
         self.data_decomp.len()
     }
     fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
-        (&self.data[..]).dump_into(dst)
+        let dst = u8::mut_slice_from_data(dst, self.data.len())?;
+        dst.copy_from_slice(self.data);
+        Ok(())
     }
 }
 
@@ -854,7 +627,9 @@ impl DumpCompressedData for CompressedDataAlt<'_> {
         self.data.len()
     }
     fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
-        (&self.compressed_data).dump_into(dst)
+        let dst = u8::mut_slice_from_data(dst, self.compressed_data.len())?;
+        dst.copy_from_slice(&self.compressed_data);
+        Ok(())
     }
 }
 
@@ -870,7 +645,9 @@ impl DumpCompressedData for OwnedCompressedData {
         self.data.len()
     }
     fn dump_into(&self, dst: &mut DumpSlice) -> Result<()> {
-        (&self.compressed_data).dump_into(dst)
+        let dst = u8::mut_slice_from_data(dst, self.compressed_data.len())?;
+        dst.copy_from_slice(&self.compressed_data);
+        Ok(())
     }
 }
 
@@ -891,12 +668,11 @@ impl DumpCompressedData for () {
 
 }
 
-#[make_endian]
-pub struct DumpCompressedDataImpl_XE_<'a, D: DumpCompressedData> {
+pub struct DumpCompressedDataImpl<'a, T: BaseTypes, D: DumpCompressedData> {
     pub data: &'a mut D,
-    pub offset: &'a mut u32_XE_,
-    pub size: &'a mut u32_XE_,
-    pub size_comp: &'a mut u32_XE_
+    pub offset: &'a mut T::u32,
+    pub size: &'a mut T::u32,
+    pub size_comp: &'a mut T::u32
 }
 
 #[cfg(feature="ffi")]
